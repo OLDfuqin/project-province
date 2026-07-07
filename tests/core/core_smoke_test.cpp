@@ -31,6 +31,8 @@ int main() {
     using province::core::EconomyResolvedEvent;
     using province::core::PopulationResolvedEvent;
     using province::core::BuildRoadCommand;
+    using province::core::RecruitArmyCommand;
+    using province::core::ArmyRecruitedEvent;
     using province::core::RoadBuiltEvent;
     using province::core::RoadLevel;
 
@@ -128,6 +130,69 @@ int main() {
     }
     if (!reported_missing_files) {
         std::cerr << "ScenarioLoader did not report missing data files\n";
+        return 1;
+    }
+
+    GameState recruitment_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor recruitment_processor;
+    const CommandResult recruited = recruitment_processor.execute(
+        recruitment_state,
+        RecruitArmyCommand{
+            CountryId{"auroria"},
+            ProvinceId{"northreach"},
+            1'000,
+        }
+    );
+    const Country* recruiting_country =
+        recruitment_state.find_country(CountryId{"auroria"});
+    const Province* recruiting_province =
+        recruitment_state.find_province(ProvinceId{"northreach"});
+    if (!recruited.accepted || recruited.events.size() != 1 ||
+        recruitment_state.army_count() != 1 || recruiting_country == nullptr ||
+        recruiting_country->treasury != 9'000 || recruiting_province == nullptr ||
+        recruiting_province->soldier_population != 1'000) {
+        std::cerr << "RecruitArmyCommand did not transfer funds and soldiers correctly\n";
+        return 1;
+    }
+    const auto& recruited_event =
+        std::get<ArmyRecruitedEvent>(recruited.events.front().payload);
+    const province::core::Army* recruited_army =
+        recruitment_state.find_army(recruited_event.army_id);
+    if (recruited_army == nullptr || recruited_event.cost != 1'000 ||
+        recruited_army->manpower != 1'000 ||
+        recruited_army->province_id != ProvinceId{"northreach"}) {
+        std::cerr << "ArmyRecruitedEvent or army entity is incorrect\n";
+        return 1;
+    }
+
+    const CommandResult insufficient_soldiers = recruitment_processor.execute(
+        recruitment_state,
+        RecruitArmyCommand{
+            CountryId{"auroria"},
+            ProvinceId{"northreach"},
+            2'000,
+        }
+    );
+    const CommandResult foreign_recruitment = recruitment_processor.execute(
+        recruitment_state,
+        RecruitArmyCommand{
+            CountryId{"auroria"},
+            ProvinceId{"greenvale"},
+            500,
+        }
+    );
+    const CommandResult invalid_recruitment = recruitment_processor.execute(
+        recruitment_state,
+        RecruitArmyCommand{
+            CountryId{"auroria"},
+            ProvinceId{"northreach"},
+            0,
+        }
+    );
+    if (insufficient_soldiers.accepted || foreign_recruitment.accepted ||
+        invalid_recruitment.accepted || recruitment_state.army_count() != 1 ||
+        recruitment_state.find_country(CountryId{"auroria"})->treasury != 9'000) {
+        std::cerr << "Rejected recruitment command changed game state\n";
         return 1;
     }
 
@@ -307,3 +372,5 @@ int main() {
               << " smoke test passed\n";
     return 0;
 }
+#include "province/core/army.hpp"
+#include "province/core/army_system.hpp"

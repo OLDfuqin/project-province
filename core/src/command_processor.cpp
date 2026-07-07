@@ -15,6 +15,8 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
                 return execute_advance_turn(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, BuildRoadCommand>) {
                 return execute_build_road(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, RecruitArmyCommand>) {
+                return execute_recruit_army(state, concrete_command);
             }
         },
         command
@@ -45,6 +47,36 @@ CommandResult CommandProcessor::execute_build_road(
             command.province_b,
             RoadLevel::paved,
             build.cost,
+        },
+    };
+    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
+}
+
+CommandResult CommandProcessor::execute_recruit_army(
+    GameState& state,
+    const RecruitArmyCommand& command
+) {
+    GameState working_state = state;
+    const ArmyRecruitResult recruit = army_system_.recruit(
+        working_state,
+        command.country_id,
+        command.province_id,
+        command.manpower
+    );
+    if (!recruit.accepted || !recruit.army_id.has_value()) {
+        return {false, recruit.error, {}};
+    }
+
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::army_recruited,
+        ArmyRecruitedEvent{
+            *recruit.army_id,
+            command.country_id,
+            command.province_id,
+            command.manpower,
+            recruit.cost,
         },
     };
     state = std::move(working_state);

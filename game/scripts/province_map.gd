@@ -46,6 +46,7 @@ var _selected_id := ""
 var _road_start_id := ""
 var _road_end_id := ""
 var _roads: Array = []
+var _armies: Array = []
 var _pan := Vector2.ZERO
 var _zoom := 1.0
 var _dragging := false
@@ -91,6 +92,15 @@ func set_roads(roads: Array) -> void:
 
 func road_count() -> int:
     return _roads.size()
+
+
+func set_armies(armies: Array) -> void:
+    _armies = armies.duplicate(true)
+    queue_redraw()
+
+
+func army_count() -> int:
+    return _armies.size()
 
 
 func province_at_map_position(map_position: Vector2) -> String:
@@ -182,6 +192,36 @@ func _draw() -> void:
         var preview_start := _polygon_center(_polygons[_road_start_id])
         var preview_end := _polygon_center(_polygons[_road_end_id])
         draw_line(preview_start, preview_end, Color("fff0a6"), 3.0 / _zoom, true)
+
+    var manpower_by_province: Dictionary = {}
+    for army: Dictionary in _armies:
+        var province_id: String = army.get("province_id", "")
+        manpower_by_province[province_id] = (
+            int(manpower_by_province.get(province_id, 0)) + int(army.get("manpower", 0))
+        )
+    for province_id: String in manpower_by_province:
+        if not _polygons.has(province_id):
+            continue
+        var center := _polygon_center(_polygons[province_id])
+        var radius := 22.0 / _zoom
+        draw_circle(center, radius, Color("202938"))
+        draw_arc(center, radius, 0.0, TAU, 24, Color("f7f1d0"), 3.0 / _zoom, true)
+        var manpower_text := str(manpower_by_province[province_id])
+        var text_size := ThemeDB.fallback_font.get_string_size(
+            manpower_text,
+            HORIZONTAL_ALIGNMENT_LEFT,
+            -1,
+            14
+        )
+        draw_string(
+            ThemeDB.fallback_font,
+            center - Vector2(text_size.x * 0.5, -text_size.y * 0.25),
+            manpower_text,
+            HORIZONTAL_ALIGNMENT_LEFT,
+            -1,
+            14,
+            Color.WHITE
+        )
 
     draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
     draw_string(

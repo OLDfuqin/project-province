@@ -223,6 +223,61 @@ godot::Array ProvinceBridge::get_road_summaries() const {
     return summaries;
 }
 
+godot::Dictionary ProvinceBridge::recruit_army(
+    const godot::String& country_id,
+    const godot::String& province_id,
+    const std::int64_t manpower
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const province::core::CommandResult result = command_processor_.execute(
+            *state_,
+            province::core::RecruitArmyCommand{
+                province::core::CountryId{country_id.utf8().get_data()},
+                province::core::ProvinceId{province_id.utf8().get_data()},
+                manpower,
+            }
+        );
+        response["accepted"] = result.accepted;
+        response["error"] = godot::String::utf8(result.error.c_str());
+        if (result.accepted) {
+            const province::core::GameEvent& event = result.events.front();
+            const auto& recruited =
+                std::get<province::core::ArmyRecruitedEvent>(event.payload);
+            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            response["army_id"] = godot::String::utf8(recruited.army_id.value().c_str());
+            response["cost"] = recruited.cost;
+            response["manpower"] = recruited.manpower;
+        }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
+godot::Array ProvinceBridge::get_army_summaries() const {
+    godot::Array summaries;
+    if (!state_) {
+        return summaries;
+    }
+    for (const auto& [army_id, army] : state_->armies()) {
+        godot::Dictionary summary;
+        summary["id"] = godot::String::utf8(army_id.value().c_str());
+        summary["owner_id"] = godot::String::utf8(army.owner_id.value().c_str());
+        summary["province_id"] = godot::String::utf8(army.province_id.value().c_str());
+        summary["manpower"] = army.manpower;
+        summary["movement_points"] = army.movement_points;
+        summaries.push_back(summary);
+    }
+    return summaries;
+}
+
 void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_core_version"),
@@ -267,6 +322,14 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_road_summaries"),
         &ProvinceBridge::get_road_summaries
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("recruit_army", "country_id", "province_id", "manpower"),
+        &ProvinceBridge::recruit_army
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_army_summaries"),
+        &ProvinceBridge::get_army_summaries
     );
 }
 

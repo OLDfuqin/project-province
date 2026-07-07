@@ -1,5 +1,6 @@
 #pragma once
 
+#include "province/core/army.hpp"
 #include "province/core/economy_system.hpp"
 #include "province/core/population_system.hpp"
 #include "province/core/road.hpp"
@@ -12,6 +13,7 @@ namespace province::core {
 enum class GameEventType : std::uint8_t {
     economy_resolved,
     population_resolved,
+    army_recruited,
     road_built,
     turn_advanced,
 };
@@ -42,10 +44,19 @@ struct RoadBuiltEvent final {
     std::int64_t cost{};
 };
 
+struct ArmyRecruitedEvent final {
+    ArmyId army_id;
+    CountryId country_id;
+    ProvinceId province_id;
+    std::int64_t manpower{};
+    std::int64_t cost{};
+};
+
 using GameEventPayload =
     std::variant<
         EconomyResolvedEvent,
         PopulationResolvedEvent,
+        ArmyRecruitedEvent,
         RoadBuiltEvent,
         TurnAdvancedEvent
     >;

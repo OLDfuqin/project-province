@@ -7,6 +7,7 @@ const PLAYER_COUNTRY_ID := "auroria"
 @onready var turn_length: OptionButton = $Center/TurnControls/TurnLength
 @onready var event_log: Label = $Center/EventLog
 @onready var province_map := $MapPanel/ProvinceMap
+@onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
@@ -24,6 +25,7 @@ func _ready() -> void:
     province_map.province_hovered.connect(_on_province_hovered)
     $Center/RoadControls/Buttons/BuildRoad.pressed.connect(_on_build_road_pressed)
     $Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
+    recruit_button.pressed.connect(_on_recruit_army_pressed)
     var provinces: Array = bridge.get_province_summaries()
     var countries: Array = bridge.get_country_summaries()
     $Center/Status.text = "Core %s · %d countries · %d provinces" % [
@@ -70,6 +72,7 @@ func _refresh_map_data() -> void:
         province_by_id[province["id"]] = province
     province_map.set_scenario_data(provinces, countries)
     province_map.set_roads(bridge.get_road_summaries())
+    province_map.set_armies(bridge.get_army_summaries())
 
 
 func _refresh_province_summary() -> void:
@@ -94,6 +97,8 @@ func _on_advance_turn_pressed() -> void:
     _refresh_country_list()
     _refresh_map_data()
     _refresh_province_summary()
+    if not province_map.selected_province_id().is_empty():
+        _show_province_details(province_map.selected_province_id())
     var total_income := 0
     for income: Dictionary in result["incomes"]:
         total_income += int(income["amount"])
@@ -118,14 +123,14 @@ func _refresh_date() -> void:
 func _on_province_selected(province_id: String) -> void:
     if province_id.is_empty():
         $Center/SelectionStatus.text = "请选择一个地区"
+        recruit_button.disabled = true
         return
+    _show_province_details(province_id)
     var province: Dictionary = province_by_id[province_id]
-    $Center/SelectionStatus.text = "%s · 人口%d · 士兵%d · 经济%d" % [
-        province["name"],
-        province["population"],
-        province["soldier_population"],
-        province["economy"],
-    ]
+    recruit_button.disabled = province["owner_id"] != PLAYER_COUNTRY_ID
+    $Center/ArmyControls/ArmyHint.text = (
+        "可从此地区招募" if not recruit_button.disabled else "只能从奥罗里亚地区招募"
+    )
     if road_start_id.is_empty():
         road_start_id = province_id
         road_end_id = ""
@@ -135,6 +140,22 @@ func _on_province_selected(province_id: String) -> void:
         road_start_id = province_id
         road_end_id = ""
     _refresh_road_selection()
+
+
+func _show_province_details(province_id: String) -> void:
+    var province: Dictionary = province_by_id[province_id]
+    var stationed_manpower := 0
+    for army: Dictionary in bridge.get_army_summaries():
+        if army["province_id"] == province_id:
+            stationed_manpower += int(army["manpower"])
+    $Center/SelectionStatus.text = "%s · 人口%d · 士兵%d · 经济%d" % [
+        province["name"],
+        province["population"],
+        province["soldier_population"],
+        province["economy"],
+    ]
+    if stationed_manpower > 0:
+        $Center/SelectionStatus.text += " · 驻军%d" % stationed_manpower
 
 
 func _on_province_hovered(province_id: String) -> void:
@@ -161,6 +182,31 @@ func _on_build_road_pressed() -> void:
     _refresh_country_list()
     _refresh_map_data()
     _clear_road_selection()
+
+
+func _on_recruit_army_pressed() -> void:
+    var province_id: String = province_map.selected_province_id()
+    if province_id.is_empty():
+        return
+    var result: Dictionary = bridge.recruit_army(
+        PLAYER_COUNTRY_ID,
+        province_id,
+        1000
+    )
+    if not result.get("accepted", false):
+        event_log.text = "招募失败：%s" % result.get("error", "未知错误")
+        return
+
+    event_log.text = "事件 #%d：%s 招募%d人，支出%d" % [
+        result["event_sequence"],
+        result["army_id"],
+        result["manpower"],
+        result["cost"],
+    ]
+    _refresh_country_list()
+    _refresh_map_data()
+    _refresh_province_summary()
+    _show_province_details(province_id)
 
 
 func _clear_road_selection() -> void:

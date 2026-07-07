@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace province::core {
@@ -138,6 +139,47 @@ const std::map<ProvinceConnectionKey, RoadLevel>& GameState::roads() const noexc
     return roads_;
 }
 
+ArmyId GameState::create_army(
+    const CountryId& owner_id,
+    const ProvinceId& province_id,
+    const std::int64_t manpower
+) {
+    if (find_country(owner_id) == nullptr || find_province(province_id) == nullptr) {
+        throw std::invalid_argument{"army owner and province must exist"};
+    }
+    if (manpower <= 0) {
+        throw std::invalid_argument{"army manpower must be positive"};
+    }
+
+    ArmyId id{"army_" + std::to_string(next_army_sequence_++)};
+    const auto [iterator, inserted] = armies_.emplace(
+        id,
+        Army{id, owner_id, province_id, manpower, 0}
+    );
+    if (!inserted) {
+        throw std::logic_error{"generated duplicate army ID"};
+    }
+    return iterator->first;
+}
+
+const Army* GameState::find_army(const ArmyId& id) const noexcept {
+    const auto iterator = armies_.find(id);
+    return iterator == armies_.end() ? nullptr : &iterator->second;
+}
+
+Army* GameState::find_army(const ArmyId& id) noexcept {
+    const auto iterator = armies_.find(id);
+    return iterator == armies_.end() ? nullptr : &iterator->second;
+}
+
+const std::map<ArmyId, Army>& GameState::armies() const noexcept {
+    return armies_;
+}
+
+std::size_t GameState::army_count() const noexcept {
+    return armies_.size();
+}
+
 std::vector<std::string> GameState::validate() const {
     std::vector<std::string> issues;
 
@@ -166,6 +208,17 @@ std::vector<std::string> GameState::validate() const {
                     neighbor_id.value() + "' is not symmetric"
                 );
             }
+        }
+    }
+    for (const auto& [army_id, army] : armies_) {
+        if (!countries_.contains(army.owner_id)) {
+            issues.push_back("army '" + army_id.value() + "' has an unknown owner");
+        }
+        if (!provinces_.contains(army.province_id)) {
+            issues.push_back("army '" + army_id.value() + "' has an unknown province");
+        }
+        if (army.manpower <= 0) {
+            issues.push_back("army '" + army_id.value() + "' has non-positive manpower");
         }
     }
     return issues;

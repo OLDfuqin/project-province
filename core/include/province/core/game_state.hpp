@@ -1,5 +1,6 @@
 #pragma once
 
+#include "province/core/army.hpp"
 #include "province/core/country.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/province.hpp"
@@ -43,6 +44,15 @@ public:
         RoadLevel level
     );
     [[nodiscard]] const std::map<ProvinceConnectionKey, RoadLevel>& roads() const noexcept;
+    [[nodiscard]] ArmyId create_army(
+        const CountryId& owner_id,
+        const ProvinceId& province_id,
+        std::int64_t manpower
+    );
+    [[nodiscard]] const Army* find_army(const ArmyId& id) const noexcept;
+    [[nodiscard]] Army* find_army(const ArmyId& id) noexcept;
+    [[nodiscard]] const std::map<ArmyId, Army>& armies() const noexcept;
+    [[nodiscard]] std::size_t army_count() const noexcept;
     [[nodiscard]] std::vector<std::string> validate() const;
 
 private:
@@ -50,6 +60,8 @@ private:
     std::map<CountryId, Country> countries_;
     std::map<ProvinceId, Province> provinces_;
     std::map<ProvinceConnectionKey, RoadLevel> roads_;
+    std::map<ArmyId, Army> armies_;
+    std::uint64_t next_army_sequence_{1};
 };
 
 } // namespace province::core

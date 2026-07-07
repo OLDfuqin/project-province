@@ -40,6 +40,12 @@ public:
         const godot::String& province_b
     );
     [[nodiscard]] godot::Array get_road_summaries() const;
+    [[nodiscard]] godot::Dictionary recruit_army(
+        const godot::String& country_id,
+        const godot::String& province_id,
+        std::int64_t manpower
+    );
+    [[nodiscard]] godot::Array get_army_summaries() const;
 
 protected:
     static void _bind_methods();

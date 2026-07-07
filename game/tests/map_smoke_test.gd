@@ -35,6 +35,19 @@ func _initialize() -> void:
         push_error("Map did not retain road snapshot")
         quit(1)
         return
+    province_map.set_armies([
+        {
+            "id": "army_1",
+            "owner_id": "auroria",
+            "province_id": "northreach",
+            "manpower": 1000,
+            "movement_points": 0,
+        }
+    ])
+    if province_map.army_count() != 1:
+        push_error("Map did not retain army snapshot")
+        quit(1)
+        return
 
     print("Province map hit-test smoke test passed")
     province_map.free()

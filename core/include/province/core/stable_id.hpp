@@ -46,9 +46,10 @@ private:
 
 struct CountryIdTag;
 struct ProvinceIdTag;
+struct ArmyIdTag;
 
 using CountryId = StableId<CountryIdTag>;
 using ProvinceId = StableId<ProvinceIdTag>;
+using ArmyId = StableId<ArmyIdTag>;
 
 } // namespace province::core
-

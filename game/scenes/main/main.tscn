@@ -78,6 +78,20 @@ text = "请选择一个地区"
 horizontal_alignment = 1
 autowrap_mode = 2
 
+[node name="ArmyControls" type="VBoxContainer" parent="Center"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ArmyHint" type="Label" parent="Center/ArmyControls"]
+layout_mode = 2
+text = "选择己方地区以招募陆军"
+horizontal_alignment = 1
+
+[node name="RecruitArmy" type="Button" parent="Center/ArmyControls"]
+layout_mode = 2
+disabled = true
+text = "招募1000陆军（1000）"
+
 [node name="RoadControls" type="VBoxContainer" parent="Center"]
 layout_mode = 2
 theme_override_constants/separation = 6

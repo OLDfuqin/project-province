@@ -17,6 +17,13 @@ struct BuildRoadCommand final {
     ProvinceId province_b;
 };
 
-using GameCommand = std::variant<AdvanceTurnCommand, BuildRoadCommand>;
+struct RecruitArmyCommand final {
+    CountryId country_id;
+    ProvinceId province_id;
+    std::int64_t manpower{};
+};
+
+using GameCommand =
+    std::variant<AdvanceTurnCommand, BuildRoadCommand, RecruitArmyCommand>;
 
 } // namespace province::core

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "province/core/army_system.hpp"
 #include "province/core/game_command.hpp"
 #include "province/core/economy_system.hpp"
 #include "province/core/game_event.hpp"
@@ -33,11 +34,16 @@ private:
         GameState& state,
         const BuildRoadCommand& command
     );
+    [[nodiscard]] CommandResult execute_recruit_army(
+        GameState& state,
+        const RecruitArmyCommand& command
+    );
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;
     PopulationSystem population_system_;
     RoadSystem road_system_;
+    ArmySystem army_system_;
 };
 
 } // namespace province::core
