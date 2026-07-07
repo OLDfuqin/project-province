@@ -59,3 +59,25 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
+
+[node name="TurnControls" type="HBoxContainer" parent="Center"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="DateLabel" type="Label" parent="Center/TurnControls"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+
+[node name="TurnLength" type="OptionButton" parent="Center/TurnControls"]
+layout_mode = 2
+
+[node name="AdvanceTurn" type="Button" parent="Center/TurnControls"]
+layout_mode = 2
+text = "下一回合"
+
+[node name="EventLog" type="Label" parent="Center"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.82, 0.9, 1)
+text = "等待玩家操作"
+horizontal_alignment = 1

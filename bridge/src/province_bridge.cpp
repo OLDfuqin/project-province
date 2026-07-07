@@ -105,6 +105,45 @@ godot::Array ProvinceBridge::get_province_summaries() const {
     return summaries;
 }
 
+godot::Dictionary ProvinceBridge::get_current_date() const {
+    godot::Dictionary date;
+    if (!state_) {
+        return date;
+    }
+    date["year"] = state_->clock().year();
+    date["month"] = state_->clock().month();
+    return date;
+}
+
+godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+
+    const province::core::CommandResult result = command_processor_.execute(
+        *state_,
+        province::core::AdvanceTurnCommand{months}
+    );
+    response["accepted"] = result.accepted;
+    response["error"] = godot::String::utf8(result.error.c_str());
+    response["year"] = state_->clock().year();
+    response["month"] = state_->clock().month();
+
+    if (!result.events.empty()) {
+        const province::core::GameEvent& event = result.events.front();
+        const auto& turn = std::get<province::core::TurnAdvancedEvent>(event.payload);
+        response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+        response["event_type"] = "turn_advanced";
+        response["elapsed_months"] = turn.elapsed_months;
+        response["previous_year"] = turn.previous_year;
+        response["previous_month"] = turn.previous_month;
+    }
+    return response;
+}
+
 void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_core_version"),
@@ -133,6 +172,14 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_province_summaries"),
         &ProvinceBridge::get_province_summaries
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_current_date"),
+        &ProvinceBridge::get_current_date
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("advance_turn", "months"),
+        &ProvinceBridge::advance_turn
     );
 }
 

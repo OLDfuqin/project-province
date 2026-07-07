@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/game_state.hpp"
+#include "province/core/command_processor.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -31,12 +32,15 @@ public:
     [[nodiscard]] godot::String get_last_error() const;
     [[nodiscard]] godot::Array get_country_summaries() const;
     [[nodiscard]] godot::Array get_province_summaries() const;
+    [[nodiscard]] godot::Dictionary get_current_date() const;
+    [[nodiscard]] godot::Dictionary advance_turn(std::int32_t months);
 
 protected:
     static void _bind_methods();
 
 private:
     std::optional<province::core::GameState> state_;
+    province::core::CommandProcessor command_processor_;
     godot::String last_error_;
 };
 

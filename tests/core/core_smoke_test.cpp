@@ -1,4 +1,7 @@
+#include "province/core/command_processor.hpp"
 #include "province/core/country.hpp"
+#include "province/core/game_command.hpp"
+#include "province/core/game_event.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_state.hpp"
 #include "province/core/province.hpp"
@@ -17,6 +20,10 @@ int main() {
     using province::core::Province;
     using province::core::ProvinceId;
     using province::core::ScenarioLoader;
+    using province::core::AdvanceTurnCommand;
+    using province::core::CommandProcessor;
+    using province::core::CommandResult;
+    using province::core::TurnAdvancedEvent;
 
     GameClock clock{1000, 11};
     clock.advance_months(3);
@@ -112,6 +119,28 @@ int main() {
     }
     if (!reported_missing_files) {
         std::cerr << "ScenarioLoader did not report missing data files\n";
+        return 1;
+    }
+
+    GameState turn_state = ScenarioLoader::load("game/data", GameClock{1000, 11});
+    CommandProcessor processor;
+    const CommandResult accepted = processor.execute(turn_state, AdvanceTurnCommand{3});
+    if (!accepted.accepted || turn_state.clock().year() != 1001 ||
+        turn_state.clock().month() != 2 || accepted.events.size() != 1) {
+        std::cerr << "AdvanceTurnCommand did not advance the state correctly\n";
+        return 1;
+    }
+    const auto& first_event = std::get<TurnAdvancedEvent>(accepted.events.front().payload);
+    if (accepted.events.front().sequence != 1 || first_event.elapsed_months != 3 ||
+        first_event.previous_year != 1000 || first_event.previous_month != 11) {
+        std::cerr << "TurnAdvancedEvent contained incorrect data\n";
+        return 1;
+    }
+
+    const CommandResult rejected = processor.execute(turn_state, AdvanceTurnCommand{2});
+    if (rejected.accepted || rejected.error.empty() ||
+        turn_state.clock().year() != 1001 || turn_state.clock().month() != 2) {
+        std::cerr << "CommandProcessor accepted an unsupported turn length\n";
         return 1;
     }
 
