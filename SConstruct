@@ -18,8 +18,19 @@ test_program = env.Program(
 
 Alias("tests", test_program)
 
-godot_env = SConscript("third_party/godot-cpp/SConstruct")
+godot_cpp_env = SConscript("third_party/godot-cpp/SConstruct")
+godot_env = godot_cpp_env.Clone()
 godot_env.Append(CPPPATH=["core/include", "bridge/src"])
+if godot_env["platform"] == "windows":
+    godot_env["CXXFLAGS"] = [
+        flag for flag in godot_env["CXXFLAGS"] if not str(flag).startswith("/std:c++")
+    ]
+    godot_env.Append(CXXFLAGS=["/std:c++20", "/permissive-"])
+else:
+    godot_env["CXXFLAGS"] = [
+        flag for flag in godot_env["CXXFLAGS"] if not str(flag).startswith("-std=")
+    ]
+    godot_env.Append(CXXFLAGS=["-std=c++20"])
 
 bridge_sources = Glob("bridge/src/*.cpp") + core_sources
 bridge_library = godot_env.SharedLibrary(
