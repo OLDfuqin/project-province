@@ -1,5 +1,3 @@
-import os
-
 env = Environment()
 
 if env["PLATFORM"] == "win32":
@@ -19,5 +17,18 @@ test_program = env.Program(
 )
 
 Alias("tests", test_program)
-Default(test_program)
 
+godot_env = SConscript("third_party/godot-cpp/SConstruct")
+godot_env.Append(CPPPATH=["core/include", "bridge/src"])
+
+bridge_sources = Glob("bridge/src/*.cpp") + core_sources
+bridge_library = godot_env.SharedLibrary(
+    target="game/bin/province_bridge{}{}".format(
+        godot_env["suffix"], godot_env["SHLIBSUFFIX"]
+    ),
+    source=bridge_sources,
+)
+godot_env.NoCache(bridge_library)
+
+Alias("bridge", bridge_library)
+Default(test_program, bridge_library)

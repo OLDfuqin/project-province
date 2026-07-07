@@ -1,6 +1,5 @@
 #pragma once
 
-#include <compare>
 #include <cstdint>
 
 namespace province::core {
@@ -20,4 +19,3 @@ private:
 };
 
 } // namespace province::core
-

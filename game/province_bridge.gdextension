@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "province_bridge_init"
+compatibility_minimum = "4.5"
+reloadable = true
+
+[libraries]
+
+windows.debug.x86_64 = "res://bin/province_bridge.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://bin/province_bridge.windows.template_release.x86_64.dll"
+

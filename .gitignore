@@ -7,6 +7,8 @@ build/
 *.dll
 *.lib
 *.exp
+third_party/godot-cpp/bin/
+third_party/godot-cpp/gen/
 
 # Godot generated files
 .godot/
@@ -24,4 +26,3 @@ Desktop.ini
 # Local scratch files
 tmp/
 logs/
-
