@@ -1,0 +1,27 @@
+# Build products
+.sconsign.dblite
+build/
+*.obj
+*.pdb
+*.ilk
+*.dll
+*.lib
+*.exp
+
+# Godot generated files
+.godot/
+game/.godot/
+game/export/
+
+# IDE and OS
+.vs/
+.vscode/*.log
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+
+# Local scratch files
+tmp/
+logs/
+
