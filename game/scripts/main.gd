@@ -4,6 +4,9 @@ extends Control
 @onready var date_label: Label = $Center/TurnControls/DateLabel
 @onready var turn_length: OptionButton = $Center/TurnControls/TurnLength
 @onready var event_log: Label = $Center/EventLog
+@onready var province_map := $MapPanel/ProvinceMap
+
+var province_by_id: Dictionary = {}
 
 func _ready() -> void:
     var data_directory := ProjectSettings.globalize_path("res://data")
@@ -14,6 +17,11 @@ func _ready() -> void:
 
     var provinces: Array = bridge.get_province_summaries()
     var countries: Array = bridge.get_country_summaries()
+    for province: Dictionary in provinces:
+        province_by_id[province["id"]] = province
+    province_map.set_scenario_data(provinces, countries)
+    province_map.province_selected.connect(_on_province_selected)
+    province_map.province_hovered.connect(_on_province_hovered)
     $Center/Status.text = "Core %s · %d countries · %d provinces" % [
         bridge.get_core_version(), countries.size(), provinces.size()
     ]
@@ -90,3 +98,22 @@ func _on_advance_turn_pressed() -> void:
 func _refresh_date() -> void:
     var date: Dictionary = bridge.get_current_date()
     date_label.text = "当前日期：%d年%02d月" % [date["year"], date["month"]]
+
+
+func _on_province_selected(province_id: String) -> void:
+    if province_id.is_empty():
+        $Center/SelectionStatus.text = "请选择一个地区"
+        return
+    var province: Dictionary = province_by_id[province_id]
+    $Center/SelectionStatus.text = "%s · 人口%d · 士兵%d · 经济%d" % [
+        province["name"],
+        province["population"],
+        province["soldier_population"],
+        province["economy"],
+    ]
+
+
+func _on_province_hovered(province_id: String) -> void:
+    province_map.tooltip_text = "" if province_id.is_empty() else str(
+        province_by_id[province_id]["name"]
+    )

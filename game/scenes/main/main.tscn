@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/province_map.gd" id="2_map"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -22,17 +23,27 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.055, 0.075, 0.11, 1)
 
+[node name="MapPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.015
+anchor_top = 0.025
+anchor_right = 0.69
+anchor_bottom = 0.975
+
+[node name="ProvinceMap" type="Control" parent="MapPanel"]
+custom_minimum_size = Vector2(640, 480)
+layout_mode = 2
+mouse_filter = 1
+script = ExtResource("2_map")
+
 [node name="Center" type="VBoxContainer" parent="."]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -250.0
-offset_top = -220.0
-offset_right = 250.0
-offset_bottom = 220.0
+anchors_preset = 0
+anchor_left = 0.71
+anchor_top = 0.04
+anchor_right = 0.985
+anchor_bottom = 0.96
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 16
@@ -59,6 +70,13 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
+
+[node name="SelectionStatus" type="Label" parent="Center"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.88, 0.95, 1)
+text = "请选择一个地区"
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="TurnControls" type="HBoxContainer" parent="Center"]
 layout_mode = 2
