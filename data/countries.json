@@ -1,10 +1,9 @@
 {
   "schema_version": 1,
   "countries": [
-    { "id": "auroria", "name": "奥罗里亚", "color": "#C94B4B" },
-    { "id": "verdantia", "name": "维丹提亚", "color": "#4FA66B" },
-    { "id": "caelus", "name": "凯洛斯", "color": "#4A79C9" },
-    { "id": "solmere", "name": "索尔梅尔", "color": "#D3A943" }
+    { "id": "auroria", "name": "奥罗里亚", "color": "#C94B4B", "treasury": 10000 },
+    { "id": "verdantia", "name": "维丹提亚", "color": "#4FA66B", "treasury": 10000 },
+    { "id": "caelus", "name": "凯洛斯", "color": "#4A79C9", "treasury": 10000 },
+    { "id": "solmere", "name": "索尔梅尔", "color": "#D3A943", "treasury": 10000 }
   ]
 }
-

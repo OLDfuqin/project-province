@@ -2,6 +2,7 @@
 #include "province/core/game_clock.hpp"
 #include "province/core/game_state.hpp"
 #include "province/core/province.hpp"
+#include "province/core/scenario_loader.hpp"
 #include "province/core/stable_id.hpp"
 #include "province/core/version.hpp"
 
@@ -15,6 +16,7 @@ int main() {
     using province::core::GameState;
     using province::core::Province;
     using province::core::ProvinceId;
+    using province::core::ScenarioLoader;
 
     GameClock clock{1000, 11};
     clock.advance_months(3);
@@ -87,6 +89,29 @@ int main() {
     }
     if (!rejected_duplicate_country) {
         std::cerr << "GameState accepted a duplicate country ID\n";
+        return 1;
+    }
+
+    const GameState loaded_state = ScenarioLoader::load("data", GameClock{1000, 1});
+    if (loaded_state.country_count() != 4 || loaded_state.province_count() != 8) {
+        std::cerr << "ScenarioLoader returned incorrect entity counts\n";
+        return 1;
+    }
+    if (loaded_state.find_country(CountryId{"auroria"}) == nullptr ||
+        loaded_state.find_province(ProvinceId{"northreach"}) == nullptr) {
+        std::cerr << "ScenarioLoader did not create expected entities\n";
+        return 1;
+    }
+
+    bool reported_missing_files = false;
+    try {
+        [[maybe_unused]] const GameState missing =
+            ScenarioLoader::load("data/does-not-exist", GameClock{1000, 1});
+    } catch (const province::core::DataLoadError&) {
+        reported_missing_files = true;
+    }
+    if (!reported_missing_files) {
+        std::cerr << "ScenarioLoader did not report missing data files\n";
         return 1;
     }
 
