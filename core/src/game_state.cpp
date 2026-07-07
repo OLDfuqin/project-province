@@ -64,6 +64,11 @@ const Country* GameState::find_country(const CountryId& id) const noexcept {
     return iterator == countries_.end() ? nullptr : &iterator->second;
 }
 
+Country* GameState::find_country(const CountryId& id) noexcept {
+    const auto iterator = countries_.find(id);
+    return iterator == countries_.end() ? nullptr : &iterator->second;
+}
+
 const Province* GameState::find_province(const ProvinceId& id) const noexcept {
     const auto iterator = provinces_.find(id);
     return iterator == provinces_.end() ? nullptr : &iterator->second;

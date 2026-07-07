@@ -2,6 +2,7 @@
 #include "province/core/country.hpp"
 #include "province/core/game_command.hpp"
 #include "province/core/game_event.hpp"
+#include "province/core/economy_system.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_state.hpp"
 #include "province/core/province.hpp"
@@ -10,6 +11,7 @@
 #include "province/core/version.hpp"
 
 #include <iostream>
+#include <array>
 #include <stdexcept>
 
 int main() {
@@ -24,6 +26,7 @@ int main() {
     using province::core::CommandProcessor;
     using province::core::CommandResult;
     using province::core::TurnAdvancedEvent;
+    using province::core::EconomyResolvedEvent;
 
     GameClock clock{1000, 11};
     clock.advance_months(3);
@@ -126,15 +129,50 @@ int main() {
     CommandProcessor processor;
     const CommandResult accepted = processor.execute(turn_state, AdvanceTurnCommand{3});
     if (!accepted.accepted || turn_state.clock().year() != 1001 ||
-        turn_state.clock().month() != 2 || accepted.events.size() != 1) {
+        turn_state.clock().month() != 2 || accepted.events.size() != 2) {
         std::cerr << "AdvanceTurnCommand did not advance the state correctly\n";
         return 1;
     }
-    const auto& first_event = std::get<TurnAdvancedEvent>(accepted.events.front().payload);
-    if (accepted.events.front().sequence != 1 || first_event.elapsed_months != 3 ||
-        first_event.previous_year != 1000 || first_event.previous_month != 11) {
+    const auto& economy_event = std::get<EconomyResolvedEvent>(accepted.events[0].payload);
+    const auto& turn_event = std::get<TurnAdvancedEvent>(accepted.events[1].payload);
+    if (accepted.events[0].sequence != 1 || accepted.events[1].sequence != 2 ||
+        economy_event.elapsed_months != 3 || turn_event.elapsed_months != 3 ||
+        turn_event.previous_year != 1000 || turn_event.previous_month != 11) {
         std::cerr << "TurnAdvancedEvent contained incorrect data\n";
         return 1;
+    }
+    const Country* auroria_after_turn = turn_state.find_country(CountryId{"auroria"});
+    if (auroria_after_turn == nullptr || auroria_after_turn->treasury != 10'450) {
+        std::cerr << "EconomySystem did not add proportional monthly income\n";
+        return 1;
+    }
+    bool found_auroria_income = false;
+    for (const auto& income : economy_event.incomes) {
+        if (income.country_id == CountryId{"auroria"}) {
+            found_auroria_income = income.amount == 450;
+        }
+    }
+    if (!found_auroria_income) {
+        std::cerr << "EconomyResolvedEvent did not report Auroria income\n";
+        return 1;
+    }
+
+    for (const std::int32_t months : std::array{1, 3, 6, 12}) {
+        GameState proportional_state =
+            ScenarioLoader::load("game/data", GameClock{1000, 1});
+        CommandProcessor proportional_processor;
+        const CommandResult proportional_result = proportional_processor.execute(
+            proportional_state,
+            AdvanceTurnCommand{months}
+        );
+        const Country* proportional_country =
+            proportional_state.find_country(CountryId{"auroria"});
+        if (!proportional_result.accepted || proportional_country == nullptr ||
+            proportional_country->treasury != 10'000 + 150 * months) {
+            std::cerr << "Economy income is not proportional for turn length "
+                      << months << "\n";
+            return 1;
+        }
     }
 
     const CommandResult rejected = processor.execute(turn_state, AdvanceTurnCommand{2});

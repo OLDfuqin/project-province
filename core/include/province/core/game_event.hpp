@@ -1,11 +1,14 @@
 #pragma once
 
+#include "province/core/economy_system.hpp"
+
 #include <cstdint>
 #include <variant>
 
 namespace province::core {
 
 enum class GameEventType : std::uint8_t {
+    economy_resolved,
     turn_advanced,
 };
 
@@ -17,7 +20,12 @@ struct TurnAdvancedEvent final {
     std::int32_t elapsed_months{};
 };
 
-using GameEventPayload = std::variant<TurnAdvancedEvent>;
+struct EconomyResolvedEvent final {
+    std::int32_t elapsed_months{};
+    std::vector<CountryIncome> incomes;
+};
+
+using GameEventPayload = std::variant<EconomyResolvedEvent, TurnAdvancedEvent>;
 
 struct GameEvent final {
     std::uint64_t sequence{};
@@ -26,4 +34,3 @@ struct GameEvent final {
 };
 
 } // namespace province::core
-

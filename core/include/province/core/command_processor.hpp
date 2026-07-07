@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/game_command.hpp"
+#include "province/core/economy_system.hpp"
 #include "province/core/game_event.hpp"
 #include "province/core/game_state.hpp"
 
@@ -28,7 +29,7 @@ private:
     );
 
     std::uint64_t next_event_sequence_{1};
+    EconomySystem economy_system_;
 };
 
 } // namespace province::core
-

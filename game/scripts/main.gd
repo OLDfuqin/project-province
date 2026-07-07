@@ -12,8 +12,8 @@ func _ready() -> void:
         push_error(bridge.get_last_error())
         return
 
-    var countries: Array = bridge.get_country_summaries()
     var provinces: Array = bridge.get_province_summaries()
+    var countries: Array = bridge.get_country_summaries()
     $Center/Status.text = "Core %s · %d countries · %d provinces" % [
         bridge.get_core_version(), countries.size(), provinces.size()
     ]
@@ -26,7 +26,16 @@ func _ready() -> void:
     $Center/TurnControls/AdvanceTurn.pressed.connect(_on_advance_turn_pressed)
     _refresh_date()
 
-    for country: Dictionary in countries:
+    _refresh_country_list()
+
+    print($Center/Status.text)
+
+
+func _refresh_country_list() -> void:
+    for child: Node in $Center/CountryList.get_children():
+        child.free()
+
+    for country: Dictionary in bridge.get_country_summaries():
         var label := Label.new()
         var rgb: int = country["color_rgb"]
         label.text = "%s  ·  Treasury %d  ·  Provinces %d" % [
@@ -40,8 +49,6 @@ func _ready() -> void:
         )
         $Center/CountryList.add_child(label)
 
-    print($Center/Status.text)
-
 
 func _on_advance_turn_pressed() -> void:
     var months: int = turn_length.get_selected_metadata()
@@ -51,9 +58,14 @@ func _on_advance_turn_pressed() -> void:
         return
 
     _refresh_date()
-    event_log.text = "事件 #%d：推进%d个月（原日期 %d-%02d）" % [
+    _refresh_country_list()
+    var total_income := 0
+    for income: Dictionary in result["incomes"]:
+        total_income += int(income["amount"])
+    event_log.text = "事件 #%d：推进%d个月，四国总收入%d（原日期 %d-%02d）" % [
         result["event_sequence"],
         result["elapsed_months"],
+        total_income,
         result["previous_year"],
         result["previous_month"],
     ]

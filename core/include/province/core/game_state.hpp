@@ -21,6 +21,7 @@ public:
     [[nodiscard]] const GameClock& clock() const noexcept;
     [[nodiscard]] GameClock& clock() noexcept;
     [[nodiscard]] const Country* find_country(const CountryId& id) const noexcept;
+    [[nodiscard]] Country* find_country(const CountryId& id) noexcept;
     [[nodiscard]] const Province* find_province(const ProvinceId& id) const noexcept;
     [[nodiscard]] std::size_t country_count() const noexcept;
     [[nodiscard]] std::size_t province_count() const noexcept;
