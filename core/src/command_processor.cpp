@@ -13,10 +13,42 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
             using CommandType = std::decay_t<decltype(concrete_command)>;
             if constexpr (std::is_same_v<CommandType, AdvanceTurnCommand>) {
                 return execute_advance_turn(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, BuildRoadCommand>) {
+                return execute_build_road(state, concrete_command);
             }
         },
         command
     );
+}
+
+CommandResult CommandProcessor::execute_build_road(
+    GameState& state,
+    const BuildRoadCommand& command
+) {
+    GameState working_state = state;
+    const RoadBuildResult build = road_system_.build_paved_road(
+        working_state,
+        command.country_id,
+        command.province_a,
+        command.province_b
+    );
+    if (!build.accepted) {
+        return {false, build.error, {}};
+    }
+
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::road_built,
+        RoadBuiltEvent{
+            command.country_id,
+            command.province_a,
+            command.province_b,
+            RoadLevel::paved,
+            build.cost,
+        },
+    };
+    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
 }
 
 bool CommandProcessor::is_supported_turn_length(const std::int32_t months) noexcept {

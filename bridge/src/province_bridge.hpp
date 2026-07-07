@@ -34,6 +34,12 @@ public:
     [[nodiscard]] godot::Array get_province_summaries() const;
     [[nodiscard]] godot::Dictionary get_current_date() const;
     [[nodiscard]] godot::Dictionary advance_turn(std::int32_t months);
+    [[nodiscard]] godot::Dictionary build_road(
+        const godot::String& country_id,
+        const godot::String& province_a,
+        const godot::String& province_b
+    );
+    [[nodiscard]] godot::Array get_road_summaries() const;
 
 protected:
     static void _bind_methods();

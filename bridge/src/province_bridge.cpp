@@ -42,6 +42,7 @@ bool ProvinceBridge::load_scenario(
             std::filesystem::u8path(utf8_path.get_data()),
             province::core::GameClock{initial_year, initial_month}
         ));
+        command_processor_ = province::core::CommandProcessor{};
         last_error_ = godot::String{};
         return true;
     } catch (const std::exception& error) {
@@ -171,6 +172,57 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
     return response;
 }
 
+godot::Dictionary ProvinceBridge::build_road(
+    const godot::String& country_id,
+    const godot::String& province_a,
+    const godot::String& province_b
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+
+    try {
+        const province::core::CommandResult result = command_processor_.execute(
+            *state_,
+            province::core::BuildRoadCommand{
+                province::core::CountryId{country_id.utf8().get_data()},
+                province::core::ProvinceId{province_a.utf8().get_data()},
+                province::core::ProvinceId{province_b.utf8().get_data()},
+            }
+        );
+        response["accepted"] = result.accepted;
+        response["error"] = godot::String::utf8(result.error.c_str());
+        if (result.accepted) {
+            const province::core::GameEvent& event = result.events.front();
+            const auto& road = std::get<province::core::RoadBuiltEvent>(event.payload);
+            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            response["cost"] = road.cost;
+        }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
+godot::Array ProvinceBridge::get_road_summaries() const {
+    godot::Array summaries;
+    if (!state_) {
+        return summaries;
+    }
+    for (const auto& [connection, level] : state_->roads()) {
+        godot::Dictionary summary;
+        summary["province_a"] = godot::String::utf8(connection.first().value().c_str());
+        summary["province_b"] = godot::String::utf8(connection.second().value().c_str());
+        summary["level"] = level == province::core::RoadLevel::paved ? "paved" : "none";
+        summaries.push_back(summary);
+    }
+    return summaries;
+}
+
 void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_core_version"),
@@ -207,6 +259,14 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("advance_turn", "months"),
         &ProvinceBridge::advance_turn
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("build_road", "country_id", "province_a", "province_b"),
+        &ProvinceBridge::build_road
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_road_summaries"),
+        &ProvinceBridge::get_road_summaries
     );
 }
 

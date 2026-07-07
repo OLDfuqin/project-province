@@ -1,5 +1,7 @@
 #pragma once
 
+#include "province/core/stable_id.hpp"
+
 #include <cstdint>
 #include <variant>
 
@@ -9,7 +11,12 @@ struct AdvanceTurnCommand final {
     std::int32_t months{};
 };
 
-using GameCommand = std::variant<AdvanceTurnCommand>;
+struct BuildRoadCommand final {
+    CountryId country_id;
+    ProvinceId province_a;
+    ProvinceId province_b;
+};
+
+using GameCommand = std::variant<AdvanceTurnCommand, BuildRoadCommand>;
 
 } // namespace province::core
-

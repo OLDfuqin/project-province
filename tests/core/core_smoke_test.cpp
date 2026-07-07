@@ -4,6 +4,7 @@
 #include "province/core/game_event.hpp"
 #include "province/core/economy_system.hpp"
 #include "province/core/population_system.hpp"
+#include "province/core/road.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_state.hpp"
 #include "province/core/province.hpp"
@@ -29,6 +30,9 @@ int main() {
     using province::core::TurnAdvancedEvent;
     using province::core::EconomyResolvedEvent;
     using province::core::PopulationResolvedEvent;
+    using province::core::BuildRoadCommand;
+    using province::core::RoadBuiltEvent;
+    using province::core::RoadLevel;
 
     GameClock clock{1000, 11};
     clock.advance_months(3);
@@ -124,6 +128,83 @@ int main() {
     }
     if (!reported_missing_files) {
         std::cerr << "ScenarioLoader did not report missing data files\n";
+        return 1;
+    }
+
+    GameState road_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor road_processor;
+    const CommandResult road_built = road_processor.execute(
+        road_state,
+        BuildRoadCommand{
+            CountryId{"auroria"},
+            ProvinceId{"northreach"},
+            ProvinceId{"westmark"},
+        }
+    );
+    const Country* road_country = road_state.find_country(CountryId{"auroria"});
+    if (!road_built.accepted || road_built.events.size() != 1 ||
+        road_country == nullptr || road_country->treasury != 9'500 ||
+        road_state.road_level(ProvinceId{"northreach"}, ProvinceId{"westmark"}) !=
+            RoadLevel::paved) {
+        std::cerr << "BuildRoadCommand did not build and charge for a paved road\n";
+        return 1;
+    }
+    const auto& road_event = std::get<RoadBuiltEvent>(road_built.events.front().payload);
+    if (road_event.cost != 500 || road_built.events.front().sequence != 1) {
+        std::cerr << "RoadBuiltEvent contained incorrect data\n";
+        return 1;
+    }
+
+    const CommandResult duplicate_road = road_processor.execute(
+        road_state,
+        BuildRoadCommand{
+            CountryId{"auroria"},
+            ProvinceId{"westmark"},
+            ProvinceId{"northreach"},
+        }
+    );
+    const CommandResult foreign_road = road_processor.execute(
+        road_state,
+        BuildRoadCommand{
+            CountryId{"auroria"},
+            ProvinceId{"westmark"},
+            ProvinceId{"greenvale"},
+        }
+    );
+    const CommandResult non_adjacent_road = road_processor.execute(
+        road_state,
+        BuildRoadCommand{
+            CountryId{"auroria"},
+            ProvinceId{"northreach"},
+            ProvinceId{"greenvale"},
+        }
+    );
+    if (duplicate_road.accepted || foreign_road.accepted || non_adjacent_road.accepted ||
+        road_state.find_country(CountryId{"auroria"})->treasury != 9'500) {
+        std::cerr << "Road validation failed or charged for a rejected command\n";
+        return 1;
+    }
+
+    GameState poor_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    Country* poor_country = poor_state.find_country(CountryId{"auroria"});
+    if (poor_country == nullptr) {
+        std::cerr << "Road test could not find paying country\n";
+        return 1;
+    }
+    poor_country->treasury = 499;
+    CommandProcessor poor_processor;
+    const CommandResult unaffordable_road = poor_processor.execute(
+        poor_state,
+        BuildRoadCommand{
+            CountryId{"auroria"},
+            ProvinceId{"northreach"},
+            ProvinceId{"westmark"},
+        }
+    );
+    if (unaffordable_road.accepted || poor_country->treasury != 499 ||
+        poor_state.road_level(ProvinceId{"northreach"}, ProvinceId{"westmark"}) !=
+            RoadLevel::none) {
+        std::cerr << "Unaffordable road command changed game state\n";
         return 1;
     }
 

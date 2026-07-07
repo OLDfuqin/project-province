@@ -99,6 +99,45 @@ const std::map<ProvinceId, Province>& GameState::provinces() const noexcept {
     return provinces_;
 }
 
+bool GameState::are_adjacent(
+    const ProvinceId& province_a,
+    const ProvinceId& province_b
+) const noexcept {
+    const Province* first = find_province(province_a);
+    if (first == nullptr || find_province(province_b) == nullptr) {
+        return false;
+    }
+    return std::binary_search(first->neighbors.begin(), first->neighbors.end(), province_b);
+}
+
+RoadLevel GameState::road_level(
+    const ProvinceId& province_a,
+    const ProvinceId& province_b
+) const {
+    const auto road = roads_.find(ProvinceConnectionKey{province_a, province_b});
+    return road == roads_.end() ? RoadLevel::none : road->second;
+}
+
+void GameState::set_road_level(
+    const ProvinceId& province_a,
+    const ProvinceId& province_b,
+    const RoadLevel level
+) {
+    if (!are_adjacent(province_a, province_b)) {
+        throw std::invalid_argument{"roads can only be assigned to adjacent provinces"};
+    }
+    const ProvinceConnectionKey key{province_a, province_b};
+    if (level == RoadLevel::none) {
+        roads_.erase(key);
+    } else {
+        roads_.insert_or_assign(key, level);
+    }
+}
+
+const std::map<ProvinceConnectionKey, RoadLevel>& GameState::roads() const noexcept {
+    return roads_;
+}
+
 std::vector<std::string> GameState::validate() const {
     std::vector<std::string> issues;
 

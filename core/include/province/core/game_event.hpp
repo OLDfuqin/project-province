@@ -2,6 +2,7 @@
 
 #include "province/core/economy_system.hpp"
 #include "province/core/population_system.hpp"
+#include "province/core/road.hpp"
 
 #include <cstdint>
 #include <variant>
@@ -11,6 +12,7 @@ namespace province::core {
 enum class GameEventType : std::uint8_t {
     economy_resolved,
     population_resolved,
+    road_built,
     turn_advanced,
 };
 
@@ -32,8 +34,21 @@ struct PopulationResolvedEvent final {
     std::vector<ProvincePopulationChange> changes;
 };
 
+struct RoadBuiltEvent final {
+    CountryId country_id;
+    ProvinceId province_a;
+    ProvinceId province_b;
+    RoadLevel level{RoadLevel::none};
+    std::int64_t cost{};
+};
+
 using GameEventPayload =
-    std::variant<EconomyResolvedEvent, PopulationResolvedEvent, TurnAdvancedEvent>;
+    std::variant<
+        EconomyResolvedEvent,
+        PopulationResolvedEvent,
+        RoadBuiltEvent,
+        TurnAdvancedEvent
+    >;
 
 struct GameEvent final {
     std::uint64_t sequence{};
