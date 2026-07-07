@@ -45,6 +45,7 @@ CommandResult CommandProcessor::execute_advance_turn(
     const std::int32_t previous_month = state.clock().month();
     GameState working_state = state;
     std::map<CountryId, std::int64_t> total_income;
+    std::map<ProvinceId, ProvincePopulationChange> population_changes;
 
     // Intentionally tick one month at a time. Economy, population and AI
     // systems will be inserted inside this loop without changing commands.
@@ -52,6 +53,17 @@ CommandResult CommandProcessor::execute_advance_turn(
         const MonthlyEconomyReport monthly_report = economy_system_.resolve_month(working_state);
         for (const CountryIncome& income : monthly_report.incomes) {
             total_income[income.country_id] += income.amount;
+        }
+        const MonthlyPopulationReport population_report =
+            population_system_.resolve_month(working_state);
+        for (const ProvincePopulationChange& change : population_report.changes) {
+            const auto existing = population_changes.find(change.province_id);
+            if (existing == population_changes.end()) {
+                population_changes.emplace(change.province_id, change);
+            } else {
+                existing->second.current_population = change.current_population;
+                existing->second.growth += change.growth;
+            }
         }
         working_state.clock().advance_months(1);
     }
@@ -61,13 +73,24 @@ CommandResult CommandProcessor::execute_advance_turn(
     for (const auto& [country_id, amount] : total_income) {
         incomes.push_back(CountryIncome{country_id, amount});
     }
+    std::vector<ProvincePopulationChange> changes;
+    changes.reserve(population_changes.size());
+    for (const auto& [province_id, change] : population_changes) {
+        static_cast<void>(province_id);
+        changes.push_back(change);
+    }
 
     GameEvent economy_event{
         next_event_sequence_++,
         GameEventType::economy_resolved,
         EconomyResolvedEvent{command.months, std::move(incomes)},
     };
-    GameEvent turn_event{
+    GameEvent population_event{
+        next_event_sequence_++,
+        GameEventType::population_resolved,
+        PopulationResolvedEvent{command.months, std::move(changes)},
+    };
+    GameEvent date_event{
         next_event_sequence_++,
         GameEventType::turn_advanced,
         TurnAdvancedEvent{
@@ -80,7 +103,11 @@ CommandResult CommandProcessor::execute_advance_turn(
     };
 
     state = std::move(working_state);
-    return CommandResult{true, {}, {std::move(economy_event), std::move(turn_event)}};
+    return CommandResult{
+        true,
+        {},
+        {std::move(economy_event), std::move(population_event), std::move(date_event)},
+    };
 }
 
 } // namespace province::core

@@ -4,6 +4,7 @@
 #include "province/core/economy_system.hpp"
 #include "province/core/game_event.hpp"
 #include "province/core/game_state.hpp"
+#include "province/core/population_system.hpp"
 
 #include <cstdint>
 #include <string>
@@ -30,6 +31,7 @@ private:
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;
+    PopulationSystem population_system_;
 };
 
 } // namespace province::core

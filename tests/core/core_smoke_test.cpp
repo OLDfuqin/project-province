@@ -3,6 +3,7 @@
 #include "province/core/game_command.hpp"
 #include "province/core/game_event.hpp"
 #include "province/core/economy_system.hpp"
+#include "province/core/population_system.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_state.hpp"
 #include "province/core/province.hpp"
@@ -27,6 +28,7 @@ int main() {
     using province::core::CommandResult;
     using province::core::TurnAdvancedEvent;
     using province::core::EconomyResolvedEvent;
+    using province::core::PopulationResolvedEvent;
 
     GameClock clock{1000, 11};
     clock.advance_months(3);
@@ -129,13 +131,16 @@ int main() {
     CommandProcessor processor;
     const CommandResult accepted = processor.execute(turn_state, AdvanceTurnCommand{3});
     if (!accepted.accepted || turn_state.clock().year() != 1001 ||
-        turn_state.clock().month() != 2 || accepted.events.size() != 2) {
+        turn_state.clock().month() != 2 || accepted.events.size() != 3) {
         std::cerr << "AdvanceTurnCommand did not advance the state correctly\n";
         return 1;
     }
     const auto& economy_event = std::get<EconomyResolvedEvent>(accepted.events[0].payload);
-    const auto& turn_event = std::get<TurnAdvancedEvent>(accepted.events[1].payload);
+    const auto& population_event =
+        std::get<PopulationResolvedEvent>(accepted.events[1].payload);
+    const auto& turn_event = std::get<TurnAdvancedEvent>(accepted.events[2].payload);
     if (accepted.events[0].sequence != 1 || accepted.events[1].sequence != 2 ||
+        accepted.events[2].sequence != 3 ||
         economy_event.elapsed_months != 3 || turn_event.elapsed_months != 3 ||
         turn_event.previous_year != 1000 || turn_event.previous_month != 11) {
         std::cerr << "TurnAdvancedEvent contained incorrect data\n";
@@ -156,6 +161,15 @@ int main() {
         std::cerr << "EconomyResolvedEvent did not report Auroria income\n";
         return 1;
     }
+    const Province* northreach_after_turn =
+        turn_state.find_province(ProvinceId{"northreach"});
+    if (northreach_after_turn == nullptr ||
+        northreach_after_turn->population != 120'360 ||
+        northreach_after_turn->soldier_population != 2'000 ||
+        population_event.elapsed_months != 3) {
+        std::cerr << "PopulationSystem produced an incorrect three-month result\n";
+        return 1;
+    }
 
     for (const std::int32_t months : std::array{1, 3, 6, 12}) {
         GameState proportional_state =
@@ -173,6 +187,32 @@ int main() {
                       << months << "\n";
             return 1;
         }
+    }
+
+    GameState single_turn_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    GameState monthly_turn_state = single_turn_state;
+    CommandProcessor single_turn_processor;
+    CommandProcessor monthly_turn_processor;
+    [[maybe_unused]] const CommandResult annual_result = single_turn_processor.execute(
+        single_turn_state,
+        AdvanceTurnCommand{12}
+    );
+    for (std::int32_t month = 0; month < 12; ++month) {
+        [[maybe_unused]] const CommandResult monthly_result = monthly_turn_processor.execute(
+            monthly_turn_state,
+            AdvanceTurnCommand{1}
+        );
+    }
+    const Province* annual_province =
+        single_turn_state.find_province(ProvinceId{"northreach"});
+    const Province* monthly_province =
+        monthly_turn_state.find_province(ProvinceId{"northreach"});
+    if (annual_province == nullptr || monthly_province == nullptr ||
+        annual_province->population != monthly_province->population ||
+        annual_province->population_growth_remainder !=
+            monthly_province->population_growth_remainder) {
+        std::cerr << "Population growth differs between 12-month and monthly turns\n";
+        return 1;
     }
 
     const CommandResult rejected = processor.execute(turn_state, AdvanceTurnCommand{2});

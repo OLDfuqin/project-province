@@ -16,7 +16,7 @@ struct Province final {
     std::int64_t soldier_population{};
     std::int64_t economy{};
     std::vector<ProvinceId> neighbors;
+    std::int64_t population_growth_remainder{};
 };
 
 } // namespace province::core
-

@@ -35,6 +35,10 @@ void GameState::add_province(Province province) {
     if (province.economy < 0) {
         throw std::invalid_argument{"province economy cannot be negative"};
     }
+    if (province.population_growth_remainder < 0 ||
+        province.population_growth_remainder >= 10'000) {
+        throw std::invalid_argument{"population growth remainder must be in [0, 10000)"};
+    }
 
     std::sort(province.neighbors.begin(), province.neighbors.end());
     const auto duplicate = std::adjacent_find(province.neighbors.begin(), province.neighbors.end());
@@ -70,6 +74,11 @@ Country* GameState::find_country(const CountryId& id) noexcept {
 }
 
 const Province* GameState::find_province(const ProvinceId& id) const noexcept {
+    const auto iterator = provinces_.find(id);
+    return iterator == provinces_.end() ? nullptr : &iterator->second;
+}
+
+Province* GameState::find_province(const ProvinceId& id) noexcept {
     const auto iterator = provinces_.find(id);
     return iterator == provinces_.end() ? nullptr : &iterator->second;
 }

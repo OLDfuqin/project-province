@@ -17,7 +17,7 @@ func _ready() -> void:
     $Center/Status.text = "Core %s · %d countries · %d provinces" % [
         bridge.get_core_version(), countries.size(), provinces.size()
     ]
-    $Center/ProvinceSummary.text = "Scenario year 1000 · Full world simulation ready"
+    _refresh_province_summary()
 
     for months: int in [1, 3, 6, 12]:
         turn_length.add_item("%d个月" % months)
@@ -50,6 +50,17 @@ func _refresh_country_list() -> void:
         $Center/CountryList.add_child(label)
 
 
+func _refresh_province_summary() -> void:
+    var total_population := 0
+    var soldier_population := 0
+    for province: Dictionary in bridge.get_province_summaries():
+        total_population += int(province["population"])
+        soldier_population += int(province["soldier_population"])
+    $Center/ProvinceSummary.text = "总人口 %d · 士兵人口 %d" % [
+        total_population, soldier_population
+    ]
+
+
 func _on_advance_turn_pressed() -> void:
     var months: int = turn_length.get_selected_metadata()
     var result: Dictionary = bridge.advance_turn(months)
@@ -59,13 +70,18 @@ func _on_advance_turn_pressed() -> void:
 
     _refresh_date()
     _refresh_country_list()
+    _refresh_province_summary()
     var total_income := 0
     for income: Dictionary in result["incomes"]:
         total_income += int(income["amount"])
-    event_log.text = "事件 #%d：推进%d个月，四国总收入%d（原日期 %d-%02d）" % [
+    var total_growth := 0
+    for change: Dictionary in result["population_changes"]:
+        total_growth += int(change["growth"])
+    event_log.text = "事件 #%d：推进%d个月，收入%d，人口+%d（原日期 %d-%02d）" % [
         result["event_sequence"],
         result["elapsed_months"],
         total_income,
+        total_growth,
         result["previous_year"],
         result["previous_month"],
     ]

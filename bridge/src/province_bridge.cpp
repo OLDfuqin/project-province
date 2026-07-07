@@ -133,6 +133,7 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
     response["month"] = state_->clock().month();
 
     godot::Array incomes;
+    godot::Array population_changes;
     for (const province::core::GameEvent& event : result.events) {
         if (event.type == province::core::GameEventType::economy_resolved) {
             const auto& economy = std::get<province::core::EconomyResolvedEvent>(event.payload);
@@ -144,6 +145,18 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
                 incomes.push_back(income_summary);
             }
             response["economy_event_sequence"] = static_cast<std::int64_t>(event.sequence);
+        } else if (event.type == province::core::GameEventType::population_resolved) {
+            const auto& population =
+                std::get<province::core::PopulationResolvedEvent>(event.payload);
+            for (const province::core::ProvincePopulationChange& change : population.changes) {
+                godot::Dictionary change_summary;
+                change_summary["province_id"] =
+                    godot::String::utf8(change.province_id.value().c_str());
+                change_summary["growth"] = change.growth;
+                change_summary["current_population"] = change.current_population;
+                population_changes.push_back(change_summary);
+            }
+            response["population_event_sequence"] = static_cast<std::int64_t>(event.sequence);
         } else if (event.type == province::core::GameEventType::turn_advanced) {
             const auto& turn = std::get<province::core::TurnAdvancedEvent>(event.payload);
             response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
@@ -154,6 +167,7 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
         }
     }
     response["incomes"] = incomes;
+    response["population_changes"] = population_changes;
     return response;
 }
 

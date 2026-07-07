@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/economy_system.hpp"
+#include "province/core/population_system.hpp"
 
 #include <cstdint>
 #include <variant>
@@ -9,6 +10,7 @@ namespace province::core {
 
 enum class GameEventType : std::uint8_t {
     economy_resolved,
+    population_resolved,
     turn_advanced,
 };
 
@@ -25,7 +27,13 @@ struct EconomyResolvedEvent final {
     std::vector<CountryIncome> incomes;
 };
 
-using GameEventPayload = std::variant<EconomyResolvedEvent, TurnAdvancedEvent>;
+struct PopulationResolvedEvent final {
+    std::int32_t elapsed_months{};
+    std::vector<ProvincePopulationChange> changes;
+};
+
+using GameEventPayload =
+    std::variant<EconomyResolvedEvent, PopulationResolvedEvent, TurnAdvancedEvent>;
 
 struct GameEvent final {
     std::uint64_t sequence{};
