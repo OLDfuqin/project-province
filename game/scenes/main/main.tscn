@@ -78,6 +78,30 @@ text = "请选择一个地区"
 horizontal_alignment = 1
 autowrap_mode = 2
 
+[node name="RoadControls" type="VBoxContainer" parent="Center"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="RoadSelection" type="Label" parent="Center/RoadControls"]
+layout_mode = 2
+text = "修路：请选择起点（当前玩家：奥罗里亚）"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="Center/RoadControls"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="BuildRoad" type="Button" parent="Center/RoadControls/Buttons"]
+layout_mode = 2
+disabled = true
+text = "建设公路（500）"
+
+[node name="ClearRoad" type="Button" parent="Center/RoadControls/Buttons"]
+layout_mode = 2
+text = "清除选择"
+
 [node name="TurnControls" type="HBoxContainer" parent="Center"]
 layout_mode = 2
 alignment = 1

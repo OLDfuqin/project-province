@@ -27,6 +27,15 @@ func _initialize() -> void:
             quit(1)
             return
 
+    province_map.set_roads([
+        {"province_a": "northreach", "province_b": "westmark", "level": "paved"}
+    ])
+    province_map.set_road_selection("northreach", "westmark")
+    if province_map.road_count() != 1:
+        push_error("Map did not retain road snapshot")
+        quit(1)
+        return
+
     print("Province map hit-test smoke test passed")
     province_map.free()
     quit(0)

@@ -43,6 +43,9 @@ var _province_data: Dictionary = {}
 var _country_colors: Dictionary = {}
 var _hovered_id := ""
 var _selected_id := ""
+var _road_start_id := ""
+var _road_end_id := ""
+var _roads: Array = []
 var _pan := Vector2.ZERO
 var _zoom := 1.0
 var _dragging := false
@@ -73,6 +76,21 @@ func set_scenario_data(provinces: Array, countries: Array) -> void:
 
 func selected_province_id() -> String:
     return _selected_id
+
+
+func set_road_selection(start_id: String, end_id: String) -> void:
+    _road_start_id = start_id
+    _road_end_id = end_id
+    queue_redraw()
+
+
+func set_roads(roads: Array) -> void:
+    _roads = roads.duplicate(true)
+    queue_redraw()
+
+
+func road_count() -> int:
+    return _roads.size()
 
 
 func province_at_map_position(map_position: Vector2) -> String:
@@ -109,7 +127,15 @@ func _draw() -> void:
         draw_colored_polygon(polygon, color)
         var outline := PackedVector2Array(polygon)
         outline.append(polygon[0])
-        draw_polyline(outline, Color("d5deed"), 2.0 / _zoom, true)
+        var outline_color := Color("d5deed")
+        var outline_width := 2.0
+        if province_id == _road_start_id:
+            outline_color = Color("ffe082")
+            outline_width = 5.0
+        elif province_id == _road_end_id:
+            outline_color = Color("ffb74d")
+            outline_width = 5.0
+        draw_polyline(outline, outline_color, outline_width / _zoom, true)
 
         if not province.is_empty():
             var center := _polygon_center(polygon)
@@ -140,6 +166,23 @@ func _draw() -> void:
         18,
         Color("9fc6e8")
     )
+
+    for road: Dictionary in _roads:
+        var province_a: String = road.get("province_a", "")
+        var province_b: String = road.get("province_b", "")
+        if not _polygons.has(province_a) or not _polygons.has(province_b):
+            continue
+        var start := _polygon_center(_polygons[province_a])
+        var end := _polygon_center(_polygons[province_b])
+        draw_line(start, end, Color("f4d35e"), 7.0 / _zoom, true)
+        draw_circle(start, 6.0 / _zoom, Color("fff3b0"))
+        draw_circle(end, 6.0 / _zoom, Color("fff3b0"))
+
+    if not _road_start_id.is_empty() and not _road_end_id.is_empty():
+        var preview_start := _polygon_center(_polygons[_road_start_id])
+        var preview_end := _polygon_center(_polygons[_road_end_id])
+        draw_line(preview_start, preview_end, Color("fff0a6"), 3.0 / _zoom, true)
+
     draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
     draw_string(
         ThemeDB.fallback_font,
