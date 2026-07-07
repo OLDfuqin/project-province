@@ -1,8 +1,12 @@
 #pragma once
 
+#include "province/core/game_state.hpp"
+
 #include <cstdint>
+#include <optional>
 
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 
@@ -18,9 +22,22 @@ public:
         std::int32_t month,
         std::int32_t months
     ) const;
+    [[nodiscard]] bool load_scenario(
+        const godot::String& data_directory,
+        std::int32_t initial_year,
+        std::int32_t initial_month
+    );
+    [[nodiscard]] bool has_scenario() const noexcept;
+    [[nodiscard]] godot::String get_last_error() const;
+    [[nodiscard]] godot::Array get_country_summaries() const;
+    [[nodiscard]] godot::Array get_province_summaries() const;
 
 protected:
     static void _bind_methods();
+
+private:
+    std::optional<province::core::GameState> state_;
+    godot::String last_error_;
 };
 
 } // namespace province::bridge

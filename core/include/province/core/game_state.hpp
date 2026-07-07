@@ -24,6 +24,8 @@ public:
     [[nodiscard]] const Province* find_province(const ProvinceId& id) const noexcept;
     [[nodiscard]] std::size_t country_count() const noexcept;
     [[nodiscard]] std::size_t province_count() const noexcept;
+    [[nodiscard]] const std::map<CountryId, Country>& countries() const noexcept;
+    [[nodiscard]] const std::map<ProvinceId, Province>& provinces() const noexcept;
     [[nodiscard]] std::vector<std::string> validate() const;
 
 private:
@@ -33,4 +35,3 @@ private:
 };
 
 } // namespace province::core
-

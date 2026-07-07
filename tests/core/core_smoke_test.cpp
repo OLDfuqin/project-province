@@ -92,7 +92,7 @@ int main() {
         return 1;
     }
 
-    const GameState loaded_state = ScenarioLoader::load("data", GameClock{1000, 1});
+    const GameState loaded_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
     if (loaded_state.country_count() != 4 || loaded_state.province_count() != 8) {
         std::cerr << "ScenarioLoader returned incorrect entity counts\n";
         return 1;
@@ -106,7 +106,7 @@ int main() {
     bool reported_missing_files = false;
     try {
         [[maybe_unused]] const GameState missing =
-            ScenarioLoader::load("data/does-not-exist", GameClock{1000, 1});
+            ScenarioLoader::load("game/data/does-not-exist", GameClock{1000, 1});
     } catch (const province::core::DataLoadError&) {
         reported_missing_files = true;
     }

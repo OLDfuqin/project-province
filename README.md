@@ -14,7 +14,7 @@
 ```text
 core/       与Godot无关的C++模拟核心
 game/       Godot工程、场景、脚本与资源
-data/       国家、地区、科技等数据
+game/data/  可随游戏导出的国家、地区、科技等数据
 tests/      C++与集成测试
 docs/       架构和设计文档
 scripts/    开发与构建辅助脚本

@@ -77,6 +77,14 @@ std::size_t GameState::province_count() const noexcept {
     return provinces_.size();
 }
 
+const std::map<CountryId, Country>& GameState::countries() const noexcept {
+    return countries_;
+}
+
+const std::map<ProvinceId, Province>& GameState::provinces() const noexcept {
+    return provinces_;
+}
+
 std::vector<std::string> GameState::validate() const {
     std::vector<std::string> issues;
 
@@ -111,4 +119,3 @@ std::vector<std::string> GameState::validate() const {
 }
 
 } // namespace province::core
-
