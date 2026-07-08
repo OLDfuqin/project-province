@@ -783,6 +783,28 @@ int main() {
         return 1;
     }
 
+    GameState ai_path_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor ai_path_processor;
+    const CommandResult rear_army_result = ai_path_processor.execute(
+        ai_path_state,
+        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"goldcoast"}, 500}
+    );
+    const ArmyId rear_army_id =
+        std::get<ArmyRecruitedEvent>(rear_army_result.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult ai_path_war = ai_path_processor.execute(
+        ai_path_state,
+        DeclareWarCommand{CountryId{"solmere"}, CountryId{"auroria"}}
+    );
+    ai_path_processor.enable_ai(CountryId{"auroria"});
+    [[maybe_unused]] const CommandResult ai_path_month = ai_path_processor.execute(
+        ai_path_state,
+        AdvanceTurnCommand{1}
+    );
+    if (ai_path_state.find_army(rear_army_id)->province_id != ProvinceId{"redpass"}) {
+        std::cerr << "AI pathfinding did not move a rear army toward the front\n";
+        return 1;
+    }
+
     const std::filesystem::path save_path = "build/save_game_roundtrip_test.json";
     GameState save_state = ScenarioLoader::load("game/data", GameClock{1200, 6});
     CommandProcessor save_processor;
