@@ -178,6 +178,38 @@ func _initialize() -> void:
         quit(1)
         return
 
+    if not bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Scenario reload for planned advance failed: %s" % bridge.get_last_error())
+        bridge.free()
+        quit(1)
+        return
+    bridge.set_ai_enabled(false, "auroria")
+    var planned: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.build_road("auroria", "northreach", "westmark")
+    bridge.declare_war("auroria", "verdantia")
+    var plan_result: Dictionary = bridge.set_army_advance_target(
+        planned["army_id"], "greenvale"
+    )
+    var turn_plan: Dictionary = bridge.advance_turn(3)
+    var planned_after: Dictionary = {}
+    var planned_greenvale: Dictionary = {}
+    for army_summary: Dictionary in bridge.get_army_summaries():
+        if army_summary["id"] == planned["army_id"]:
+            planned_after = army_summary
+    for province_summary: Dictionary in bridge.get_province_summaries():
+        if province_summary["id"] == "greenvale":
+            planned_greenvale = province_summary
+    if not plan_result.get("accepted", false) or \
+            not turn_plan.get("accepted", false) or \
+            planned_after.get("province_id", "") != "greenvale" or \
+            planned_after.get("advance_target_id", "") != "" or \
+            planned_greenvale.get("owner_id", "") != "auroria" or \
+            not planned_greenvale.get("occupied", false):
+        push_error("Stored army advance target was not executed during turn advance")
+        bridge.free()
+        quit(1)
+        return
+
     print("ProvinceBridge army recruitment smoke test passed")
     bridge.free()
     quit(0)

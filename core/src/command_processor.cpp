@@ -239,6 +239,11 @@ CommandResult CommandProcessor::execute_move_army(
             battle,
         });
     }
+    Army* current_army = working_state.find_army(command.army_id);
+    if (current_army != nullptr && current_army->advance_target.has_value() &&
+        current_army->province_id == *current_army->advance_target) {
+        current_army->advance_target.reset();
+    }
     state = std::move(working_state);
     return {true, {}, std::move(events)};
 }
@@ -300,6 +305,57 @@ CommandResult CommandProcessor::execute_advance_turn(
             } else {
                 existing->second.amount += grant.amount;
                 existing->second.current_points = grant.current_points;
+            }
+        }
+
+        std::vector<ArmyId> planned_armies;
+        planned_armies.reserve(working_state.army_count());
+        for (const auto& [army_id, army] : working_state.armies()) {
+            if (army.advance_target.has_value()) {
+                planned_armies.push_back(army_id);
+            }
+        }
+        for (const ArmyId& army_id : planned_armies) {
+            for (std::size_t step = 0; step < working_state.province_count(); ++step) {
+                const Army* army = working_state.find_army(army_id);
+                if (army == nullptr || !army->advance_target.has_value()) {
+                    break;
+                }
+                const std::optional<ProvinceId> next_step =
+                    ai_system_.find_step_toward(
+                        working_state,
+                        *army,
+                        *army->advance_target
+                    );
+                if (!next_step.has_value()) {
+                    break;
+                }
+                const CommandResult move_result = execute(
+                    working_state,
+                    MoveArmyCommand{army_id, *next_step}
+                );
+                if (!move_result.accepted) {
+                    break;
+                }
+                bool should_stop = false;
+                for (const GameEvent& event : move_result.events) {
+                    if (event.type == GameEventType::battle_resolved) {
+                        const auto& battle = std::get<BattleResolution>(event.payload);
+                        if (battle.occurred || battle.province_occupied) {
+                            should_stop = true;
+                        }
+                    }
+                }
+                ai_events.insert(
+                    ai_events.end(),
+                    move_result.events.begin(),
+                    move_result.events.end()
+                );
+                const Army* moved_army = working_state.find_army(army_id);
+                if (moved_army == nullptr || !moved_army->advance_target.has_value() ||
+                    should_stop) {
+                    break;
+                }
             }
         }
         if (human_country_id_.has_value()) {
