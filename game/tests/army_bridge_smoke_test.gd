@@ -63,12 +63,13 @@ func _initialize() -> void:
     var peace_entry: Dictionary = bridge.move_army(result["army_id"], "greenvale")
     var war_result: Dictionary = bridge.declare_war("auroria", "verdantia")
     bridge.advance_turn(1)
-    var war_entry: Dictionary = bridge.move_army(result["army_id"], "greenvale")
+    var war_entry: Dictionary = bridge.auto_advance_army(result["army_id"])
     var relations: Array = bridge.get_diplomatic_relations()
     if peace_entry.get("accepted", false) or \
             not defender.get("accepted", false) or \
             not war_result.get("accepted", false) or \
             not war_entry.get("accepted", false) or \
+            war_entry.get("auto_destination", "") != "greenvale" or \
             not war_entry.get("battle_occurred", false) or \
             not war_entry.get("attacker_won", false) or \
             not war_entry.get("province_occupied", false) or \

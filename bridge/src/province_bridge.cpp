@@ -1,5 +1,6 @@
 #include "province_bridge.hpp"
 
+#include "province/core/ai_system.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_status.hpp"
 #include "province/core/scenario_loader.hpp"
@@ -661,6 +662,37 @@ godot::Dictionary ProvinceBridge::move_army(
     return response;
 }
 
+godot::Dictionary ProvinceBridge::auto_advance_army(const godot::String& army_id) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        const province::core::Army* army = state_->find_army(core_army_id);
+        if (army == nullptr) {
+            response["accepted"] = false;
+            response["error"] = "army not found";
+            return response;
+        }
+        const std::optional<province::core::ProvinceId> destination =
+            province::core::AiSystem{}.find_wartime_step(*state_, *army);
+        if (!destination.has_value()) {
+            response["accepted"] = false;
+            response["error"] = "army has no wartime path";
+            return response;
+        }
+        response = move_army(army_id, godot::String::utf8(destination->value().c_str()));
+        response["auto_destination"] = godot::String::utf8(destination->value().c_str());
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
 godot::Dictionary ProvinceBridge::declare_war(
     const godot::String& aggressor_id,
     const godot::String& defender_id
@@ -838,6 +870,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("move_army", "army_id", "destination"),
         &ProvinceBridge::move_army
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("auto_advance_army", "army_id"),
+        &ProvinceBridge::auto_advance_army
     );
     godot::ClassDB::bind_method(
         godot::D_METHOD("declare_war", "aggressor_id", "defender_id"),

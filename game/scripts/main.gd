@@ -14,6 +14,7 @@ const QUICK_SAVE_PATH := "user://quick_save.json"
 @onready var province_map := $MapPanel/ProvinceMap
 @onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
 @onready var move_army_button: Button = $Center/ArmyControls/MovementButtons/MoveArmy
+@onready var auto_advance_button: Button = $Center/ArmyControls/MovementButtons/AutoAdvance
 @onready var army_selector: OptionButton = $Center/ArmyControls/ArmySelector
 @onready var army_details: Label = $Center/ArmyControls/ArmyDetails
 @onready var war_target: OptionButton = $Center/DiplomacyControls/WarTarget
@@ -45,6 +46,7 @@ func _ready() -> void:
     $Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
     recruit_button.pressed.connect(_on_recruit_army_pressed)
     move_army_button.pressed.connect(_on_move_army_pressed)
+    auto_advance_button.pressed.connect(_on_auto_advance_pressed)
     army_selector.item_selected.connect(_on_army_selected)
     $Center/DiplomacyControls/DeclareWar.pressed.connect(_on_declare_war_pressed)
     $Center/DiplomacyControls/MakePeace.pressed.connect(_on_make_peace_pressed)
@@ -604,6 +606,36 @@ func _on_move_army_pressed() -> void:
     _refresh_movement_selection()
 
 
+func _on_auto_advance_pressed() -> void:
+    if moving_army_id.is_empty():
+        return
+    var result: Dictionary = bridge.auto_advance_army(moving_army_id)
+    if not result.get("accepted", false):
+        event_log.text = "自动推进失败：%s" % result.get("error", "未知错误")
+        return
+
+    event_log.text = "自动推进：%s → %s，消耗%d移动点，剩余%d" % [
+        result["origin"],
+        result["destination"],
+        result["movement_cost"],
+        result["remaining_points"],
+    ]
+    var battle_report := _battle_report(result)
+    if not battle_report.is_empty():
+        event_log.text = battle_report
+    _record_event(event_log.text)
+    movement_origin_id = result.get("army_province_id", result["destination"])
+    movement_destination_id = ""
+    _refresh_map_data()
+    _refresh_country_details()
+    _refresh_game_status()
+    if result.get("army_destroyed", false):
+        _clear_movement_selection()
+        return
+    _show_province_details(movement_origin_id)
+    _refresh_movement_selection()
+
+
 func _update_movement_from_province(province_id: String) -> void:
     if moving_army_id.is_empty():
         var army := _find_player_army_in_province(province_id)
@@ -634,6 +666,7 @@ func _refresh_movement_selection() -> void:
     move_army_button.disabled = (
         moving_army_id.is_empty() or movement_destination_id.is_empty()
     )
+    auto_advance_button.disabled = moving_army_id.is_empty()
     if moving_army_id.is_empty():
         $Center/ArmyControls/MovementStatus.text = "移动：请选择有己方军队的地区"
         return

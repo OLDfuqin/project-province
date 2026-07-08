@@ -190,7 +190,7 @@ std::vector<AiDecision> AiSystem::plan_month(
             if (province == nullptr) {
                 continue;
             }
-            const std::optional<ProvinceId> next_step = choose_wartime_step(state, army);
+            const std::optional<ProvinceId> next_step = find_wartime_step(state, army);
             if (next_step.has_value()) {
                 const std::int32_t cost = connection_cost(state, army.province_id, *next_step);
                 if (army.movement_points >= cost) {
@@ -203,6 +203,13 @@ std::vector<AiDecision> AiSystem::plan_month(
         }
     }
     return decisions;
+}
+
+std::optional<ProvinceId> AiSystem::find_wartime_step(
+    const GameState& state,
+    const Army& army
+) const {
+    return choose_wartime_step(state, army);
 }
 
 } // namespace province::core

@@ -3,6 +3,7 @@
 #include "province/core/game_command.hpp"
 #include "province/core/game_state.hpp"
 
+#include <optional>
 #include <vector>
 
 namespace province::core {
@@ -17,6 +18,10 @@ public:
     [[nodiscard]] std::vector<AiDecision> plan_month(
         const GameState& state,
         const CountryId& human_country_id
+    ) const;
+    [[nodiscard]] std::optional<ProvinceId> find_wartime_step(
+        const GameState& state,
+        const Army& army
     ) const;
 
 private:
