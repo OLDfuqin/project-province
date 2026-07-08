@@ -8,6 +8,7 @@
 #include "province/core/road.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_state.hpp"
+#include "province/core/game_status.hpp"
 #include "province/core/province.hpp"
 #include "province/core/scenario_loader.hpp"
 #include "province/core/save_game.hpp"
@@ -130,6 +131,38 @@ int main() {
     if (loaded_state.find_country(CountryId{"auroria"}) == nullptr ||
         loaded_state.find_province(ProvinceId{"northreach"}) == nullptr) {
         std::cerr << "ScenarioLoader did not create expected entities\n";
+        return 1;
+    }
+    const province::core::GameStatus initial_status =
+        province::core::GameStatusSystem{}.evaluate(loaded_state, CountryId{"auroria"});
+    if (initial_status.game_over ||
+        initial_status.countries.at(CountryId{"auroria"}).controlled_provinces != 8) {
+        std::cerr << "Initial game status is incorrect\n";
+        return 1;
+    }
+    GameState elimination_state = loaded_state;
+    for (const auto& [province_id, province] : loaded_state.provinces()) {
+        if (province.owner_id == CountryId{"solmere"}) {
+            elimination_state.transfer_province_ownership(province_id, CountryId{"auroria"});
+        }
+    }
+    const province::core::GameStatus elimination_status =
+        province::core::GameStatusSystem{}.evaluate(elimination_state, CountryId{"auroria"});
+    if (!elimination_status.countries.at(CountryId{"solmere"}).eliminated ||
+        elimination_status.game_over) {
+        std::cerr << "Country elimination status is incorrect\n";
+        return 1;
+    }
+    GameState conquest_state = loaded_state;
+    for (const auto& [province_id, province] : loaded_state.provinces()) {
+        static_cast<void>(province);
+        conquest_state.transfer_province_ownership(province_id, CountryId{"auroria"});
+    }
+    const province::core::GameStatus conquest_status =
+        province::core::GameStatusSystem{}.evaluate(conquest_state, CountryId{"auroria"});
+    if (!conquest_status.game_over || !conquest_status.player_won ||
+        conquest_status.winner_id != CountryId{"auroria"}) {
+        std::cerr << "Conquest victory status is incorrect\n";
         return 1;
     }
 

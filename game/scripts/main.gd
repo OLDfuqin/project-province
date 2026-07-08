@@ -69,6 +69,7 @@ func _ready() -> void:
     _refresh_date()
 
     _refresh_country_list()
+    _refresh_game_status()
     _refresh_technology_status()
     _populate_war_targets()
     peace_policy.add_item("Restore borders")
@@ -96,6 +97,25 @@ func _refresh_country_list() -> void:
             Color8((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)
         )
         $Center/CountryList.add_child(label)
+
+
+func _refresh_game_status() -> void:
+    var status: Dictionary = bridge.get_game_status(PLAYER_COUNTRY_ID)
+    if not status.get("has_scenario", false):
+        $Center/GameStatus.text = "No active scenario"
+        return
+    if status.get("player_won", false):
+        $Center/GameStatus.text = "Victory: Auroria controls the world"
+    elif status.get("player_eliminated", false):
+        $Center/GameStatus.text = "Defeat: Auroria has fallen"
+    elif status.get("winner_id", "") != "":
+        $Center/GameStatus.text = "Winner: %s" % status["winner_id"]
+    else:
+        var active := 0
+        for country: Dictionary in status.get("countries", []):
+            if not country.get("eliminated", false):
+                active += 1
+        $Center/GameStatus.text = "Active countries: %d" % active
 
 
 func _populate_war_targets() -> void:
@@ -140,6 +160,7 @@ func _on_make_peace_pressed() -> void:
     _clear_movement_selection()
     _refresh_map_data()
     _refresh_country_list()
+    _refresh_game_status()
 
 
 func _on_research_technology(track: String) -> void:
@@ -188,6 +209,7 @@ func _on_quick_load_pressed() -> void:
     _refresh_map_data()
     _refresh_province_summary()
     _refresh_technology_status()
+    _refresh_game_status()
     event_log.text = "Game loaded from quick_save.json"
 
 
@@ -223,6 +245,7 @@ func _on_advance_turn_pressed() -> void:
     _refresh_date()
     _refresh_country_list()
     _refresh_map_data()
+    _refresh_game_status()
     _refresh_province_summary()
     if not province_map.selected_province_id().is_empty():
         _show_province_details(province_map.selected_province_id())
@@ -375,6 +398,7 @@ func _on_move_army_pressed() -> void:
     movement_origin_id = result.get("army_province_id", result["destination"])
     movement_destination_id = ""
     _refresh_map_data()
+    _refresh_game_status()
     if result.get("army_destroyed", false):
         _clear_movement_selection()
         return

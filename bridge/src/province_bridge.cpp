@@ -1,6 +1,7 @@
 #include "province_bridge.hpp"
 
 #include "province/core/game_clock.hpp"
+#include "province/core/game_status.hpp"
 #include "province/core/scenario_loader.hpp"
 #include "province/core/save_game.hpp"
 #include "province/core/version.hpp"
@@ -355,6 +356,37 @@ godot::Dictionary ProvinceBridge::load_game(const godot::String& path) {
         response["accepted"] = false;
         response["error"] = godot::String::utf8(error.what());
     }
+    return response;
+}
+
+godot::Dictionary ProvinceBridge::get_game_status(
+    const godot::String& player_country_id
+) const {
+    godot::Dictionary response;
+    if (!state_) {
+        response["has_scenario"] = false;
+        return response;
+    }
+    const province::core::GameStatus status = province::core::GameStatusSystem{}.evaluate(
+        *state_,
+        province::core::CountryId{player_country_id.utf8().get_data()}
+    );
+    response["has_scenario"] = true;
+    response["game_over"] = status.game_over;
+    response["player_eliminated"] = status.player_eliminated;
+    response["player_won"] = status.player_won;
+    response["winner_id"] = status.winner_id.has_value()
+        ? godot::String::utf8(status.winner_id->value().c_str())
+        : godot::String{};
+    godot::Array countries;
+    for (const auto& [country_id, country_status] : status.countries) {
+        godot::Dictionary summary;
+        summary["country_id"] = godot::String::utf8(country_id.value().c_str());
+        summary["controlled_provinces"] = country_status.controlled_provinces;
+        summary["eliminated"] = country_status.eliminated;
+        countries.push_back(summary);
+    }
+    response["countries"] = countries;
     return response;
 }
 
@@ -749,6 +781,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("load_game", "path"),
         &ProvinceBridge::load_game
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_game_status", "player_country_id"),
+        &ProvinceBridge::get_game_status
     );
 }
 
