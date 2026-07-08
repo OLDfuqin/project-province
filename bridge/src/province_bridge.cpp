@@ -818,6 +818,7 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
 
         godot::Array path_ids;
         std::int32_t total_cost = 0;
+        std::int32_t first_step_cost = 0;
         for (std::size_t index = 0; index < path.size(); ++index) {
             path_ids.push_back(godot::String::utf8(path[index].value().c_str()));
             if (index > 0) {
@@ -827,6 +828,9 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
                             province::core::RoadLevel::paved
                         ? province::core::MovementSystem::paved_road_cost
                         : province::core::terrain_movement_cost(province->terrain);
+                if (index == 1) {
+                    first_step_cost = cost;
+                }
                 total_cost += cost;
             }
         }
@@ -835,6 +839,7 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
         response["step_count"] = static_cast<std::int64_t>(
             path.size() > 0 ? path.size() - 1 : 0
         );
+        response["first_step_cost"] = first_step_cost;
         response["total_movement_cost"] = total_cost;
     } catch (const std::exception& error) {
         response["accepted"] = false;

@@ -134,6 +134,7 @@ func _initialize() -> void:
     if not path_preview.get("accepted", false) or \
             path_preview.get("path", []) != ["northreach", "westmark", "greenvale"] or \
             path_preview.get("step_count", 0) != 2 or \
+            path_preview.get("first_step_cost", 0) != 1 or \
             path_preview.get("total_movement_cost", 0) != 3:
         push_error("Auto advance path preview was not reflected in bridge state")
         bridge.free()
