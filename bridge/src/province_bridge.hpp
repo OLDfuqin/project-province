@@ -67,6 +67,8 @@ public:
         const godot::String& country_id,
         const godot::String& track
     );
+    [[nodiscard]] godot::Dictionary save_game(const godot::String& path) const;
+    [[nodiscard]] godot::Dictionary load_game(const godot::String& path);
 
 protected:
     static void _bind_methods();

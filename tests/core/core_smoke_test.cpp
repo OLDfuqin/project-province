@@ -10,11 +10,13 @@
 #include "province/core/game_state.hpp"
 #include "province/core/province.hpp"
 #include "province/core/scenario_loader.hpp"
+#include "province/core/save_game.hpp"
 #include "province/core/stable_id.hpp"
 #include "province/core/version.hpp"
 
 #include <iostream>
 #include <array>
+#include <filesystem>
 #include <stdexcept>
 
 int main() {
@@ -723,6 +725,79 @@ int main() {
         std::cerr << "AI did not recruit, declare war and advance deterministically\n";
         return 1;
     }
+
+    const std::filesystem::path save_path = "build/save_game_roundtrip_test.json";
+    GameState save_state = ScenarioLoader::load("game/data", GameClock{1200, 6});
+    CommandProcessor save_processor;
+    [[maybe_unused]] const CommandResult save_technology = save_processor.execute(
+        save_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::roads}
+    );
+    const CommandResult save_recruitment = save_processor.execute(
+        save_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 500}
+    );
+    const ArmyId saved_army_id =
+        std::get<ArmyRecruitedEvent>(save_recruitment.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult save_road = save_processor.execute(
+        save_state,
+        BuildRoadCommand{
+            CountryId{"auroria"}, ProvinceId{"northreach"}, ProvinceId{"westmark"}
+        }
+    );
+    [[maybe_unused]] const CommandResult save_war = save_processor.execute(
+        save_state,
+        DeclareWarCommand{CountryId{"auroria"}, CountryId{"solmere"}}
+    );
+    [[maybe_unused]] const CommandResult save_month = save_processor.execute(
+        save_state,
+        AdvanceTurnCommand{1}
+    );
+    [[maybe_unused]] const CommandResult save_occupation = save_processor.execute(
+        save_state,
+        MoveArmyCommand{saved_army_id, ProvinceId{"redpass"}}
+    );
+    save_processor.enable_ai(CountryId{"auroria"});
+    province::core::SaveGameSerializer::save(
+        save_path,
+        save_state,
+        save_processor.next_event_sequence(),
+        save_processor.human_country_id()
+    );
+    province::core::LoadedGame loaded_game =
+        province::core::SaveGameSerializer::load(save_path);
+    if (loaded_game.state.clock().year() != save_state.clock().year() ||
+        loaded_game.state.clock().month() != save_state.clock().month() ||
+        loaded_game.state.army_count() != save_state.army_count() ||
+        loaded_game.state.road_level(ProvinceId{"northreach"}, ProvinceId{"westmark"}) !=
+            RoadLevel::paved ||
+        !loaded_game.state.are_at_war(CountryId{"auroria"}, CountryId{"solmere"}) ||
+        loaded_game.state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"} ||
+        loaded_game.state.find_technology(CountryId{"auroria"})->roads_level != 1 ||
+        loaded_game.state.find_army(saved_army_id) == nullptr ||
+        loaded_game.state.find_army(saved_army_id)->movement_points !=
+            save_state.find_army(saved_army_id)->movement_points ||
+        loaded_game.next_event_sequence != save_processor.next_event_sequence() ||
+        !loaded_game.human_country_id.has_value() ||
+        *loaded_game.human_country_id != CountryId{"auroria"}) {
+        std::cerr << "Save game round trip did not preserve simulation state\n";
+        return 1;
+    }
+    CommandProcessor restored_processor;
+    restored_processor.set_next_event_sequence(loaded_game.next_event_sequence);
+    restored_processor.enable_ai(*loaded_game.human_country_id);
+    const CommandResult post_load_recruitment = restored_processor.execute(
+        loaded_game.state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"westmark"}, 100}
+    );
+    const auto& post_load_event =
+        std::get<ArmyRecruitedEvent>(post_load_recruitment.events.front().payload);
+    if (!post_load_recruitment.accepted || post_load_event.army_id != ArmyId{"army_2"} ||
+        post_load_recruitment.events.front().sequence != save_processor.next_event_sequence()) {
+        std::cerr << "Save game did not preserve entity and event sequences\n";
+        return 1;
+    }
+    std::filesystem::remove(save_path);
 
     const CommandResult rejected = processor.execute(turn_state, AdvanceTurnCommand{2});
     if (rejected.accepted || rejected.error.empty() ||

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <map>
+#include <stdexcept>
 #include <type_traits>
 #include <variant>
 
@@ -17,6 +18,21 @@ void CommandProcessor::disable_ai() noexcept {
 
 bool CommandProcessor::ai_enabled() const noexcept {
     return human_country_id_.has_value();
+}
+
+const std::optional<CountryId>& CommandProcessor::human_country_id() const noexcept {
+    return human_country_id_;
+}
+
+std::uint64_t CommandProcessor::next_event_sequence() const noexcept {
+    return next_event_sequence_;
+}
+
+void CommandProcessor::set_next_event_sequence(const std::uint64_t sequence) {
+    if (sequence == 0) {
+        throw std::invalid_argument{"event sequence must be positive"};
+    }
+    next_event_sequence_ = sequence;
 }
 
 CommandResult CommandProcessor::execute(GameState& state, const GameCommand& command) {

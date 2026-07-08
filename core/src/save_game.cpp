@@ -1,0 +1,302 @@
+#include "province/core/save_game.hpp"
+
+#include <nlohmann/json.hpp>
+
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <utility>
+
+namespace province::core {
+namespace {
+
+using Json = nlohmann::json;
+
+std::string road_level_name(const RoadLevel level) {
+    return level == RoadLevel::paved ? "paved" : "none";
+}
+
+RoadLevel parse_road_level(const std::string& value) {
+    if (value == "paved") {
+        return RoadLevel::paved;
+    }
+    if (value == "none") {
+        return RoadLevel::none;
+    }
+    throw SaveGameError{"unknown road level: " + value};
+}
+
+std::string diplomatic_status_name(const DiplomaticStatus status) {
+    return status == DiplomaticStatus::war ? "war" : "peace";
+}
+
+DiplomaticStatus parse_diplomatic_status(const std::string& value) {
+    if (value == "war") {
+        return DiplomaticStatus::war;
+    }
+    if (value == "peace") {
+        return DiplomaticStatus::peace;
+    }
+    throw SaveGameError{"unknown diplomatic status: " + value};
+}
+
+std::string join_issues(const std::vector<std::string>& issues) {
+    std::ostringstream message;
+    message << "save validation failed:";
+    for (const std::string& issue : issues) {
+        message << "\n- " << issue;
+    }
+    return message.str();
+}
+
+} // namespace
+
+SaveGameError::SaveGameError(const std::string& message) : std::runtime_error{message} {}
+
+void SaveGameSerializer::save(
+    const std::filesystem::path& path,
+    const GameState& state,
+    const std::uint64_t next_event_sequence,
+    const std::optional<CountryId>& human_country_id
+) {
+    const std::vector<std::string> issues = state.validate();
+    if (!issues.empty()) {
+        throw SaveGameError{join_issues(issues)};
+    }
+    Json document{
+        {"schema_version", schema_version},
+        {"clock", {{"year", state.clock().year()}, {"month", state.clock().month()}}},
+        {"next_event_sequence", next_event_sequence},
+        {"human_country_id", human_country_id.has_value()
+            ? Json(human_country_id->value())
+            : Json(nullptr)},
+        {"next_army_sequence", state.next_army_sequence_},
+        {"countries", Json::array()},
+        {"provinces", Json::array()},
+        {"roads", Json::array()},
+        {"armies", Json::array()},
+        {"occupations", Json::array()},
+        {"relations", Json::array()},
+        {"technologies", Json::array()},
+    };
+
+    for (const auto& [country_id, country] : state.countries_) {
+        document["countries"].push_back({
+            {"id", country_id.value()},
+            {"name", country.name},
+            {"color_rgb", country.color_rgb},
+            {"treasury", country.treasury},
+        });
+    }
+    for (const auto& [province_id, province] : state.provinces_) {
+        Json neighbors = Json::array();
+        for (const ProvinceId& neighbor : province.neighbors) {
+            neighbors.push_back(neighbor.value());
+        }
+        document["provinces"].push_back({
+            {"id", province_id.value()},
+            {"name", province.name},
+            {"owner_id", province.owner_id.value()},
+            {"population", province.population},
+            {"soldier_population", province.soldier_population},
+            {"economy", province.economy},
+            {"neighbors", std::move(neighbors)},
+            {"population_growth_remainder", province.population_growth_remainder},
+        });
+    }
+    for (const auto& [connection, level] : state.roads_) {
+        document["roads"].push_back({
+            {"province_a", connection.first().value()},
+            {"province_b", connection.second().value()},
+            {"level", road_level_name(level)},
+        });
+    }
+    for (const auto& [army_id, army] : state.armies_) {
+        document["armies"].push_back({
+            {"id", army_id.value()},
+            {"owner_id", army.owner_id.value()},
+            {"province_id", army.province_id.value()},
+            {"manpower", army.manpower},
+            {"movement_points", army.movement_points},
+        });
+    }
+    for (const auto& [province_id, controller_id] : state.occupations_) {
+        document["occupations"].push_back({
+            {"province_id", province_id.value()},
+            {"controller_id", controller_id.value()},
+        });
+    }
+    for (const auto& [relation, status] : state.relations_) {
+        document["relations"].push_back({
+            {"country_a", relation.first().value()},
+            {"country_b", relation.second().value()},
+            {"status", diplomatic_status_name(status)},
+        });
+    }
+    for (const auto& [country_id, technology] : state.technologies_) {
+        document["technologies"].push_back({
+            {"country_id", country_id.value()},
+            {"economy_level", technology.economy_level},
+            {"military_level", technology.military_level},
+            {"roads_level", technology.roads_level},
+        });
+    }
+
+    if (!path.parent_path().empty()) {
+        std::filesystem::create_directories(path.parent_path());
+    }
+    const std::filesystem::path temporary = path.string() + ".tmp";
+    {
+        std::ofstream stream{temporary, std::ios::trunc};
+        if (!stream) {
+            throw SaveGameError{"cannot open temporary save file: " + temporary.string()};
+        }
+        stream << document.dump(2) << '\n';
+        if (!stream) {
+            throw SaveGameError{"failed writing temporary save file: " + temporary.string()};
+        }
+    }
+    std::error_code error;
+    if (std::filesystem::exists(path)) {
+        std::filesystem::copy_file(
+            temporary,
+            path,
+            std::filesystem::copy_options::overwrite_existing,
+            error
+        );
+        if (!error) {
+            std::filesystem::remove(temporary);
+        }
+    } else {
+        std::filesystem::rename(temporary, path, error);
+    }
+    if (error) {
+        throw SaveGameError{"cannot finalize save file: " + error.message()};
+    }
+}
+
+LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
+    std::ifstream stream{path};
+    if (!stream) {
+        throw SaveGameError{"cannot open save file: " + path.string()};
+    }
+    try {
+        const Json document = Json::parse(stream);
+        const std::int32_t version = document.at("schema_version").get<std::int32_t>();
+        if (version != schema_version) {
+            throw SaveGameError{
+                "unsupported save schema version " + std::to_string(version) +
+                "; expected " + std::to_string(schema_version)
+            };
+        }
+        const Json& clock = document.at("clock");
+        GameState state{GameClock{
+            clock.at("year").get<std::int32_t>(),
+            clock.at("month").get<std::int32_t>(),
+        }};
+        for (const Json& entry : document.at("countries")) {
+            state.add_country(Country{
+                CountryId{entry.at("id").get<std::string>()},
+                entry.at("name").get<std::string>(),
+                entry.at("color_rgb").get<std::uint32_t>(),
+                entry.at("treasury").get<std::int64_t>(),
+            });
+        }
+        for (const Json& entry : document.at("provinces")) {
+            std::vector<ProvinceId> neighbors;
+            for (const Json& neighbor : entry.at("neighbors")) {
+                neighbors.emplace_back(neighbor.get<std::string>());
+            }
+            state.add_province(Province{
+                ProvinceId{entry.at("id").get<std::string>()},
+                entry.at("name").get<std::string>(),
+                CountryId{entry.at("owner_id").get<std::string>()},
+                entry.at("population").get<std::int64_t>(),
+                entry.at("soldier_population").get<std::int64_t>(),
+                entry.at("economy").get<std::int64_t>(),
+                std::move(neighbors),
+                entry.at("population_growth_remainder").get<std::int64_t>(),
+            });
+        }
+        for (const Json& entry : document.at("roads")) {
+            state.set_road_level(
+                ProvinceId{entry.at("province_a").get<std::string>()},
+                ProvinceId{entry.at("province_b").get<std::string>()},
+                parse_road_level(entry.at("level").get<std::string>())
+            );
+        }
+        for (const Json& entry : document.at("armies")) {
+            const ArmyId id{entry.at("id").get<std::string>()};
+            const auto [iterator, inserted] = state.armies_.emplace(
+                id,
+                Army{
+                    id,
+                    CountryId{entry.at("owner_id").get<std::string>()},
+                    ProvinceId{entry.at("province_id").get<std::string>()},
+                    entry.at("manpower").get<std::int64_t>(),
+                    entry.at("movement_points").get<std::int32_t>(),
+                }
+            );
+            static_cast<void>(iterator);
+            if (!inserted) {
+                throw SaveGameError{"duplicate army ID in save: " + id.value()};
+            }
+        }
+        for (const Json& entry : document.at("occupations")) {
+            state.set_occupation(
+                ProvinceId{entry.at("province_id").get<std::string>()},
+                CountryId{entry.at("controller_id").get<std::string>()}
+            );
+        }
+        for (const Json& entry : document.at("relations")) {
+            state.set_diplomatic_status(
+                CountryId{entry.at("country_a").get<std::string>()},
+                CountryId{entry.at("country_b").get<std::string>()},
+                parse_diplomatic_status(entry.at("status").get<std::string>())
+            );
+        }
+        for (const Json& entry : document.at("technologies")) {
+            CountryTechnology* technology = state.find_technology(
+                CountryId{entry.at("country_id").get<std::string>()}
+            );
+            if (technology == nullptr) {
+                throw SaveGameError{"technology references an unknown country"};
+            }
+            technology->economy_level = entry.at("economy_level").get<std::int32_t>();
+            technology->military_level = entry.at("military_level").get<std::int32_t>();
+            technology->roads_level = entry.at("roads_level").get<std::int32_t>();
+        }
+        state.next_army_sequence_ = document.at("next_army_sequence").get<std::uint64_t>();
+        const std::vector<std::string> issues = state.validate();
+        if (!issues.empty()) {
+            throw SaveGameError{join_issues(issues)};
+        }
+
+        std::optional<CountryId> human_country_id;
+        if (!document.at("human_country_id").is_null()) {
+            human_country_id.emplace(
+                document.at("human_country_id").get<std::string>()
+            );
+            if (state.find_country(*human_country_id) == nullptr) {
+                throw SaveGameError{"human country does not exist in loaded state"};
+            }
+        }
+        const std::uint64_t next_event_sequence =
+            document.at("next_event_sequence").get<std::uint64_t>();
+        if (next_event_sequence == 0 || state.next_army_sequence_ == 0) {
+            throw SaveGameError{"saved sequence counters must be positive"};
+        }
+        LoadedGame loaded{
+            std::move(state),
+            next_event_sequence,
+            std::move(human_country_id),
+        };
+        return loaded;
+    } catch (const SaveGameError&) {
+        throw;
+    } catch (const std::exception& error) {
+        throw SaveGameError{"invalid save file '" + path.string() + "': " + error.what()};
+    }
+}
+
+} // namespace province::core

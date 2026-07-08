@@ -2,6 +2,7 @@
 
 #include "province/core/game_clock.hpp"
 #include "province/core/scenario_loader.hpp"
+#include "province/core/save_game.hpp"
 #include "province/core/version.hpp"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -297,6 +298,58 @@ godot::Dictionary ProvinceBridge::research_technology(
             response["current_level"] = research.current_level;
             response["cost"] = research.cost;
         }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
+godot::Dictionary ProvinceBridge::save_game(const godot::String& path) const {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const godot::CharString utf8_path = path.utf8();
+        province::core::SaveGameSerializer::save(
+            std::filesystem::u8path(utf8_path.get_data()),
+            *state_,
+            command_processor_.next_event_sequence(),
+            command_processor_.human_country_id()
+        );
+        response["accepted"] = true;
+        response["error"] = godot::String{};
+        response["path"] = path;
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
+godot::Dictionary ProvinceBridge::load_game(const godot::String& path) {
+    godot::Dictionary response;
+    try {
+        const godot::CharString utf8_path = path.utf8();
+        province::core::LoadedGame loaded = province::core::SaveGameSerializer::load(
+            std::filesystem::u8path(utf8_path.get_data())
+        );
+        province::core::CommandProcessor restored_processor;
+        restored_processor.set_next_event_sequence(loaded.next_event_sequence);
+        if (loaded.human_country_id.has_value()) {
+            restored_processor.enable_ai(*loaded.human_country_id);
+        }
+        state_ = std::move(loaded.state);
+        command_processor_ = std::move(restored_processor);
+        last_error_ = godot::String{};
+        response["accepted"] = true;
+        response["error"] = godot::String{};
+        response["path"] = path;
+        response["year"] = state_->clock().year();
+        response["month"] = state_->clock().month();
     } catch (const std::exception& error) {
         response["accepted"] = false;
         response["error"] = godot::String::utf8(error.what());
@@ -687,6 +740,14 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("research_technology", "country_id", "track"),
         &ProvinceBridge::research_technology
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("save_game", "path"),
+        &ProvinceBridge::save_game
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("load_game", "path"),
+        &ProvinceBridge::load_game
     );
 }
 

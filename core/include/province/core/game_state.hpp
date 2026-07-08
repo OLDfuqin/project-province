@@ -16,6 +16,8 @@
 
 namespace province::core {
 
+class SaveGameSerializer;
+
 class GameState final {
 public:
     explicit GameState(GameClock clock);
@@ -89,6 +91,7 @@ public:
     [[nodiscard]] std::vector<std::string> validate() const;
 
 private:
+    friend class SaveGameSerializer;
     GameClock clock_;
     std::map<CountryId, Country> countries_;
     std::map<CountryId, CountryTechnology> technologies_;

@@ -61,6 +61,19 @@ theme_override_font_sizes/font_size = 18
 text = "Connecting to simulation core..."
 horizontal_alignment = 1
 
+[node name="SaveControls" type="HBoxContainer" parent="Center"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="Save" type="Button" parent="Center/SaveControls"]
+layout_mode = 2
+text = "Quick Save"
+
+[node name="Load" type="Button" parent="Center/SaveControls"]
+layout_mode = 2
+text = "Quick Load"
+
 [node name="CountryList" type="VBoxContainer" parent="Center"]
 layout_mode = 2
 theme_override_constants/separation = 8

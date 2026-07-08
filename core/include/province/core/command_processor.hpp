@@ -33,6 +33,9 @@ public:
     void enable_ai(CountryId human_country_id);
     void disable_ai() noexcept;
     [[nodiscard]] bool ai_enabled() const noexcept;
+    [[nodiscard]] const std::optional<CountryId>& human_country_id() const noexcept;
+    [[nodiscard]] std::uint64_t next_event_sequence() const noexcept;
+    void set_next_event_sequence(std::uint64_t sequence);
 
 private:
     [[nodiscard]] CommandResult execute_advance_turn(

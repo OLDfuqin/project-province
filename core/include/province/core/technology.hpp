@@ -11,6 +11,8 @@ enum class TechnologyTrack : std::uint8_t {
 };
 
 struct CountryTechnology final {
+    static constexpr std::int32_t maximum_level = 3;
+
     std::int32_t economy_level{};
     std::int32_t military_level{};
     std::int32_t roads_level{};

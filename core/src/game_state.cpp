@@ -326,6 +326,35 @@ std::vector<std::string> GameState::validate() const {
         if (army.manpower <= 0) {
             issues.push_back("army '" + army_id.value() + "' has non-positive manpower");
         }
+        if (army.movement_points < 0) {
+            issues.push_back("army '" + army_id.value() + "' has negative movement points");
+        }
+    }
+    for (const auto& [country_id, country] : countries_) {
+        static_cast<void>(country);
+        if (!technologies_.contains(country_id)) {
+            issues.push_back("country '" + country_id.value() + "' has no technology state");
+        }
+    }
+    for (const auto& [country_id, technology] : technologies_) {
+        if (!countries_.contains(country_id)) {
+            issues.push_back("technology state references unknown country '" + country_id.value() + "'");
+        }
+        const bool invalid_level =
+            technology.economy_level < 0 ||
+            technology.military_level < 0 ||
+            technology.roads_level < 0 ||
+            technology.economy_level > CountryTechnology::maximum_level ||
+            technology.military_level > CountryTechnology::maximum_level ||
+            technology.roads_level > CountryTechnology::maximum_level;
+        if (invalid_level) {
+            issues.push_back("country '" + country_id.value() + "' has an invalid technology level");
+        }
+    }
+    for (const auto& [province_id, controller_id] : occupations_) {
+        if (!provinces_.contains(province_id) || !countries_.contains(controller_id)) {
+            issues.push_back("occupation references an unknown province or country");
+        }
     }
     return issues;
 }

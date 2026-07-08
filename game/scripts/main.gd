@@ -1,6 +1,7 @@
 extends Control
 
 const PLAYER_COUNTRY_ID := "auroria"
+const QUICK_SAVE_PATH := "user://quick_save.json"
 
 @onready var bridge := $SimulationBridge
 @onready var date_label: Label = $Center/TurnControls/DateLabel
@@ -44,6 +45,8 @@ func _ready() -> void:
     $Center/TechnologyControls/Buttons/Roads.pressed.connect(
         _on_research_technology.bind("roads")
     )
+    $Center/SaveControls/Save.pressed.connect(_on_quick_save_pressed)
+    $Center/SaveControls/Load.pressed.connect(_on_quick_load_pressed)
     $Center/ArmyControls/MovementButtons/ClearMovement.pressed.connect(
         _clear_movement_selection
     )
@@ -157,6 +160,31 @@ func _refresh_technology_status() -> void:
             technology["roads_level"],
         ]
         return
+
+
+func _on_quick_save_pressed() -> void:
+    var path := ProjectSettings.globalize_path(QUICK_SAVE_PATH)
+    var result: Dictionary = bridge.save_game(path)
+    if not result.get("accepted", false):
+        event_log.text = "Save failed: %s" % result.get("error", "unknown error")
+        return
+    event_log.text = "Game saved to quick_save.json"
+
+
+func _on_quick_load_pressed() -> void:
+    var path := ProjectSettings.globalize_path(QUICK_SAVE_PATH)
+    var result: Dictionary = bridge.load_game(path)
+    if not result.get("accepted", false):
+        event_log.text = "Load failed: %s" % result.get("error", "unknown error")
+        return
+    _clear_movement_selection()
+    _clear_road_selection()
+    _refresh_date()
+    _refresh_country_list()
+    _refresh_map_data()
+    _refresh_province_summary()
+    _refresh_technology_status()
+    event_log.text = "Game loaded from quick_save.json"
 
 
 func _refresh_map_data() -> void:
