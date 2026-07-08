@@ -194,7 +194,19 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
                 action["type"] = "army_moved";
                 action["army_id"] = godot::String::utf8(moved.army_id.value().c_str());
             } else if (event.type == province::core::GameEventType::battle_resolved) {
+                const auto& battle =
+                    std::get<province::core::BattleResolution>(event.payload);
                 action["type"] = "battle_resolved";
+                action["province_id"] =
+                    godot::String::utf8(battle.province_id.value().c_str());
+                action["battle_occurred"] = battle.occurred;
+                action["attacker_won"] = battle.attacker_won;
+                action["province_occupied"] = battle.province_occupied;
+                std::int64_t casualties = 0;
+                for (const province::core::ArmyBattleOutcome& outcome : battle.armies) {
+                    casualties += outcome.casualties;
+                }
+                action["casualties"] = casualties;
             } else if (event.type == province::core::GameEventType::technology_researched) {
                 const auto& research =
                     std::get<province::core::TechnologyResearchResult>(event.payload);

@@ -111,7 +111,15 @@ func _record_ai_actions(actions: Array) -> void:
             "army_moved":
                 _record_event("AI moved %s" % action.get("army_id", "?"))
             "battle_resolved":
-                _record_event("AI battle resolved")
+                var battle_text := "AI occupied %s without resistance" % action.get("province_id", "?")
+                if action.get("battle_occurred", false):
+                    battle_text = "AI battle at %s: %s, casualties %d%s" % [
+                        action.get("province_id", "?"),
+                        "attacker victory" if action.get("attacker_won", false) else "defender victory",
+                        action.get("casualties", 0),
+                        ", occupied" if action.get("province_occupied", false) else "",
+                    ]
+                _record_event(battle_text)
             "technology_researched":
                 _record_event("AI %s researched technology" % action.get("country_id", "?"))
 
@@ -133,6 +141,30 @@ func _refresh_country_list() -> void:
             Color8((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)
         )
         $Center/CountryList.add_child(label)
+
+
+func _battle_report(result: Dictionary) -> String:
+    if not result.get("battle_occurred", false) and not result.get("province_occupied", false):
+        return ""
+    if not result.get("battle_occurred", false):
+        return "Province occupied without resistance"
+    var total_casualties := 0
+    var details: Array[String] = []
+    for outcome: Dictionary in result.get("battle_outcomes", []):
+        var casualties := int(outcome.get("casualties", 0))
+        total_casualties += casualties
+        var suffix := ""
+        if outcome.get("destroyed", false):
+            suffix = " destroyed"
+        elif String(outcome.get("retreat_province", "")) != "":
+            suffix = " retreated to %s" % outcome["retreat_province"]
+        details.append("%s -%d%s" % [outcome.get("army_id", "?"), casualties, suffix])
+    return "Battle: %s; casualties %d%s | %s" % [
+        "attacker victory" if result.get("attacker_won", false) else "defender victory",
+        total_casualties,
+        "; province occupied" if result.get("province_occupied", false) else "",
+        ", ".join(details),
+    ]
 
 
 func _refresh_country_details() -> void:
@@ -536,17 +568,9 @@ func _on_move_army_pressed() -> void:
         result["movement_cost"],
         result["remaining_points"],
     ]
-    if result.get("battle_occurred", false):
-        var total_casualties := 0
-        for outcome: Dictionary in result.get("battle_outcomes", []):
-            total_casualties += int(outcome.get("casualties", 0))
-        event_log.text = "Battle resolved: %s; casualties %d%s" % [
-            "attacker victory" if result.get("attacker_won", false) else "defender victory",
-            total_casualties,
-            "; province occupied" if result.get("province_occupied", false) else "",
-        ]
-    elif result.get("province_occupied", false):
-        event_log.text = "Province occupied without resistance"
+    var battle_report := _battle_report(result)
+    if not battle_report.is_empty():
+        event_log.text = battle_report
     _record_event(event_log.text)
     movement_origin_id = result.get("army_province_id", result["destination"])
     movement_destination_id = ""
