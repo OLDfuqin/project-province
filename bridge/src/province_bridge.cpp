@@ -192,6 +192,12 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
                 action["army_id"] = godot::String::utf8(moved.army_id.value().c_str());
             } else if (event.type == province::core::GameEventType::battle_resolved) {
                 action["type"] = "battle_resolved";
+            } else if (event.type == province::core::GameEventType::technology_researched) {
+                const auto& research =
+                    std::get<province::core::TechnologyResearchResult>(event.payload);
+                action["type"] = "technology_researched";
+                action["country_id"] =
+                    godot::String::utf8(research.country_id.value().c_str());
             } else {
                 action["type"] = "other";
             }
@@ -219,6 +225,83 @@ void ProvinceBridge::set_ai_enabled(
 
 bool ProvinceBridge::is_ai_enabled() const noexcept {
     return command_processor_.ai_enabled();
+}
+
+godot::Array ProvinceBridge::get_technology_summaries() const {
+    godot::Array summaries;
+    if (!state_) {
+        return summaries;
+    }
+    for (const auto& [country_id, technology] : state_->technologies()) {
+        godot::Dictionary summary;
+        summary["country_id"] = godot::String::utf8(country_id.value().c_str());
+        summary["economy_level"] = technology.economy_level;
+        summary["military_level"] = technology.military_level;
+        summary["roads_level"] = technology.roads_level;
+        summary["economy_cost"] = technology.economy_level <
+                province::core::TechnologySystem::maximum_level
+            ? province::core::TechnologySystem::research_cost(technology.economy_level)
+            : 0;
+        summary["military_cost"] = technology.military_level <
+                province::core::TechnologySystem::maximum_level
+            ? province::core::TechnologySystem::research_cost(technology.military_level)
+            : 0;
+        summary["roads_cost"] = technology.roads_level <
+                province::core::TechnologySystem::maximum_level
+            ? province::core::TechnologySystem::research_cost(technology.roads_level)
+            : 0;
+        summaries.push_back(summary);
+    }
+    return summaries;
+}
+
+godot::Dictionary ProvinceBridge::research_technology(
+    const godot::String& country_id,
+    const godot::String& track
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const std::string track_name = track.utf8().get_data();
+        province::core::TechnologyTrack technology_track;
+        if (track_name == "economy") {
+            technology_track = province::core::TechnologyTrack::economy;
+        } else if (track_name == "military") {
+            technology_track = province::core::TechnologyTrack::military;
+        } else if (track_name == "roads") {
+            technology_track = province::core::TechnologyTrack::roads;
+        } else {
+            response["accepted"] = false;
+            response["error"] = "technology track must be economy, military or roads";
+            return response;
+        }
+        const province::core::CommandResult result = command_processor_.execute(
+            *state_,
+            province::core::ResearchTechnologyCommand{
+                province::core::CountryId{country_id.utf8().get_data()},
+                technology_track,
+            }
+        );
+        response["accepted"] = result.accepted;
+        response["error"] = godot::String::utf8(result.error.c_str());
+        if (result.accepted) {
+            const province::core::GameEvent& event = result.events.front();
+            const auto& research =
+                std::get<province::core::TechnologyResearchResult>(event.payload);
+            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            response["previous_level"] = research.previous_level;
+            response["current_level"] = research.current_level;
+            response["cost"] = research.cost;
+        }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
 }
 
 godot::Dictionary ProvinceBridge::build_road(
@@ -596,6 +679,14 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("is_ai_enabled"),
         &ProvinceBridge::is_ai_enabled
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_technology_summaries"),
+        &ProvinceBridge::get_technology_summaries
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("research_technology", "country_id", "track"),
+        &ProvinceBridge::research_technology
     );
 }
 

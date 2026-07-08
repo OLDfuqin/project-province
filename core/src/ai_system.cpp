@@ -1,6 +1,8 @@
 #include "province/core/ai_system.hpp"
 #include "province/core/movement_system.hpp"
+#include "province/core/technology_system.hpp"
 
+#include <array>
 #include <map>
 #include <optional>
 
@@ -36,6 +38,31 @@ std::vector<AiDecision> AiSystem::plan_month(
                         RecruitArmyCommand{country_id, province_id, recruitment_batch},
                     });
                     break;
+                }
+            }
+        }
+
+        if (military_strength[country_id] >= desired_manpower) {
+            const CountryTechnology* technology = state.find_technology(country_id);
+            if (technology != nullptr) {
+                constexpr std::array tracks{
+                    TechnologyTrack::economy,
+                    TechnologyTrack::military,
+                    TechnologyTrack::roads,
+                };
+                TechnologyTrack selected = tracks.front();
+                for (const TechnologyTrack track : tracks) {
+                    if (technology->level(track) < technology->level(selected)) {
+                        selected = track;
+                    }
+                }
+                const std::int32_t level = technology->level(selected);
+                if (level < TechnologySystem::maximum_level &&
+                    country.treasury >= TechnologySystem::research_cost(level)) {
+                    decisions.push_back(AiDecision{
+                        country_id,
+                        ResearchTechnologyCommand{country_id, selected},
+                    });
                 }
             }
         }

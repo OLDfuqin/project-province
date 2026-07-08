@@ -2,6 +2,7 @@
 
 #include "province/core/stable_id.hpp"
 #include "province/core/diplomacy.hpp"
+#include "province/core/technology.hpp"
 
 #include <cstdint>
 #include <variant>
@@ -40,6 +41,11 @@ struct MakePeaceCommand final {
     PeaceSettlementPolicy policy{PeaceSettlementPolicy::restore_legal_owners};
 };
 
+struct ResearchTechnologyCommand final {
+    CountryId country_id;
+    TechnologyTrack track{TechnologyTrack::economy};
+};
+
 using GameCommand =
     std::variant<
         AdvanceTurnCommand,
@@ -47,7 +53,8 @@ using GameCommand =
         RecruitArmyCommand,
         MoveArmyCommand,
         DeclareWarCommand,
-        MakePeaceCommand
+        MakePeaceCommand,
+        ResearchTechnologyCommand
     >;
 
 } // namespace province::core

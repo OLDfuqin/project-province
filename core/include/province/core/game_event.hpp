@@ -7,6 +7,7 @@
 #include "province/core/movement_system.hpp"
 #include "province/core/peace_system.hpp"
 #include "province/core/road.hpp"
+#include "province/core/technology_system.hpp"
 
 #include <cstdint>
 #include <variant>
@@ -23,6 +24,7 @@ enum class GameEventType : std::uint8_t {
     road_built,
     war_declared,
     peace_made,
+    technology_researched,
     turn_advanced,
 };
 
@@ -89,7 +91,8 @@ using GameEventPayload =
         RoadBuiltEvent,
         TurnAdvancedEvent,
         WarDeclaredEvent,
-        PeaceSettlementResult
+        PeaceSettlementResult,
+        TechnologyResearchResult
     >;
 
 struct GameEvent final {

@@ -35,10 +35,34 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
                 return execute_declare_war(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, MakePeaceCommand>) {
                 return execute_make_peace(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, ResearchTechnologyCommand>) {
+                return execute_research_technology(state, concrete_command);
             }
         },
         command
     );
+}
+
+CommandResult CommandProcessor::execute_research_technology(
+    GameState& state,
+    const ResearchTechnologyCommand& command
+) {
+    GameState working_state = state;
+    TechnologyResearchResult research = technology_system_.research(
+        working_state,
+        command.country_id,
+        command.track
+    );
+    if (!research.accepted) {
+        return {false, research.error, {}};
+    }
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::technology_researched,
+        research,
+    };
+    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
 }
 
 CommandResult CommandProcessor::execute_make_peace(

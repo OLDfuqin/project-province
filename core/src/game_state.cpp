@@ -21,6 +21,7 @@ void GameState::add_country(Country country) {
     if (!inserted) {
         throw std::invalid_argument{"duplicate country ID: " + iterator->first.value()};
     }
+    technologies_.emplace(iterator->first, CountryTechnology{});
 }
 
 void GameState::add_province(Province province) {
@@ -94,6 +95,20 @@ std::size_t GameState::province_count() const noexcept {
 
 const std::map<CountryId, Country>& GameState::countries() const noexcept {
     return countries_;
+}
+
+const CountryTechnology* GameState::find_technology(const CountryId& country_id) const noexcept {
+    const auto iterator = technologies_.find(country_id);
+    return iterator == technologies_.end() ? nullptr : &iterator->second;
+}
+
+CountryTechnology* GameState::find_technology(const CountryId& country_id) noexcept {
+    const auto iterator = technologies_.find(country_id);
+    return iterator == technologies_.end() ? nullptr : &iterator->second;
+}
+
+const std::map<CountryId, CountryTechnology>& GameState::technologies() const noexcept {
+    return technologies_;
 }
 
 const std::map<ProvinceId, Province>& GameState::provinces() const noexcept {

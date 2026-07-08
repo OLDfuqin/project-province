@@ -35,6 +35,15 @@ func _ready() -> void:
     move_army_button.pressed.connect(_on_move_army_pressed)
     $Center/DiplomacyControls/DeclareWar.pressed.connect(_on_declare_war_pressed)
     $Center/DiplomacyControls/MakePeace.pressed.connect(_on_make_peace_pressed)
+    $Center/TechnologyControls/Buttons/Economy.pressed.connect(
+        _on_research_technology.bind("economy")
+    )
+    $Center/TechnologyControls/Buttons/Military.pressed.connect(
+        _on_research_technology.bind("military")
+    )
+    $Center/TechnologyControls/Buttons/Roads.pressed.connect(
+        _on_research_technology.bind("roads")
+    )
     $Center/ArmyControls/MovementButtons/ClearMovement.pressed.connect(
         _clear_movement_selection
     )
@@ -53,6 +62,7 @@ func _ready() -> void:
     _refresh_date()
 
     _refresh_country_list()
+    _refresh_technology_status()
     _populate_war_targets()
     peace_policy.add_item("Restore borders")
     peace_policy.set_item_metadata(0, false)
@@ -123,6 +133,30 @@ func _on_make_peace_pressed() -> void:
     _clear_movement_selection()
     _refresh_map_data()
     _refresh_country_list()
+
+
+func _on_research_technology(track: String) -> void:
+    var result: Dictionary = bridge.research_technology(PLAYER_COUNTRY_ID, track)
+    if not result.get("accepted", false):
+        event_log.text = "Research failed: %s" % result.get("error", "unknown error")
+        return
+    event_log.text = "Technology advanced to level %d; cost %d" % [
+        result["current_level"], result["cost"]
+    ]
+    _refresh_country_list()
+    _refresh_technology_status()
+
+
+func _refresh_technology_status() -> void:
+    for technology: Dictionary in bridge.get_technology_summaries():
+        if technology["country_id"] != PLAYER_COUNTRY_ID:
+            continue
+        $Center/TechnologyControls/Status.text = "Economy %d | Military %d | Roads %d" % [
+            technology["economy_level"],
+            technology["military_level"],
+            technology["roads_level"],
+        ]
+        return
 
 
 func _refresh_map_data() -> void:

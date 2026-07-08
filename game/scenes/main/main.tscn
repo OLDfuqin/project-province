@@ -90,6 +90,32 @@ theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 
+[node name="TechnologyControls" type="VBoxContainer" parent="Center"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Status" type="Label" parent="Center/TechnologyControls"]
+layout_mode = 2
+text = "Technology"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="Center/TechnologyControls"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 6
+
+[node name="Economy" type="Button" parent="Center/TechnologyControls/Buttons"]
+layout_mode = 2
+text = "Economy"
+
+[node name="Military" type="Button" parent="Center/TechnologyControls/Buttons"]
+layout_mode = 2
+text = "Military"
+
+[node name="Roads" type="Button" parent="Center/TechnologyControls/Buttons"]
+layout_mode = 2
+text = "Roads"
+
 [node name="SelectionStatus" type="Label" parent="Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.88, 0.95, 1)

@@ -39,6 +39,8 @@ int main() {
     using province::core::DeclareWarCommand;
     using province::core::MakePeaceCommand;
     using province::core::PeaceSettlementPolicy;
+    using province::core::ResearchTechnologyCommand;
+    using province::core::TechnologyTrack;
     using province::core::ArmyRecruitedEvent;
     using province::core::RoadBuiltEvent;
     using province::core::RoadLevel;
@@ -586,6 +588,104 @@ int main() {
         annual_province->population_growth_remainder !=
             monthly_province->population_growth_remainder) {
         std::cerr << "Population growth differs between 12-month and monthly turns\n";
+        return 1;
+    }
+
+    GameState economy_tech_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor economy_tech_processor;
+    const CommandResult economy_research = economy_tech_processor.execute(
+        economy_tech_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::economy}
+    );
+    [[maybe_unused]] const CommandResult economy_tech_month = economy_tech_processor.execute(
+        economy_tech_state,
+        AdvanceTurnCommand{1}
+    );
+    if (!economy_research.accepted || economy_tech_state.find_technology(
+            CountryId{"auroria"})->economy_level != 1 ||
+        economy_tech_state.find_country(CountryId{"auroria"})->treasury != 9'165) {
+        std::cerr << "Economy technology did not increase monthly income by ten percent\n";
+        return 1;
+    }
+    [[maybe_unused]] const CommandResult economy_level_two = economy_tech_processor.execute(
+        economy_tech_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::economy}
+    );
+    [[maybe_unused]] const CommandResult economy_level_three = economy_tech_processor.execute(
+        economy_tech_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::economy}
+    );
+    const CommandResult economy_over_maximum = economy_tech_processor.execute(
+        economy_tech_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::economy}
+    );
+    if (economy_over_maximum.accepted) {
+        std::cerr << "Technology research exceeded the maximum level\n";
+        return 1;
+    }
+
+    GameState roads_tech_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor roads_tech_processor;
+    const CommandResult roads_research = roads_tech_processor.execute(
+        roads_tech_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::roads}
+    );
+    const CommandResult roads_army = roads_tech_processor.execute(
+        roads_tech_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 500}
+    );
+    const ArmyId roads_army_id =
+        std::get<ArmyRecruitedEvent>(roads_army.events.front().payload).army_id;
+    const CommandResult discounted_road = roads_tech_processor.execute(
+        roads_tech_state,
+        BuildRoadCommand{
+            CountryId{"auroria"}, ProvinceId{"northreach"}, ProvinceId{"westmark"}
+        }
+    );
+    [[maybe_unused]] const CommandResult roads_tech_month = roads_tech_processor.execute(
+        roads_tech_state,
+        AdvanceTurnCommand{1}
+    );
+    if (!roads_research.accepted || !discounted_road.accepted ||
+        std::get<RoadBuiltEvent>(discounted_road.events.front().payload).cost != 400 ||
+        roads_tech_state.find_army(roads_army_id)->movement_points != 3) {
+        std::cerr << "Road technology did not improve cost and movement allowance\n";
+        return 1;
+    }
+
+    GameState military_tech_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor military_tech_processor;
+    const CommandResult military_attacker = military_tech_processor.execute(
+        military_tech_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 500}
+    );
+    [[maybe_unused]] const CommandResult military_defender = military_tech_processor.execute(
+        military_tech_state,
+        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"redpass"}, 525}
+    );
+    const ArmyId military_attacker_id =
+        std::get<ArmyRecruitedEvent>(military_attacker.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult military_research = military_tech_processor.execute(
+        military_tech_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::military}
+    );
+    [[maybe_unused]] const CommandResult military_war = military_tech_processor.execute(
+        military_tech_state,
+        DeclareWarCommand{CountryId{"auroria"}, CountryId{"solmere"}}
+    );
+    [[maybe_unused]] const CommandResult military_month = military_tech_processor.execute(
+        military_tech_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult technology_battle = military_tech_processor.execute(
+        military_tech_state,
+        MoveArmyCommand{military_attacker_id, ProvinceId{"redpass"}}
+    );
+    const auto& technology_battle_result =
+        std::get<province::core::BattleResolution>(technology_battle.events.back().payload);
+    if (!technology_battle.accepted || !technology_battle_result.attacker_won ||
+        !technology_battle_result.province_occupied) {
+        std::cerr << "Military technology did not contribute to effective strength\n";
         return 1;
     }
 

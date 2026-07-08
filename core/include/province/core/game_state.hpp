@@ -6,6 +6,7 @@
 #include "province/core/game_clock.hpp"
 #include "province/core/province.hpp"
 #include "province/core/road.hpp"
+#include "province/core/technology.hpp"
 
 #include <cstddef>
 #include <map>
@@ -31,6 +32,13 @@ public:
     [[nodiscard]] std::size_t country_count() const noexcept;
     [[nodiscard]] std::size_t province_count() const noexcept;
     [[nodiscard]] const std::map<CountryId, Country>& countries() const noexcept;
+    [[nodiscard]] const CountryTechnology* find_technology(
+        const CountryId& country_id
+    ) const noexcept;
+    [[nodiscard]] CountryTechnology* find_technology(
+        const CountryId& country_id
+    ) noexcept;
+    [[nodiscard]] const std::map<CountryId, CountryTechnology>& technologies() const noexcept;
     [[nodiscard]] const std::map<ProvinceId, Province>& provinces() const noexcept;
     [[nodiscard]] bool are_adjacent(
         const ProvinceId& province_a,
@@ -83,6 +91,7 @@ public:
 private:
     GameClock clock_;
     std::map<CountryId, Country> countries_;
+    std::map<CountryId, CountryTechnology> technologies_;
     std::map<ProvinceId, Province> provinces_;
     std::map<ProvinceConnectionKey, RoadLevel> roads_;
     std::map<ArmyId, Army> armies_;

@@ -28,13 +28,19 @@ RoadBuildResult RoadSystem::build_paved_road(
     if (state.road_level(province_a, province_b) != RoadLevel::none) {
         return {false, "a paved road already exists on this connection", 0};
     }
-    if (country->treasury < paved_road_cost) {
+    const CountryTechnology* technology = state.find_technology(country_id);
+    if (technology == nullptr) {
+        return {false, "road builder has no technology state", 0};
+    }
+    const std::int64_t cost =
+        paved_road_cost - 100 * technology->roads_level;
+    if (country->treasury < cost) {
         return {false, "country treasury is insufficient to build the road", 0};
     }
 
-    country->treasury -= paved_road_cost;
+    country->treasury -= cost;
     state.set_road_level(province_a, province_b, RoadLevel::paved);
-    return {true, {}, paved_road_cost};
+    return {true, {}, cost};
 }
 
 } // namespace province::core

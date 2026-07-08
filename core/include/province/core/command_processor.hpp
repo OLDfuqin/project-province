@@ -11,6 +11,7 @@
 #include "province/core/peace_system.hpp"
 #include "province/core/movement_system.hpp"
 #include "province/core/road_system.hpp"
+#include "province/core/technology_system.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -58,6 +59,10 @@ private:
         GameState& state,
         const MakePeaceCommand& command
     );
+    [[nodiscard]] CommandResult execute_research_technology(
+        GameState& state,
+        const ResearchTechnologyCommand& command
+    );
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;
@@ -68,6 +73,7 @@ private:
     BattleSystem battle_system_;
     PeaceSystem peace_system_;
     AiSystem ai_system_;
+    TechnologySystem technology_system_;
     std::optional<CountryId> human_country_id_;
 };
 

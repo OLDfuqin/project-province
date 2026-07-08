@@ -13,14 +13,20 @@ MonthlyMovementReport MovementSystem::grant_monthly_points(GameState& state) con
         if (army == nullptr) {
             throw std::logic_error{"army disappeared during movement point grant"};
         }
+        const CountryTechnology* technology = state.find_technology(army->owner_id);
+        if (technology == nullptr) {
+            throw std::logic_error{"army owner has no technology state"};
+        }
+        const std::int32_t granted_points =
+            monthly_movement_points + technology->roads_level;
         if (army_snapshot.movement_points >
-            std::numeric_limits<std::int32_t>::max() - monthly_movement_points) {
+            std::numeric_limits<std::int32_t>::max() - granted_points) {
             throw std::overflow_error{"army movement point overflow"};
         }
-        army->movement_points += monthly_movement_points;
+        army->movement_points += granted_points;
         report.grants.push_back(ArmyMovementGrant{
             army_id,
-            monthly_movement_points,
+            granted_points,
             army->movement_points,
         });
     }

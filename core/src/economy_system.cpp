@@ -14,14 +14,21 @@ MonthlyEconomyReport EconomySystem::resolve_month(GameState& state) const {
     }
 
     for (const auto& [province_id, province] : state.provinces()) {
-        auto income = income_by_country.find(state.controller_of(province_id));
+        const CountryId controller = state.controller_of(province_id);
+        auto income = income_by_country.find(controller);
         if (income == income_by_country.end()) {
             throw std::logic_error{"cannot resolve economy for province with unknown owner"};
         }
-        if (province.economy > std::numeric_limits<std::int64_t>::max() - income->second) {
+        const CountryTechnology* technology = state.find_technology(controller);
+        if (technology == nullptr) {
+            throw std::logic_error{"cannot resolve economy without country technology"};
+        }
+        const std::int64_t province_income =
+            province.economy * (100 + 10 * technology->economy_level) / 100;
+        if (province_income > std::numeric_limits<std::int64_t>::max() - income->second) {
             throw std::overflow_error{"monthly country income overflow"};
         }
-        income->second += province.economy;
+        income->second += province_income;
     }
 
     MonthlyEconomyReport report;

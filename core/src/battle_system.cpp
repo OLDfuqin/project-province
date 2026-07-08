@@ -5,6 +5,22 @@
 
 namespace province::core {
 
+namespace {
+
+std::int64_t effective_strength(
+    const GameState& state,
+    const CountryId& country_id,
+    const std::int64_t manpower
+) {
+    const CountryTechnology* technology = state.find_technology(country_id);
+    if (technology == nullptr) {
+        throw std::logic_error{"army owner has no technology state"};
+    }
+    return manpower * (100 + 10 * technology->military_level) / 100;
+}
+
+} // namespace
+
 std::optional<ProvinceId> BattleSystem::find_retreat_province(
     const GameState& state,
     const CountryId& country_id,
@@ -37,14 +53,14 @@ BattleResolution BattleSystem::resolve_entry(
     const ProvinceId battle_province = attacker->province_id;
     const CountryId attacker_country = attacker->owner_id;
     std::vector<ArmyId> defender_ids;
-    std::int64_t defender_manpower = 0;
+    std::int64_t defender_strength = 0;
     CountryId defender_country = state.controller_of(battle_province);
     for (const auto& [army_id, army] : state.armies()) {
         if (army_id != attacker_army_id && army.province_id == battle_province &&
             army.owner_id != attacker_country &&
             state.are_at_war(attacker_country, army.owner_id)) {
             defender_ids.push_back(army_id);
-            defender_manpower += army.manpower;
+            defender_strength += effective_strength(state, army.owner_id, army.manpower);
             defender_country = army.owner_id;
         }
     }
@@ -60,14 +76,16 @@ BattleResolution BattleSystem::resolve_entry(
     }
 
     const std::int64_t attacker_manpower = attacker->manpower;
-    const bool attacker_won = attacker_manpower > defender_manpower;
+    const std::int64_t attacker_strength =
+        effective_strength(state, attacker_country, attacker_manpower);
+    const bool attacker_won = attacker_strength > defender_strength;
     const std::int64_t attacker_casualties = std::min(
         attacker_manpower,
-        std::max<std::int64_t>(1, defender_manpower / 4)
+        std::max<std::int64_t>(1, defender_strength / 4)
     );
     const std::int64_t defender_casualty_budget = std::max<std::int64_t>(
         1,
-        attacker_manpower / 4
+        attacker_strength / 4
     );
 
     BattleResolution result{

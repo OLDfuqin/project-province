@@ -62,6 +62,11 @@ public:
     );
     void set_ai_enabled(bool enabled, const godot::String& human_country_id);
     [[nodiscard]] bool is_ai_enabled() const noexcept;
+    [[nodiscard]] godot::Array get_technology_summaries() const;
+    [[nodiscard]] godot::Dictionary research_technology(
+        const godot::String& country_id,
+        const godot::String& track
+    );
 
 protected:
     static void _bind_methods();
