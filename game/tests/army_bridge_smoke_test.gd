@@ -118,6 +118,29 @@ func _initialize() -> void:
         quit(1)
         return
 
+    if not bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Scenario reload failed: %s" % bridge.get_last_error())
+        bridge.free()
+        quit(1)
+        return
+    bridge.set_ai_enabled(false, "auroria")
+    var deep_army: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.build_road("auroria", "northreach", "westmark")
+    bridge.declare_war("auroria", "verdantia")
+    bridge.advance_turn(3)
+    var auto_entry: Dictionary = bridge.auto_advance_army(deep_army["army_id"])
+    if not auto_entry.get("accepted", false) or \
+            auto_entry.get("auto_step_count", 0) != 2 or \
+            auto_entry.get("origin", "") != "northreach" or \
+            auto_entry.get("destination", "") != "greenvale" or \
+            auto_entry.get("auto_total_movement_cost", 0) != 3 or \
+            auto_entry.get("movement_cost", 0) != 3 or \
+            not auto_entry.get("province_occupied", false):
+        push_error("Multi-step auto advance was not reflected in bridge state")
+        bridge.free()
+        quit(1)
+        return
+
     print("ProvinceBridge army recruitment smoke test passed")
     bridge.free()
     quit(0)

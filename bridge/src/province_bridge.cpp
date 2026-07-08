@@ -671,21 +671,72 @@ godot::Dictionary ProvinceBridge::auto_advance_army(const godot::String& army_id
     }
     try {
         const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
-        const province::core::Army* army = state_->find_army(core_army_id);
-        if (army == nullptr) {
+        godot::Array steps;
+        std::int32_t total_cost = 0;
+        godot::String first_origin;
+        godot::String final_destination;
+        godot::String last_error;
+
+        const std::size_t maximum_steps = state_->province_count();
+        for (std::size_t index = 0; index < maximum_steps; ++index) {
+            const province::core::Army* army = state_->find_army(core_army_id);
+            if (army == nullptr) {
+                if (steps.is_empty()) {
+                    response["accepted"] = false;
+                    response["error"] = "army not found";
+                    return response;
+                }
+                break;
+            }
+            const std::optional<province::core::ProvinceId> destination =
+                province::core::AiSystem{}.find_wartime_step(*state_, *army);
+            if (!destination.has_value()) {
+                last_error = "army has no wartime path";
+                break;
+            }
+
+            godot::Dictionary step = move_army(
+                army_id,
+                godot::String::utf8(destination->value().c_str())
+            );
+            if (!step.get("accepted", false)) {
+                last_error = step.get("error", "auto advance failed");
+                break;
+            }
+
+            if (steps.is_empty()) {
+                first_origin = step.get("origin", godot::String{});
+            }
+            final_destination = step.get("destination", godot::String{});
+            total_cost += static_cast<std::int32_t>(
+                static_cast<std::int64_t>(step.get("movement_cost", 0))
+            );
+            steps.push_back(step);
+            response = step;
+            response["auto_destination"] = godot::String::utf8(destination->value().c_str());
+
+            if (step.get("battle_occurred", false) ||
+                step.get("province_occupied", false) ||
+                step.get("army_destroyed", false)) {
+                break;
+            }
+        }
+
+        if (steps.is_empty()) {
             response["accepted"] = false;
-            response["error"] = "army not found";
+            response["error"] = last_error.is_empty()
+                ? godot::String{"army cannot auto advance"}
+                : last_error;
             return response;
         }
-        const std::optional<province::core::ProvinceId> destination =
-            province::core::AiSystem{}.find_wartime_step(*state_, *army);
-        if (!destination.has_value()) {
-            response["accepted"] = false;
-            response["error"] = "army has no wartime path";
-            return response;
-        }
-        response = move_army(army_id, godot::String::utf8(destination->value().c_str()));
-        response["auto_destination"] = godot::String::utf8(destination->value().c_str());
+
+        response["accepted"] = true;
+        response["auto_steps"] = steps;
+        response["auto_step_count"] = static_cast<std::int64_t>(steps.size());
+        response["auto_total_movement_cost"] = total_cost;
+        response["origin"] = first_origin;
+        response["destination"] = final_destination;
+        response["movement_cost"] = total_cost;
     } catch (const std::exception& error) {
         response["accepted"] = false;
         response["error"] = godot::String::utf8(error.what());

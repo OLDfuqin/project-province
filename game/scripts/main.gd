@@ -614,9 +614,10 @@ func _on_auto_advance_pressed() -> void:
         event_log.text = "自动推进失败：%s" % result.get("error", "未知错误")
         return
 
-    event_log.text = "自动推进：%s → %s，消耗%d移动点，剩余%d" % [
+    event_log.text = "Auto advance: %s -> %s, %d step(s), cost %d MP, remaining %d" % [
         result["origin"],
         result["destination"],
+        result.get("auto_step_count", 1),
         result["movement_cost"],
         result["remaining_points"],
     ]
