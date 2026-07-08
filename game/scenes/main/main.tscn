@@ -221,3 +221,10 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.82, 0.9, 1)
 text = "等待玩家操作"
 horizontal_alignment = 1
+
+[node name="EventHistory" type="RichTextLabel" parent="Center"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+bbcode_enabled = false
+scroll_following = true
+text = "事件历史已初始化"

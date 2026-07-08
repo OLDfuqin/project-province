@@ -7,6 +7,7 @@ const QUICK_SAVE_PATH := "user://quick_save.json"
 @onready var date_label: Label = $Center/TurnControls/DateLabel
 @onready var turn_length: OptionButton = $Center/TurnControls/TurnLength
 @onready var event_log: Label = $Center/EventLog
+@onready var event_history: RichTextLabel = $Center/EventHistory
 @onready var province_map := $MapPanel/ProvinceMap
 @onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
 @onready var move_army_button: Button = $Center/ArmyControls/MovementButtons/MoveArmy
@@ -19,6 +20,7 @@ var road_end_id := ""
 var moving_army_id := ""
 var movement_origin_id := ""
 var movement_destination_id := ""
+var event_history_lines: Array[String] = []
 
 func _ready() -> void:
     if not province_map.load_map_geometry("res://data/map_geometry.json"):
@@ -78,6 +80,33 @@ func _ready() -> void:
     peace_policy.set_item_metadata(1, true)
 
     print($Center/Status.text)
+    _record_event("Scenario loaded: %d provinces" % provinces.size())
+
+
+func _record_event(message: String) -> void:
+    if message.is_empty():
+        return
+    event_history_lines.append(message)
+    while event_history_lines.size() > 80:
+        event_history_lines.pop_front()
+    event_history.text = "\n".join(event_history_lines)
+
+
+func _record_ai_actions(actions: Array) -> void:
+    for action: Dictionary in actions:
+        match String(action.get("type", "other")):
+            "army_recruited":
+                _record_event("AI %s recruited an army" % action.get("country_id", "?"))
+            "war_declared":
+                _record_event("AI %s declared war on %s" % [
+                    action.get("country_id", "?"), action.get("target_id", "?")
+                ])
+            "army_moved":
+                _record_event("AI moved %s" % action.get("army_id", "?"))
+            "battle_resolved":
+                _record_event("AI battle resolved")
+            "technology_researched":
+                _record_event("AI %s researched technology" % action.get("country_id", "?"))
 
 
 func _refresh_country_list() -> void:
@@ -138,6 +167,7 @@ func _on_declare_war_pressed() -> void:
     event_log.text = "Event #%d: %s declared war on %s" % [
         result["event_sequence"], result["aggressor_id"], result["defender_id"]
     ]
+    _record_event(event_log.text)
 
 
 func _on_make_peace_pressed() -> void:
@@ -157,6 +187,7 @@ func _on_make_peace_pressed() -> void:
         result.get("provinces", []).size(),
         result.get("armies", []).size(),
     ]
+    _record_event(event_log.text)
     _clear_movement_selection()
     _refresh_map_data()
     _refresh_country_list()
@@ -171,6 +202,7 @@ func _on_research_technology(track: String) -> void:
     event_log.text = "Technology advanced to level %d; cost %d" % [
         result["current_level"], result["cost"]
     ]
+    _record_event(event_log.text)
     _refresh_country_list()
     _refresh_technology_status()
 
@@ -194,6 +226,7 @@ func _on_quick_save_pressed() -> void:
         event_log.text = "Save failed: %s" % result.get("error", "unknown error")
         return
     event_log.text = "Game saved to quick_save.json"
+    _record_event(event_log.text)
 
 
 func _on_quick_load_pressed() -> void:
@@ -211,6 +244,7 @@ func _on_quick_load_pressed() -> void:
     _refresh_technology_status()
     _refresh_game_status()
     event_log.text = "Game loaded from quick_save.json"
+    _record_event(event_log.text)
 
 
 func _refresh_map_data() -> void:
@@ -267,6 +301,8 @@ func _on_advance_turn_pressed() -> void:
     var ai_action_count: int = result.get("ai_actions", []).size()
     if ai_action_count > 0:
         event_log.text += " | AI actions: %d" % ai_action_count
+        _record_ai_actions(result.get("ai_actions", []))
+    _record_event(event_log.text)
 
 
 func _refresh_date() -> void:
@@ -335,6 +371,7 @@ func _on_build_road_pressed() -> void:
     event_log.text = "事件 #%d：公路建成，支出%d" % [
         result["event_sequence"], result["cost"]
     ]
+    _record_event(event_log.text)
     _refresh_country_list()
     _refresh_map_data()
     _clear_road_selection()
@@ -359,6 +396,7 @@ func _on_recruit_army_pressed() -> void:
         result["manpower"],
         result["cost"],
     ]
+    _record_event(event_log.text)
     _refresh_country_list()
     _refresh_map_data()
     _refresh_province_summary()
@@ -395,6 +433,7 @@ func _on_move_army_pressed() -> void:
         ]
     elif result.get("province_occupied", false):
         event_log.text = "Province occupied without resistance"
+    _record_event(event_log.text)
     movement_origin_id = result.get("army_province_id", result["destination"])
     movement_destination_id = ""
     _refresh_map_data()
