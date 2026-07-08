@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/army_system.hpp"
+#include "province/core/ai_system.hpp"
 #include "province/core/battle_system.hpp"
 #include "province/core/game_command.hpp"
 #include "province/core/economy_system.hpp"
@@ -12,6 +13,7 @@
 #include "province/core/road_system.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,9 @@ class CommandProcessor final {
 public:
     [[nodiscard]] CommandResult execute(GameState& state, const GameCommand& command);
     [[nodiscard]] static bool is_supported_turn_length(std::int32_t months) noexcept;
+    void enable_ai(CountryId human_country_id);
+    void disable_ai() noexcept;
+    [[nodiscard]] bool ai_enabled() const noexcept;
 
 private:
     [[nodiscard]] CommandResult execute_advance_turn(
@@ -62,6 +67,8 @@ private:
     MovementSystem movement_system_;
     BattleSystem battle_system_;
     PeaceSystem peace_system_;
+    AiSystem ai_system_;
+    std::optional<CountryId> human_country_id_;
 };
 
 } // namespace province::core

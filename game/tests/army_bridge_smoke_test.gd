@@ -14,6 +14,7 @@ func _initialize() -> void:
         bridge.free()
         quit(1)
         return
+    bridge.set_ai_enabled(false, "auroria")
 
     var result: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
     if not result.get("accepted", false) or result.get("cost", 0) != 1000:

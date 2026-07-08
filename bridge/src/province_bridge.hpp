@@ -60,6 +60,8 @@ public:
         const godot::String& country_b,
         bool annex_occupied_provinces
     );
+    void set_ai_enabled(bool enabled, const godot::String& human_country_id);
+    [[nodiscard]] bool is_ai_enabled() const noexcept;
 
 protected:
     static void _bind_methods();

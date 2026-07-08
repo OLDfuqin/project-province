@@ -7,6 +7,18 @@
 
 namespace province::core {
 
+void CommandProcessor::enable_ai(CountryId human_country_id) {
+    human_country_id_ = std::move(human_country_id);
+}
+
+void CommandProcessor::disable_ai() noexcept {
+    human_country_id_.reset();
+}
+
+bool CommandProcessor::ai_enabled() const noexcept {
+    return human_country_id_.has_value();
+}
+
 CommandResult CommandProcessor::execute(GameState& state, const GameCommand& command) {
     return std::visit(
         [this, &state](const auto& concrete_command) -> CommandResult {
@@ -219,6 +231,7 @@ CommandResult CommandProcessor::execute_advance_turn(
     std::map<CountryId, std::int64_t> total_income;
     std::map<ProvinceId, ProvincePopulationChange> population_changes;
     std::map<ArmyId, ArmyMovementGrant> movement_grants;
+    std::vector<GameEvent> ai_events;
 
     // Intentionally tick one month at a time. Economy, population and AI
     // systems will be inserted inside this loop without changing commands.
@@ -247,6 +260,20 @@ CommandResult CommandProcessor::execute_advance_turn(
             } else {
                 existing->second.amount += grant.amount;
                 existing->second.current_points = grant.current_points;
+            }
+        }
+        if (human_country_id_.has_value()) {
+            const std::vector<AiDecision> decisions =
+                ai_system_.plan_month(working_state, *human_country_id_);
+            for (const AiDecision& decision : decisions) {
+                const CommandResult ai_result = execute(working_state, decision.command);
+                if (ai_result.accepted) {
+                    ai_events.insert(
+                        ai_events.end(),
+                        ai_result.events.begin(),
+                        ai_result.events.end()
+                    );
+                }
             }
         }
         working_state.clock().advance_months(1);
@@ -297,17 +324,12 @@ CommandResult CommandProcessor::execute_advance_turn(
         },
     };
 
+    ai_events.push_back(std::move(economy_event));
+    ai_events.push_back(std::move(population_event));
+    ai_events.push_back(std::move(date_event));
+    ai_events.push_back(std::move(turn_event));
     state = std::move(working_state);
-    return CommandResult{
-        true,
-        {},
-        {
-            std::move(economy_event),
-            std::move(population_event),
-            std::move(date_event),
-            std::move(turn_event),
-        },
-    };
+    return CommandResult{true, {}, std::move(ai_events)};
 }
 
 } // namespace province::core

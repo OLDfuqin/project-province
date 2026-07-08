@@ -175,6 +175,9 @@ func _on_advance_turn_pressed() -> void:
         result["previous_year"],
         result["previous_month"],
     ]
+    var ai_action_count: int = result.get("ai_actions", []).size()
+    if ai_action_count > 0:
+        event_log.text += " | AI actions: %d" % ai_action_count
 
 
 func _refresh_date() -> void:

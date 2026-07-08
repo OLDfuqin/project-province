@@ -43,6 +43,7 @@ bool ProvinceBridge::load_scenario(
             province::core::GameClock{initial_year, initial_month}
         ));
         command_processor_ = province::core::CommandProcessor{};
+        command_processor_.enable_ai(province::core::CountryId{"auroria"});
         last_error_ = godot::String{};
         return true;
     } catch (const std::exception& error) {
@@ -138,6 +139,7 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
 
     godot::Array incomes;
     godot::Array population_changes;
+    godot::Array ai_actions;
     for (const province::core::GameEvent& event : result.events) {
         if (event.type == province::core::GameEventType::economy_resolved) {
             const auto& economy = std::get<province::core::EconomyResolvedEvent>(event.payload);
@@ -168,11 +170,55 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
             response["elapsed_months"] = turn.elapsed_months;
             response["previous_year"] = turn.previous_year;
             response["previous_month"] = turn.previous_month;
+        } else if (event.type != province::core::GameEventType::movement_points_granted) {
+            godot::Dictionary action;
+            action["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            if (event.type == province::core::GameEventType::army_recruited) {
+                const auto& recruited =
+                    std::get<province::core::ArmyRecruitedEvent>(event.payload);
+                action["type"] = "army_recruited";
+                action["country_id"] =
+                    godot::String::utf8(recruited.country_id.value().c_str());
+            } else if (event.type == province::core::GameEventType::war_declared) {
+                const auto& war = std::get<province::core::WarDeclaredEvent>(event.payload);
+                action["type"] = "war_declared";
+                action["country_id"] =
+                    godot::String::utf8(war.aggressor_id.value().c_str());
+                action["target_id"] =
+                    godot::String::utf8(war.defender_id.value().c_str());
+            } else if (event.type == province::core::GameEventType::army_moved) {
+                const auto& moved = std::get<province::core::ArmyMovedEvent>(event.payload);
+                action["type"] = "army_moved";
+                action["army_id"] = godot::String::utf8(moved.army_id.value().c_str());
+            } else if (event.type == province::core::GameEventType::battle_resolved) {
+                action["type"] = "battle_resolved";
+            } else {
+                action["type"] = "other";
+            }
+            ai_actions.push_back(action);
         }
     }
     response["incomes"] = incomes;
     response["population_changes"] = population_changes;
+    response["ai_actions"] = ai_actions;
     return response;
+}
+
+void ProvinceBridge::set_ai_enabled(
+    const bool enabled,
+    const godot::String& human_country_id
+) {
+    if (!enabled) {
+        command_processor_.disable_ai();
+        return;
+    }
+    command_processor_.enable_ai(
+        province::core::CountryId{human_country_id.utf8().get_data()}
+    );
+}
+
+bool ProvinceBridge::is_ai_enabled() const noexcept {
+    return command_processor_.ai_enabled();
 }
 
 godot::Dictionary ProvinceBridge::build_road(
@@ -542,6 +588,14 @@ void ProvinceBridge::_bind_methods() {
             "make_peace", "country_a", "country_b", "annex_occupied_provinces"
         ),
         &ProvinceBridge::make_peace
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("set_ai_enabled", "enabled", "human_country_id"),
+        &ProvinceBridge::set_ai_enabled
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("is_ai_enabled"),
+        &ProvinceBridge::is_ai_enabled
     );
 }
 

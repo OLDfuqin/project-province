@@ -589,6 +589,41 @@ int main() {
         return 1;
     }
 
+    GameState ai_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor ai_processor;
+    ai_processor.enable_ai(CountryId{"auroria"});
+    const CommandResult first_ai_month = ai_processor.execute(
+        ai_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult second_ai_month = ai_processor.execute(
+        ai_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult third_ai_month = ai_processor.execute(
+        ai_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult fourth_ai_month = ai_processor.execute(
+        ai_state,
+        AdvanceTurnCommand{1}
+    );
+    std::int64_t player_armies = 0;
+    for (const auto& [army_id, army] : ai_state.armies()) {
+        static_cast<void>(army_id);
+        if (army.owner_id == CountryId{"auroria"}) {
+            ++player_armies;
+        }
+    }
+    if (!first_ai_month.accepted || !second_ai_month.accepted ||
+        !third_ai_month.accepted || !fourth_ai_month.accepted ||
+        ai_state.army_count() != 9 ||
+        player_armies != 0 || ai_state.relations().empty() ||
+        ai_state.occupations().empty() || first_ai_month.events.size() != 7) {
+        std::cerr << "AI did not recruit, declare war and advance deterministically\n";
+        return 1;
+    }
+
     const CommandResult rejected = processor.execute(turn_state, AdvanceTurnCommand{2});
     if (rejected.accepted || rejected.error.empty() ||
         turn_state.clock().year() != 1001 || turn_state.clock().month() != 2) {
