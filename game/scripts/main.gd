@@ -8,6 +8,8 @@ const QUICK_SAVE_PATH := "user://quick_save.json"
 @onready var turn_length: OptionButton = $Center/TurnControls/TurnLength
 @onready var event_log: Label = $Center/EventLog
 @onready var event_history: RichTextLabel = $Center/EventHistory
+@onready var country_details: RichTextLabel = $Center/CountryDetails
+@onready var region_details: RichTextLabel = $Center/RegionDetails
 @onready var province_map := $MapPanel/ProvinceMap
 @onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
 @onready var move_army_button: Button = $Center/ArmyControls/MovementButtons/MoveArmy
@@ -71,6 +73,7 @@ func _ready() -> void:
     _refresh_date()
 
     _refresh_country_list()
+    _refresh_country_details()
     _refresh_game_status()
     _refresh_technology_status()
     _populate_war_targets()
@@ -126,6 +129,36 @@ func _refresh_country_list() -> void:
             Color8((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)
         )
         $Center/CountryList.add_child(label)
+
+
+func _refresh_country_details() -> void:
+    var status: Dictionary = bridge.get_game_status(PLAYER_COUNTRY_ID)
+    var technology_by_country: Dictionary = {}
+    for technology: Dictionary in bridge.get_technology_summaries():
+        technology_by_country[technology["country_id"]] = technology
+    var status_by_country: Dictionary = {}
+    for country_status: Dictionary in status.get("countries", []):
+        status_by_country[country_status["country_id"]] = country_status
+    var war_pairs: Array[String] = []
+    for relation: Dictionary in bridge.get_diplomatic_relations():
+        if relation.get("status", "") == "war":
+            war_pairs.append("%s-%s" % [relation["country_a"], relation["country_b"]])
+    var lines: Array[String] = []
+    for country: Dictionary in bridge.get_country_summaries():
+        var tech: Dictionary = technology_by_country.get(country["id"], {})
+        var state: Dictionary = status_by_country.get(country["id"], {})
+        lines.append("%s | $%d | Ctrl %d | Tech E%d M%d R%d%s" % [
+            country["name"],
+            country["treasury"],
+            state.get("controlled_provinces", country["province_count"]),
+            tech.get("economy_level", 0),
+            tech.get("military_level", 0),
+            tech.get("roads_level", 0),
+            " | eliminated" if state.get("eliminated", false) else "",
+        ])
+    if not war_pairs.is_empty():
+        lines.append("Wars: %s" % ", ".join(war_pairs))
+    country_details.text = "\n".join(lines)
 
 
 func _refresh_game_status() -> void:
@@ -191,6 +224,7 @@ func _on_make_peace_pressed() -> void:
     _clear_movement_selection()
     _refresh_map_data()
     _refresh_country_list()
+    _refresh_country_details()
     _refresh_game_status()
 
 
@@ -204,6 +238,7 @@ func _on_research_technology(track: String) -> void:
     ]
     _record_event(event_log.text)
     _refresh_country_list()
+    _refresh_country_details()
     _refresh_technology_status()
 
 
@@ -239,6 +274,7 @@ func _on_quick_load_pressed() -> void:
     _clear_road_selection()
     _refresh_date()
     _refresh_country_list()
+    _refresh_country_details()
     _refresh_map_data()
     _refresh_province_summary()
     _refresh_technology_status()
@@ -278,6 +314,7 @@ func _on_advance_turn_pressed() -> void:
 
     _refresh_date()
     _refresh_country_list()
+    _refresh_country_details()
     _refresh_map_data()
     _refresh_game_status()
     _refresh_province_summary()
@@ -313,6 +350,7 @@ func _refresh_date() -> void:
 func _on_province_selected(province_id: String) -> void:
     if province_id.is_empty():
         $Center/SelectionStatus.text = "请选择一个地区"
+        region_details.text = "Select a province for details"
         recruit_button.disabled = true
         return
     _show_province_details(province_id)
@@ -336,9 +374,11 @@ func _on_province_selected(province_id: String) -> void:
 func _show_province_details(province_id: String) -> void:
     var province: Dictionary = province_by_id[province_id]
     var stationed_manpower := 0
+    var stationed_armies := 0
     for army: Dictionary in bridge.get_army_summaries():
         if army["province_id"] == province_id:
             stationed_manpower += int(army["manpower"])
+            stationed_armies += 1
     $Center/SelectionStatus.text = "%s · %s · 人口%d · 士兵%d · 经济%d" % [
         province["name"],
         province.get("terrain", "plains"),
@@ -348,6 +388,19 @@ func _show_province_details(province_id: String) -> void:
     ]
     if stationed_manpower > 0:
         $Center/SelectionStatus.text += " · 驻军%d" % stationed_manpower
+    region_details.text = "Region: %s\nOwner: %s | Legal: %s | Terrain: %s\nPopulation: %d | Soldiers: %d | Economy: %d\nArmies: %d | Manpower: %d | Neighbors: %d%s" % [
+        province["name"],
+        province["owner_id"],
+        province.get("legal_owner_id", province["owner_id"]),
+        province.get("terrain", "plains"),
+        province["population"],
+        province["soldier_population"],
+        province["economy"],
+        stationed_armies,
+        stationed_manpower,
+        province.get("neighbor_count", 0),
+        " | occupied" if province.get("occupied", false) else "",
+    ]
 
 
 func _on_province_hovered(province_id: String) -> void:
@@ -373,6 +426,7 @@ func _on_build_road_pressed() -> void:
     ]
     _record_event(event_log.text)
     _refresh_country_list()
+    _refresh_country_details()
     _refresh_map_data()
     _clear_road_selection()
 
@@ -398,6 +452,7 @@ func _on_recruit_army_pressed() -> void:
     ]
     _record_event(event_log.text)
     _refresh_country_list()
+    _refresh_country_details()
     _refresh_map_data()
     _refresh_province_summary()
     _show_province_details(province_id)
@@ -437,6 +492,7 @@ func _on_move_army_pressed() -> void:
     movement_origin_id = result.get("army_province_id", result["destination"])
     movement_destination_id = ""
     _refresh_map_data()
+    _refresh_country_details()
     _refresh_game_status()
     if result.get("army_destroyed", false):
         _clear_movement_selection()
