@@ -28,12 +28,18 @@ struct MoveArmyCommand final {
     ProvinceId destination;
 };
 
+struct DeclareWarCommand final {
+    CountryId aggressor_id;
+    CountryId defender_id;
+};
+
 using GameCommand =
     std::variant<
         AdvanceTurnCommand,
         BuildRoadCommand,
         RecruitArmyCommand,
-        MoveArmyCommand
+        MoveArmyCommand,
+        DeclareWarCommand
     >;
 
 } // namespace province::core

@@ -315,6 +315,59 @@ godot::Dictionary ProvinceBridge::move_army(
     return response;
 }
 
+godot::Dictionary ProvinceBridge::declare_war(
+    const godot::String& aggressor_id,
+    const godot::String& defender_id
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const province::core::CommandResult result = command_processor_.execute(
+            *state_,
+            province::core::DeclareWarCommand{
+                province::core::CountryId{aggressor_id.utf8().get_data()},
+                province::core::CountryId{defender_id.utf8().get_data()},
+            }
+        );
+        response["accepted"] = result.accepted;
+        response["error"] = godot::String::utf8(result.error.c_str());
+        if (result.accepted) {
+            const province::core::GameEvent& event = result.events.front();
+            const auto& war = std::get<province::core::WarDeclaredEvent>(event.payload);
+            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            response["aggressor_id"] =
+                godot::String::utf8(war.aggressor_id.value().c_str());
+            response["defender_id"] =
+                godot::String::utf8(war.defender_id.value().c_str());
+        }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
+godot::Array ProvinceBridge::get_diplomatic_relations() const {
+    godot::Array summaries;
+    if (!state_) {
+        return summaries;
+    }
+    for (const auto& [relation, status] : state_->relations()) {
+        godot::Dictionary summary;
+        summary["country_a"] = godot::String::utf8(relation.first().value().c_str());
+        summary["country_b"] = godot::String::utf8(relation.second().value().c_str());
+        summary["status"] = status == province::core::DiplomaticStatus::war
+            ? "war"
+            : "peace";
+        summaries.push_back(summary);
+    }
+    return summaries;
+}
+
 void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_core_version"),
@@ -371,6 +424,14 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("move_army", "army_id", "destination"),
         &ProvinceBridge::move_army
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("declare_war", "aggressor_id", "defender_id"),
+        &ProvinceBridge::declare_war
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_diplomatic_relations"),
+        &ProvinceBridge::get_diplomatic_relations
     );
 }
 

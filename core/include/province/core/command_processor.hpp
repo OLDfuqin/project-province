@@ -43,6 +43,10 @@ private:
         GameState& state,
         const MoveArmyCommand& command
     );
+    [[nodiscard]] CommandResult execute_declare_war(
+        GameState& state,
+        const DeclareWarCommand& command
+    );
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;

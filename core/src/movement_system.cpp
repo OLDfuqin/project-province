@@ -44,7 +44,8 @@ ArmyMoveResult MovementSystem::move(
     if (!state.are_adjacent(origin, destination)) {
         return {false, "army can only move to an adjacent province", origin, destination, 0};
     }
-    if (destination_province->owner_id != army->owner_id) {
+    if (destination_province->owner_id != army->owner_id &&
+        !state.are_at_war(army->owner_id, destination_province->owner_id)) {
         return {
             false,
             "army cannot enter foreign territory without war or military access",
@@ -68,4 +69,3 @@ ArmyMoveResult MovementSystem::move(
 }
 
 } // namespace province::core
-

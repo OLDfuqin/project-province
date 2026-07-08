@@ -36,6 +36,7 @@ int main() {
     using province::core::BuildRoadCommand;
     using province::core::RecruitArmyCommand;
     using province::core::MoveArmyCommand;
+    using province::core::DeclareWarCommand;
     using province::core::ArmyRecruitedEvent;
     using province::core::RoadBuiltEvent;
     using province::core::RoadLevel;
@@ -265,6 +266,28 @@ int main() {
     );
     if (foreign_move.accepted) {
         std::cerr << "Army entered foreign territory during peace\n";
+        return 1;
+    }
+    const CommandResult war_declared = paved_move_processor.execute(
+        paved_move_state,
+        DeclareWarCommand{CountryId{"auroria"}, CountryId{"solmere"}}
+    );
+    const CommandResult duplicate_war = paved_move_processor.execute(
+        paved_move_state,
+        DeclareWarCommand{CountryId{"solmere"}, CountryId{"auroria"}}
+    );
+    [[maybe_unused]] const CommandResult war_month = paved_move_processor.execute(
+        paved_move_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult wartime_move = paved_move_processor.execute(
+        paved_move_state,
+        MoveArmyCommand{paved_army_id, ProvinceId{"redpass"}}
+    );
+    if (!war_declared.accepted || duplicate_war.accepted || !wartime_move.accepted ||
+        !paved_move_state.are_at_war(CountryId{"auroria"}, CountryId{"solmere"}) ||
+        paved_move_state.find_army(paved_army_id)->province_id != ProvinceId{"redpass"}) {
+        std::cerr << "War declaration did not enable hostile territory movement\n";
         return 1;
     }
 

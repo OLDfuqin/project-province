@@ -9,6 +9,7 @@ const PLAYER_COUNTRY_ID := "auroria"
 @onready var province_map := $MapPanel/ProvinceMap
 @onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
 @onready var move_army_button: Button = $Center/ArmyControls/MovementButtons/MoveArmy
+@onready var war_target: OptionButton = $Center/DiplomacyControls/WarTarget
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
@@ -31,6 +32,7 @@ func _ready() -> void:
     $Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
     recruit_button.pressed.connect(_on_recruit_army_pressed)
     move_army_button.pressed.connect(_on_move_army_pressed)
+    $Center/DiplomacyControls/DeclareWar.pressed.connect(_on_declare_war_pressed)
     $Center/ArmyControls/MovementButtons/ClearMovement.pressed.connect(
         _clear_movement_selection
     )
@@ -49,6 +51,7 @@ func _ready() -> void:
     _refresh_date()
 
     _refresh_country_list()
+    _populate_war_targets()
 
     print($Center/Status.text)
 
@@ -70,6 +73,28 @@ func _refresh_country_list() -> void:
             Color8((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)
         )
         $Center/CountryList.add_child(label)
+
+
+func _populate_war_targets() -> void:
+    war_target.clear()
+    for country: Dictionary in bridge.get_country_summaries():
+        if country["id"] == PLAYER_COUNTRY_ID:
+            continue
+        war_target.add_item(country["name"])
+        war_target.set_item_metadata(war_target.item_count - 1, country["id"])
+
+
+func _on_declare_war_pressed() -> void:
+    if war_target.item_count == 0:
+        return
+    var defender_id: String = war_target.get_selected_metadata()
+    var result: Dictionary = bridge.declare_war(PLAYER_COUNTRY_ID, defender_id)
+    if not result.get("accepted", false):
+        event_log.text = "Declare war failed: %s" % result.get("error", "unknown error")
+        return
+    event_log.text = "Event #%d: %s declared war on %s" % [
+        result["event_sequence"], result["aggressor_id"], result["defender_id"]
+    ]
 
 
 func _refresh_map_data() -> void:

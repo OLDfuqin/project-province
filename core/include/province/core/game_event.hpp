@@ -18,7 +18,13 @@ enum class GameEventType : std::uint8_t {
     army_moved,
     movement_points_granted,
     road_built,
+    war_declared,
     turn_advanced,
+};
+
+struct WarDeclaredEvent final {
+    CountryId aggressor_id;
+    CountryId defender_id;
 };
 
 struct TurnAdvancedEvent final {
@@ -76,7 +82,8 @@ using GameEventPayload =
         ArmyMovedEvent,
         MovementPointsGrantedEvent,
         RoadBuiltEvent,
-        TurnAdvancedEvent
+        TurnAdvancedEvent,
+        WarDeclaredEvent
     >;
 
 struct GameEvent final {

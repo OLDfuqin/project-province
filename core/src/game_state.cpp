@@ -180,6 +180,47 @@ std::size_t GameState::army_count() const noexcept {
     return armies_.size();
 }
 
+DiplomaticStatus GameState::diplomatic_status(
+    const CountryId& country_a,
+    const CountryId& country_b
+) const {
+    if (country_a == country_b) {
+        return DiplomaticStatus::peace;
+    }
+    const auto relation = relations_.find(CountryRelationKey{country_a, country_b});
+    return relation == relations_.end() ? DiplomaticStatus::peace : relation->second;
+}
+
+bool GameState::are_at_war(
+    const CountryId& country_a,
+    const CountryId& country_b
+) const {
+    return diplomatic_status(country_a, country_b) == DiplomaticStatus::war;
+}
+
+void GameState::set_diplomatic_status(
+    const CountryId& country_a,
+    const CountryId& country_b,
+    const DiplomaticStatus status
+) {
+    if (country_a == country_b) {
+        throw std::invalid_argument{"a country cannot have a diplomatic relation with itself"};
+    }
+    if (find_country(country_a) == nullptr || find_country(country_b) == nullptr) {
+        throw std::invalid_argument{"both countries in a diplomatic relation must exist"};
+    }
+    const CountryRelationKey key{country_a, country_b};
+    if (status == DiplomaticStatus::peace) {
+        relations_.erase(key);
+    } else {
+        relations_.insert_or_assign(key, status);
+    }
+}
+
+const std::map<CountryRelationKey, DiplomaticStatus>& GameState::relations() const noexcept {
+    return relations_;
+}
+
 std::vector<std::string> GameState::validate() const {
     std::vector<std::string> issues;
 

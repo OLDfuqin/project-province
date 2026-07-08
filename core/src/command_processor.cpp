@@ -19,10 +19,44 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
                 return execute_recruit_army(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, MoveArmyCommand>) {
                 return execute_move_army(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, DeclareWarCommand>) {
+                return execute_declare_war(state, concrete_command);
             }
         },
         command
     );
+}
+
+CommandResult CommandProcessor::execute_declare_war(
+    GameState& state,
+    const DeclareWarCommand& command
+) {
+    if (command.aggressor_id == command.defender_id) {
+        return {false, "a country cannot declare war on itself", {}};
+    }
+    if (state.find_country(command.aggressor_id) == nullptr) {
+        return {false, "aggressor country does not exist", {}};
+    }
+    if (state.find_country(command.defender_id) == nullptr) {
+        return {false, "defender country does not exist", {}};
+    }
+    if (state.are_at_war(command.aggressor_id, command.defender_id)) {
+        return {false, "countries are already at war", {}};
+    }
+
+    GameState working_state = state;
+    working_state.set_diplomatic_status(
+        command.aggressor_id,
+        command.defender_id,
+        DiplomaticStatus::war
+    );
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::war_declared,
+        WarDeclaredEvent{command.aggressor_id, command.defender_id},
+    };
+    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
 }
 
 CommandResult CommandProcessor::execute_build_road(

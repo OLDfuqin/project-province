@@ -50,6 +50,11 @@ public:
         const godot::String& army_id,
         const godot::String& destination
     );
+    [[nodiscard]] godot::Dictionary declare_war(
+        const godot::String& aggressor_id,
+        const godot::String& defender_id
+    );
+    [[nodiscard]] godot::Array get_diplomatic_relations() const;
 
 protected:
     static void _bind_methods();
