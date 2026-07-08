@@ -663,6 +663,13 @@ godot::Dictionary ProvinceBridge::move_army(
 }
 
 godot::Dictionary ProvinceBridge::auto_advance_army(const godot::String& army_id) {
+    return auto_advance_army_to(army_id, godot::String{});
+}
+
+godot::Dictionary ProvinceBridge::auto_advance_army_to(
+    const godot::String& army_id,
+    const godot::String& target
+) {
     godot::Dictionary response;
     if (!state_) {
         response["accepted"] = false;
@@ -671,6 +678,16 @@ godot::Dictionary ProvinceBridge::auto_advance_army(const godot::String& army_id
     }
     try {
         const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        const bool has_target = !target.is_empty();
+        std::optional<province::core::ProvinceId> target_id;
+        if (has_target) {
+            target_id.emplace(target.utf8().get_data());
+            if (state_->find_province(*target_id) == nullptr) {
+                response["accepted"] = false;
+                response["error"] = "target province not found";
+                return response;
+            }
+        }
         godot::Array steps;
         std::int32_t total_cost = 0;
         godot::String first_origin;
@@ -689,9 +706,13 @@ godot::Dictionary ProvinceBridge::auto_advance_army(const godot::String& army_id
                 break;
             }
             const std::optional<province::core::ProvinceId> destination =
-                province::core::AiSystem{}.find_wartime_step(*state_, *army);
+                has_target
+                    ? province::core::AiSystem{}.find_step_toward(*state_, *army, *target_id)
+                    : province::core::AiSystem{}.find_wartime_step(*state_, *army);
             if (!destination.has_value()) {
-                last_error = "army has no wartime path";
+                last_error = has_target
+                    ? godot::String{"army has no path to target"}
+                    : godot::String{"army has no wartime path"};
                 break;
             }
 
@@ -714,6 +735,9 @@ godot::Dictionary ProvinceBridge::auto_advance_army(const godot::String& army_id
             steps.push_back(step);
             response = step;
             response["auto_destination"] = godot::String::utf8(destination->value().c_str());
+            if (has_target) {
+                response["auto_target"] = target;
+            }
 
             if (step.get("battle_occurred", false) ||
                 step.get("province_occupied", false) ||
@@ -737,6 +761,9 @@ godot::Dictionary ProvinceBridge::auto_advance_army(const godot::String& army_id
         response["origin"] = first_origin;
         response["destination"] = final_destination;
         response["movement_cost"] = total_cost;
+        if (has_target) {
+            response["auto_target"] = target;
+        }
     } catch (const std::exception& error) {
         response["accepted"] = false;
         response["error"] = godot::String::utf8(error.what());
@@ -925,6 +952,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("auto_advance_army", "army_id"),
         &ProvinceBridge::auto_advance_army
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("auto_advance_army_to", "army_id", "target"),
+        &ProvinceBridge::auto_advance_army_to
     );
     godot::ClassDB::bind_method(
         godot::D_METHOD("declare_war", "aggressor_id", "defender_id"),

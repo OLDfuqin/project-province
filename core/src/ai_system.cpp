@@ -94,6 +94,74 @@ std::optional<ProvinceId> choose_wartime_step(
     return step == army.province_id ? std::nullopt : std::optional<ProvinceId>{step};
 }
 
+std::optional<ProvinceId> choose_step_toward(
+    const GameState& state,
+    const Army& army,
+    const ProvinceId& target
+) {
+    if (state.find_province(army.province_id) == nullptr ||
+        state.find_province(target) == nullptr ||
+        army.province_id == target) {
+        return std::nullopt;
+    }
+
+    using QueueItem = std::pair<std::int32_t, ProvinceId>;
+    struct Compare final {
+        bool operator()(const QueueItem& left, const QueueItem& right) const {
+            return left.first > right.first;
+        }
+    };
+    std::map<ProvinceId, std::int32_t> distance;
+    std::map<ProvinceId, ProvinceId> previous;
+    std::priority_queue<QueueItem, std::vector<QueueItem>, Compare> frontier;
+    distance.emplace(army.province_id, 0);
+    frontier.push({0, army.province_id});
+
+    while (!frontier.empty()) {
+        const auto [current_distance, current_id] = frontier.top();
+        frontier.pop();
+        if (current_distance != distance[current_id]) {
+            continue;
+        }
+        if (current_id == target) {
+            break;
+        }
+
+        const Province* current = state.find_province(current_id);
+        if (current == nullptr) {
+            continue;
+        }
+        const CountryId current_controller = state.controller_of(current_id);
+        if (current_id != army.province_id && current_controller != army.owner_id) {
+            continue;
+        }
+        for (const ProvinceId& neighbor_id : current->neighbors) {
+            const CountryId neighbor_controller = state.controller_of(neighbor_id);
+            if (neighbor_controller != army.owner_id &&
+                !state.are_at_war(army.owner_id, neighbor_controller)) {
+                continue;
+            }
+            const std::int32_t candidate = current_distance +
+                connection_cost(state, current_id, neighbor_id);
+            const auto existing = distance.find(neighbor_id);
+            if (existing == distance.end() || candidate < existing->second) {
+                distance.insert_or_assign(neighbor_id, candidate);
+                previous.insert_or_assign(neighbor_id, current_id);
+                frontier.push({candidate, neighbor_id});
+            }
+        }
+    }
+
+    if (!previous.contains(target)) {
+        return std::nullopt;
+    }
+    ProvinceId step = target;
+    while (previous.contains(step) && previous.at(step) != army.province_id) {
+        step = previous.at(step);
+    }
+    return step == army.province_id ? std::nullopt : std::optional<ProvinceId>{step};
+}
+
 } // namespace
 
 std::vector<AiDecision> AiSystem::plan_month(
@@ -210,6 +278,14 @@ std::optional<ProvinceId> AiSystem::find_wartime_step(
     const Army& army
 ) const {
     return choose_wartime_step(state, army);
+}
+
+std::optional<ProvinceId> AiSystem::find_step_toward(
+    const GameState& state,
+    const Army& army,
+    const ProvinceId& target
+) const {
+    return choose_step_toward(state, army, target);
 }
 
 } // namespace province::core

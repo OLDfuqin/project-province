@@ -23,6 +23,11 @@ public:
         const GameState& state,
         const Army& army
     ) const;
+    [[nodiscard]] std::optional<ProvinceId> find_step_toward(
+        const GameState& state,
+        const Army& army,
+        const ProvinceId& target
+    ) const;
 
 private:
     static constexpr std::int64_t recruitment_batch = 500;

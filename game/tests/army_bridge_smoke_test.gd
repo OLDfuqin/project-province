@@ -128,8 +128,11 @@ func _initialize() -> void:
     bridge.build_road("auroria", "northreach", "westmark")
     bridge.declare_war("auroria", "verdantia")
     bridge.advance_turn(3)
-    var auto_entry: Dictionary = bridge.auto_advance_army(deep_army["army_id"])
+    var auto_entry: Dictionary = bridge.auto_advance_army_to(
+        deep_army["army_id"], "greenvale"
+    )
     if not auto_entry.get("accepted", false) or \
+            auto_entry.get("auto_target", "") != "greenvale" or \
             auto_entry.get("auto_step_count", 0) != 2 or \
             auto_entry.get("origin", "") != "northreach" or \
             auto_entry.get("destination", "") != "greenvale" or \

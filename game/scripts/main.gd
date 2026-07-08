@@ -609,7 +609,11 @@ func _on_move_army_pressed() -> void:
 func _on_auto_advance_pressed() -> void:
     if moving_army_id.is_empty():
         return
-    var result: Dictionary = bridge.auto_advance_army(moving_army_id)
+    var result: Dictionary = {}
+    if movement_destination_id.is_empty():
+        result = bridge.auto_advance_army(moving_army_id)
+    else:
+        result = bridge.auto_advance_army_to(moving_army_id, movement_destination_id)
     if not result.get("accepted", false):
         event_log.text = "自动推进失败：%s" % result.get("error", "未知错误")
         return
