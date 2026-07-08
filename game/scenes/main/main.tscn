@@ -163,6 +163,15 @@ layout_mode = 2
 text = "选择己方地区以招募陆军"
 horizontal_alignment = 1
 
+[node name="ArmySelector" type="OptionButton" parent="Center/ArmyControls"]
+layout_mode = 2
+
+[node name="ArmyDetails" type="Label" parent="Center/ArmyControls"]
+layout_mode = 2
+text = "No army selected"
+horizontal_alignment = 1
+autowrap_mode = 2
+
 [node name="RecruitArmy" type="Button" parent="Center/ArmyControls"]
 layout_mode = 2
 disabled = true

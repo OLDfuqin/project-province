@@ -13,6 +13,8 @@ const QUICK_SAVE_PATH := "user://quick_save.json"
 @onready var province_map := $MapPanel/ProvinceMap
 @onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
 @onready var move_army_button: Button = $Center/ArmyControls/MovementButtons/MoveArmy
+@onready var army_selector: OptionButton = $Center/ArmyControls/ArmySelector
+@onready var army_details: Label = $Center/ArmyControls/ArmyDetails
 @onready var war_target: OptionButton = $Center/DiplomacyControls/WarTarget
 @onready var peace_policy: OptionButton = $Center/DiplomacyControls/PeacePolicy
 
@@ -42,6 +44,7 @@ func _ready() -> void:
     $Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
     recruit_button.pressed.connect(_on_recruit_army_pressed)
     move_army_button.pressed.connect(_on_move_army_pressed)
+    army_selector.item_selected.connect(_on_army_selected)
     $Center/DiplomacyControls/DeclareWar.pressed.connect(_on_declare_war_pressed)
     $Center/DiplomacyControls/MakePeace.pressed.connect(_on_make_peace_pressed)
     $Center/TechnologyControls/Buttons/Economy.pressed.connect(
@@ -74,6 +77,7 @@ func _ready() -> void:
 
     _refresh_country_list()
     _refresh_country_details()
+    _refresh_army_selector()
     _refresh_game_status()
     _refresh_technology_status()
     _populate_war_targets()
@@ -292,6 +296,60 @@ func _refresh_map_data() -> void:
     province_map.set_scenario_data(provinces, countries)
     province_map.set_roads(bridge.get_road_summaries())
     province_map.set_armies(bridge.get_army_summaries())
+    _refresh_army_selector()
+
+
+func _refresh_army_selector() -> void:
+    var previous_id := moving_army_id
+    army_selector.clear()
+    var selected_index := -1
+    for army: Dictionary in bridge.get_army_summaries():
+        if army["owner_id"] != PLAYER_COUNTRY_ID:
+            continue
+        var province_id: String = army["province_id"]
+        var province_name: String = province_by_id.get(province_id, {}).get("name", province_id)
+        army_selector.add_item("%s · %s · %d人 · %dMP" % [
+            army["id"], province_name, army["manpower"], army["movement_points"]
+        ])
+        var index := army_selector.item_count - 1
+        army_selector.set_item_metadata(index, army["id"])
+        if army["id"] == previous_id:
+            selected_index = index
+
+    if army_selector.item_count == 0:
+        moving_army_id = ""
+        movement_origin_id = ""
+        movement_destination_id = ""
+        army_details.text = "No player armies"
+        _refresh_movement_selection()
+        return
+    if selected_index < 0:
+        selected_index = 0
+    army_selector.select(selected_index)
+    _select_army(String(army_selector.get_item_metadata(selected_index)))
+
+
+func _on_army_selected(index: int) -> void:
+    if index < 0 or index >= army_selector.item_count:
+        return
+    _select_army(String(army_selector.get_item_metadata(index)))
+
+
+func _select_army(army_id: String) -> void:
+    for army: Dictionary in bridge.get_army_summaries():
+        if army["id"] != army_id:
+            continue
+        moving_army_id = army_id
+        movement_origin_id = army["province_id"]
+        movement_destination_id = ""
+        var province_name: String = province_by_id.get(movement_origin_id, {}).get(
+            "name", movement_origin_id
+        )
+        army_details.text = "%s\n位置：%s · 兵力：%d · 移动力：%d" % [
+            army_id, province_name, army["manpower"], army["movement_points"]
+        ]
+        _refresh_movement_selection()
+        return
 
 
 func _refresh_province_summary() -> void:
@@ -459,6 +517,7 @@ func _on_recruit_army_pressed() -> void:
     moving_army_id = result["army_id"]
     movement_origin_id = province_id
     movement_destination_id = ""
+    _refresh_army_selector()
     _refresh_movement_selection()
 
 
