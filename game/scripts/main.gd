@@ -9,6 +9,7 @@ const QUICK_SAVE_PATH := "user://quick_save.json"
 @onready var event_log: Label = $Center/EventLog
 @onready var event_history: RichTextLabel = $Center/EventHistory
 @onready var country_details: RichTextLabel = $Center/CountryDetails
+@onready var war_overview: RichTextLabel = $Center/WarOverview
 @onready var region_details: RichTextLabel = $Center/RegionDetails
 @onready var province_map := $MapPanel/ProvinceMap
 @onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
@@ -77,6 +78,7 @@ func _ready() -> void:
 
     _refresh_country_list()
     _refresh_country_details()
+    _refresh_war_overview()
     _refresh_army_selector()
     _refresh_game_status()
     _refresh_technology_status()
@@ -195,6 +197,23 @@ func _refresh_country_details() -> void:
     if not war_pairs.is_empty():
         lines.append("Wars: %s" % ", ".join(war_pairs))
     country_details.text = "\n".join(lines)
+    _refresh_war_overview()
+
+
+func _refresh_war_overview() -> void:
+    var wars: Array = bridge.get_war_summaries()
+    if wars.is_empty():
+        war_overview.text = "No active wars"
+        return
+    var lines: Array[String] = []
+    for war: Dictionary in wars:
+        lines.append("%s vs %s | MP %d:%d | Occ %d:%d | Fronts %d" % [
+            war["country_a"], war["country_b"],
+            war["country_a_manpower"], war["country_b_manpower"],
+            war["country_a_occupied_provinces"], war["country_b_occupied_provinces"],
+            war["front_edges"],
+        ])
+    war_overview.text = "\n".join(lines)
 
 
 func _refresh_game_status() -> void:

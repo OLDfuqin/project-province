@@ -402,6 +402,63 @@ godot::Dictionary ProvinceBridge::get_game_status(
     return response;
 }
 
+godot::Array ProvinceBridge::get_war_summaries() const {
+    godot::Array summaries;
+    if (!state_) {
+        return summaries;
+    }
+    for (const auto& [relation, status] : state_->relations()) {
+        if (status != province::core::DiplomaticStatus::war) {
+            continue;
+        }
+        const province::core::CountryId first = relation.first();
+        const province::core::CountryId second = relation.second();
+        std::int64_t first_manpower = 0;
+        std::int64_t second_manpower = 0;
+        for (const auto& [army_id, army] : state_->armies()) {
+            static_cast<void>(army_id);
+            if (army.owner_id == first) {
+                first_manpower += army.manpower;
+            } else if (army.owner_id == second) {
+                second_manpower += army.manpower;
+            }
+        }
+        std::int64_t first_occupied = 0;
+        std::int64_t second_occupied = 0;
+        std::int64_t front_edges = 0;
+        for (const auto& [province_id, province] : state_->provinces()) {
+            const province::core::CountryId controller = state_->controller_of(province_id);
+            if (province.owner_id == first && controller == second) {
+                ++second_occupied;
+            } else if (province.owner_id == second && controller == first) {
+                ++first_occupied;
+            }
+            for (const province::core::ProvinceId& neighbor_id : province.neighbors) {
+                if (province_id < neighbor_id) {
+                    const province::core::CountryId neighbor_controller =
+                        state_->controller_of(neighbor_id);
+                    const bool first_second_edge =
+                        (controller == first && neighbor_controller == second) ||
+                        (controller == second && neighbor_controller == first);
+                    if (first_second_edge) {
+                        ++front_edges;
+                    }
+                }
+            }
+        }
+        godot::Dictionary summary;
+        summary["country_a"] = godot::String::utf8(first.value().c_str());
+        summary["country_b"] = godot::String::utf8(second.value().c_str());
+        summary["country_a_manpower"] = first_manpower;
+        summary["country_b_manpower"] = second_manpower;
+        summary["country_a_occupied_provinces"] = first_occupied;
+        summary["country_b_occupied_provinces"] = second_occupied;
+        summary["front_edges"] = front_edges;
+        summaries.push_back(summary);
+    }
+    return summaries;
+}
+
 godot::Dictionary ProvinceBridge::build_road(
     const godot::String& country_id,
     const godot::String& province_a,
@@ -797,6 +854,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_game_status", "player_country_id"),
         &ProvinceBridge::get_game_status
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_war_summaries"),
+        &ProvinceBridge::get_war_summaries
     );
 }
 

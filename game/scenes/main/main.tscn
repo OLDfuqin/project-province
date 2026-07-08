@@ -115,6 +115,12 @@ layout_mode = 2
 bbcode_enabled = false
 text = "Country details"
 
+[node name="WarOverview" type="RichTextLabel" parent="Center"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+bbcode_enabled = false
+text = "No active wars"
+
 [node name="RegionDetails" type="RichTextLabel" parent="Center"]
 custom_minimum_size = Vector2(0, 92)
 layout_mode = 2

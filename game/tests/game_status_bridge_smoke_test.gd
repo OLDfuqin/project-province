@@ -19,6 +19,18 @@ func _initialize() -> void:
         bridge.free()
         quit(1)
         return
+    if not bridge.get_war_summaries().is_empty():
+        push_error("Initial war overview was not empty")
+        bridge.free()
+        quit(1)
+        return
+    bridge.declare_war("auroria", "solmere")
+    var wars: Array = bridge.get_war_summaries()
+    if wars.size() != 1 or wars[0].get("front_edges", 0) <= 0:
+        push_error("War overview did not summarize a declared war")
+        bridge.free()
+        quit(1)
+        return
     print("ProvinceBridge game status smoke test passed")
     bridge.free()
     quit(0)

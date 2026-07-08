@@ -70,6 +70,7 @@ public:
     [[nodiscard]] godot::Dictionary save_game(const godot::String& path) const;
     [[nodiscard]] godot::Dictionary load_game(const godot::String& path);
     [[nodiscard]] godot::Dictionary get_game_status(const godot::String& player_country_id) const;
+    [[nodiscard]] godot::Array get_war_summaries() const;
 
 protected:
     static void _bind_methods();
