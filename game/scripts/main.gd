@@ -708,12 +708,20 @@ func _refresh_movement_selection() -> void:
             moving_army_id,
             auto_advance_target_id
         )
+        var preview_text := "no path"
         if path_preview.get("accepted", false):
             province_map.set_auto_advance_path(path_preview.get("path", []))
-        $Center/ArmyControls/MovementStatus.text = "Auto target: %s · %s => %s · %dMP" % [
+            preview_text = "%d step(s), cost %dMP" % [
+                path_preview.get("step_count", 0),
+                path_preview.get("total_movement_cost", 0),
+            ]
+        else:
+            preview_text = "blocked: %s" % path_preview.get("error", "unknown")
+        $Center/ArmyControls/MovementStatus.text = "Auto target: %s · %s => %s · %s · ready %dMP" % [
             moving_army_id,
             province_by_id[movement_origin_id]["name"],
             province_by_id[auto_advance_target_id]["name"],
+            preview_text,
             movement_points,
         ]
         return
