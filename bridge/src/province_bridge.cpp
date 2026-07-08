@@ -459,6 +459,32 @@ godot::Array ProvinceBridge::get_war_summaries() const {
     return summaries;
 }
 
+godot::Array ProvinceBridge::get_frontline_edges() const {
+    godot::Array edges;
+    if (!state_) {
+        return edges;
+    }
+    for (const auto& [province_id, province] : state_->provinces()) {
+        const province::core::CountryId controller = state_->controller_of(province_id);
+        for (const province::core::ProvinceId& neighbor_id : province.neighbors) {
+            if (neighbor_id < province_id) {
+                continue;
+            }
+            const province::core::CountryId neighbor_controller = state_->controller_of(neighbor_id);
+            if (controller != neighbor_controller &&
+                state_->are_at_war(controller, neighbor_controller)) {
+                godot::Dictionary edge;
+                edge["province_a"] = godot::String::utf8(province_id.value().c_str());
+                edge["province_b"] = godot::String::utf8(neighbor_id.value().c_str());
+                edge["country_a"] = godot::String::utf8(controller.value().c_str());
+                edge["country_b"] = godot::String::utf8(neighbor_controller.value().c_str());
+                edges.push_back(edge);
+            }
+        }
+    }
+    return edges;
+}
+
 godot::Dictionary ProvinceBridge::build_road(
     const godot::String& country_id,
     const godot::String& province_a,
@@ -858,6 +884,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_war_summaries"),
         &ProvinceBridge::get_war_summaries
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_frontline_edges"),
+        &ProvinceBridge::get_frontline_edges
     );
 }
 

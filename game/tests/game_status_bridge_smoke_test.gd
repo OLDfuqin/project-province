@@ -26,7 +26,8 @@ func _initialize() -> void:
         return
     bridge.declare_war("auroria", "solmere")
     var wars: Array = bridge.get_war_summaries()
-    if wars.size() != 1 or wars[0].get("front_edges", 0) <= 0:
+    var frontlines: Array = bridge.get_frontline_edges()
+    if wars.size() != 1 or wars[0].get("front_edges", 0) <= 0 or frontlines.is_empty():
         push_error("War overview did not summarize a declared war")
         bridge.free()
         quit(1)

@@ -17,6 +17,7 @@ var _selected_id := ""
 var _road_start_id := ""
 var _road_end_id := ""
 var _roads: Array = []
+var _frontlines: Array = []
 var _armies: Array = []
 var _pan := Vector2.ZERO
 var _zoom := 1.0
@@ -115,6 +116,11 @@ func set_roads(roads: Array) -> void:
     queue_redraw()
 
 
+func set_frontlines(frontlines: Array) -> void:
+    _frontlines = frontlines.duplicate(true)
+    queue_redraw()
+
+
 func road_count() -> int:
     return _roads.size()
 
@@ -210,6 +216,17 @@ func _draw() -> void:
         draw_line(start, end, Color("f4d35e"), 7.0 / _zoom, true)
         draw_circle(start, 6.0 / _zoom, Color("fff3b0"))
         draw_circle(end, 6.0 / _zoom, Color("fff3b0"))
+
+    for frontline: Dictionary in _frontlines:
+        var province_a: String = frontline.get("province_a", "")
+        var province_b: String = frontline.get("province_b", "")
+        if not _polygons.has(province_a) or not _polygons.has(province_b):
+            continue
+        var start := _polygon_center(_polygons[province_a])
+        var end := _polygon_center(_polygons[province_b])
+        draw_line(start, end, Color("ff4d4d"), 5.0 / _zoom, true)
+        draw_circle(start, 5.0 / _zoom, Color("ffb3b3"))
+        draw_circle(end, 5.0 / _zoom, Color("ffb3b3"))
 
     if not _road_start_id.is_empty() and not _road_end_id.is_empty():
         var preview_start := _polygon_center(_polygons[_road_start_id])

@@ -346,6 +346,7 @@ func _refresh_map_data() -> void:
         province_by_id[province["id"]] = province
     province_map.set_scenario_data(provinces, countries)
     province_map.set_roads(bridge.get_road_summaries())
+    province_map.set_frontlines(bridge.get_frontline_edges())
     province_map.set_armies(bridge.get_army_summaries())
     _refresh_army_selector()
 

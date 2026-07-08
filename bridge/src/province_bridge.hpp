@@ -71,6 +71,7 @@ public:
     [[nodiscard]] godot::Dictionary load_game(const godot::String& path);
     [[nodiscard]] godot::Dictionary get_game_status(const godot::String& player_country_id) const;
     [[nodiscard]] godot::Array get_war_summaries() const;
+    [[nodiscard]] godot::Array get_frontline_edges() const;
 
 protected:
     static void _bind_methods();
