@@ -404,6 +404,74 @@ godot::Array ProvinceBridge::get_diplomatic_relations() const {
     return summaries;
 }
 
+godot::Dictionary ProvinceBridge::make_peace(
+    const godot::String& country_a,
+    const godot::String& country_b,
+    const bool annex_occupied_provinces
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const province::core::PeaceSettlementPolicy policy = annex_occupied_provinces
+            ? province::core::PeaceSettlementPolicy::annex_occupied_provinces
+            : province::core::PeaceSettlementPolicy::restore_legal_owners;
+        const province::core::CommandResult result = command_processor_.execute(
+            *state_,
+            province::core::MakePeaceCommand{
+                province::core::CountryId{country_a.utf8().get_data()},
+                province::core::CountryId{country_b.utf8().get_data()},
+                policy,
+            }
+        );
+        response["accepted"] = result.accepted;
+        response["error"] = godot::String::utf8(result.error.c_str());
+        if (result.accepted) {
+            const province::core::GameEvent& event = result.events.front();
+            const auto& peace =
+                std::get<province::core::PeaceSettlementResult>(event.payload);
+            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            response["annexed"] =
+                peace.policy == province::core::PeaceSettlementPolicy::annex_occupied_provinces;
+            godot::Array provinces;
+            for (const province::core::PeaceProvinceSettlement& settled : peace.provinces) {
+                godot::Dictionary summary;
+                summary["province_id"] =
+                    godot::String::utf8(settled.province_id.value().c_str());
+                summary["legal_owner_before"] =
+                    godot::String::utf8(settled.legal_owner_before.value().c_str());
+                summary["controller_before"] =
+                    godot::String::utf8(settled.controller_before.value().c_str());
+                summary["legal_owner_after"] =
+                    godot::String::utf8(settled.legal_owner_after.value().c_str());
+                provinces.push_back(summary);
+            }
+            godot::Array armies;
+            for (const province::core::ArmyRepatriation& repatriated : peace.armies) {
+                godot::Dictionary summary;
+                summary["army_id"] =
+                    godot::String::utf8(repatriated.army_id.value().c_str());
+                summary["origin"] =
+                    godot::String::utf8(repatriated.origin.value().c_str());
+                summary["destination"] = repatriated.destination.has_value()
+                    ? godot::String::utf8(repatriated.destination->value().c_str())
+                    : godot::String{};
+                summary["disbanded"] = repatriated.disbanded;
+                armies.push_back(summary);
+            }
+            response["provinces"] = provinces;
+            response["armies"] = armies;
+        }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
 void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_core_version"),
@@ -468,6 +536,12 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_diplomatic_relations"),
         &ProvinceBridge::get_diplomatic_relations
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD(
+            "make_peace", "country_a", "country_b", "annex_occupied_provinces"
+        ),
+        &ProvinceBridge::make_peace
     );
 }
 

@@ -21,10 +21,35 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
                 return execute_move_army(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, DeclareWarCommand>) {
                 return execute_declare_war(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, MakePeaceCommand>) {
+                return execute_make_peace(state, concrete_command);
             }
         },
         command
     );
+}
+
+CommandResult CommandProcessor::execute_make_peace(
+    GameState& state,
+    const MakePeaceCommand& command
+) {
+    GameState working_state = state;
+    PeaceSettlementResult settlement = peace_system_.settle(
+        working_state,
+        command.country_a,
+        command.country_b,
+        command.policy
+    );
+    if (!settlement.accepted) {
+        return {false, settlement.error, {}};
+    }
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::peace_made,
+        settlement,
+    };
+    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
 }
 
 CommandResult CommandProcessor::execute_declare_war(

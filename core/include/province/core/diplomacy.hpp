@@ -12,6 +12,11 @@ enum class DiplomaticStatus : std::uint8_t {
     war,
 };
 
+enum class PeaceSettlementPolicy : std::uint8_t {
+    restore_legal_owners,
+    annex_occupied_provinces,
+};
+
 class CountryRelationKey final {
 public:
     CountryRelationKey(CountryId country_a, CountryId country_b)

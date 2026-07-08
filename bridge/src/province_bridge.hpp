@@ -55,6 +55,11 @@ public:
         const godot::String& defender_id
     );
     [[nodiscard]] godot::Array get_diplomatic_relations() const;
+    [[nodiscard]] godot::Dictionary make_peace(
+        const godot::String& country_a,
+        const godot::String& country_b,
+        bool annex_occupied_provinces
+    );
 
 protected:
     static void _bind_methods();

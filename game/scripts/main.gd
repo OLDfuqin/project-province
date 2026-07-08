@@ -10,6 +10,7 @@ const PLAYER_COUNTRY_ID := "auroria"
 @onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
 @onready var move_army_button: Button = $Center/ArmyControls/MovementButtons/MoveArmy
 @onready var war_target: OptionButton = $Center/DiplomacyControls/WarTarget
+@onready var peace_policy: OptionButton = $Center/DiplomacyControls/PeacePolicy
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
@@ -33,6 +34,7 @@ func _ready() -> void:
     recruit_button.pressed.connect(_on_recruit_army_pressed)
     move_army_button.pressed.connect(_on_move_army_pressed)
     $Center/DiplomacyControls/DeclareWar.pressed.connect(_on_declare_war_pressed)
+    $Center/DiplomacyControls/MakePeace.pressed.connect(_on_make_peace_pressed)
     $Center/ArmyControls/MovementButtons/ClearMovement.pressed.connect(
         _clear_movement_selection
     )
@@ -52,6 +54,10 @@ func _ready() -> void:
 
     _refresh_country_list()
     _populate_war_targets()
+    peace_policy.add_item("Restore borders")
+    peace_policy.set_item_metadata(0, false)
+    peace_policy.add_item("Annex occupations")
+    peace_policy.set_item_metadata(1, true)
 
     print($Center/Status.text)
 
@@ -95,6 +101,28 @@ func _on_declare_war_pressed() -> void:
     event_log.text = "Event #%d: %s declared war on %s" % [
         result["event_sequence"], result["aggressor_id"], result["defender_id"]
     ]
+
+
+func _on_make_peace_pressed() -> void:
+    if war_target.item_count == 0:
+        return
+    var other_country_id: String = war_target.get_selected_metadata()
+    var annex: bool = peace_policy.get_selected_metadata()
+    var result: Dictionary = bridge.make_peace(
+        PLAYER_COUNTRY_ID,
+        other_country_id,
+        annex
+    )
+    if not result.get("accepted", false):
+        event_log.text = "Peace failed: %s" % result.get("error", "unknown error")
+        return
+    event_log.text = "Peace concluded: %d provinces settled, %d armies repatriated" % [
+        result.get("provinces", []).size(),
+        result.get("armies", []).size(),
+    ]
+    _clear_movement_selection()
+    _refresh_map_data()
+    _refresh_country_list()
 
 
 func _refresh_map_data() -> void:

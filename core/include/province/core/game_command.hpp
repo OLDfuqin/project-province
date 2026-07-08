@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/stable_id.hpp"
+#include "province/core/diplomacy.hpp"
 
 #include <cstdint>
 #include <variant>
@@ -33,13 +34,20 @@ struct DeclareWarCommand final {
     CountryId defender_id;
 };
 
+struct MakePeaceCommand final {
+    CountryId country_a;
+    CountryId country_b;
+    PeaceSettlementPolicy policy{PeaceSettlementPolicy::restore_legal_owners};
+};
+
 using GameCommand =
     std::variant<
         AdvanceTurnCommand,
         BuildRoadCommand,
         RecruitArmyCommand,
         MoveArmyCommand,
-        DeclareWarCommand
+        DeclareWarCommand,
+        MakePeaceCommand
     >;
 
 } // namespace province::core

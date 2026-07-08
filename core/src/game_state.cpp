@@ -214,6 +214,18 @@ void GameState::clear_occupation(const ProvinceId& province_id) {
     occupations_.erase(province_id);
 }
 
+void GameState::transfer_province_ownership(
+    const ProvinceId& province_id,
+    const CountryId& new_owner_id
+) {
+    Province* province = find_province(province_id);
+    if (province == nullptr || find_country(new_owner_id) == nullptr) {
+        throw std::invalid_argument{"province and new owner must exist"};
+    }
+    province->owner_id = new_owner_id;
+    occupations_.erase(province_id);
+}
+
 const std::map<ProvinceId, CountryId>& GameState::occupations() const noexcept {
     return occupations_;
 }

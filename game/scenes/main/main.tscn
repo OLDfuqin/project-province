@@ -77,6 +77,13 @@ layout_mode = 2
 layout_mode = 2
 text = "Declare War"
 
+[node name="PeacePolicy" type="OptionButton" parent="Center/DiplomacyControls"]
+layout_mode = 2
+
+[node name="MakePeace" type="Button" parent="Center/DiplomacyControls"]
+layout_mode = 2
+text = "Make Peace"
+
 [node name="ProvinceSummary" type="Label" parent="Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)

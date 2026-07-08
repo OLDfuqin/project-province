@@ -59,6 +59,10 @@ public:
     [[nodiscard]] CountryId controller_of(const ProvinceId& province_id) const;
     void set_occupation(const ProvinceId& province_id, const CountryId& controller_id);
     void clear_occupation(const ProvinceId& province_id);
+    void transfer_province_ownership(
+        const ProvinceId& province_id,
+        const CountryId& new_owner_id
+    );
     [[nodiscard]] const std::map<ProvinceId, CountryId>& occupations() const noexcept;
     [[nodiscard]] DiplomaticStatus diplomatic_status(
         const CountryId& country_a,

@@ -94,6 +94,28 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var peace_result: Dictionary = bridge.make_peace("auroria", "verdantia", false)
+    relations = bridge.get_diplomatic_relations()
+    var restored_greenvale: Dictionary = {}
+    var attacker_after_peace: Dictionary = {}
+    for province: Dictionary in bridge.get_province_summaries():
+        if province["id"] == "greenvale":
+            restored_greenvale = province
+    for army: Dictionary in bridge.get_army_summaries():
+        if army["id"] == result["army_id"]:
+            attacker_after_peace = army
+    if not peace_result.get("accepted", false) or \
+            peace_result.get("provinces", []).size() != 1 or \
+            peace_result.get("armies", []).size() != 1 or \
+            not relations.is_empty() or \
+            restored_greenvale.get("owner_id", "") != "verdantia" or \
+            restored_greenvale.get("occupied", true) or \
+            attacker_after_peace.get("province_id", "") != "northreach":
+        push_error("Peace settlement was not reflected in bridge state")
+        bridge.free()
+        quit(1)
+        return
+
     print("ProvinceBridge army recruitment smoke test passed")
     bridge.free()
     quit(0)

@@ -37,6 +37,8 @@ int main() {
     using province::core::RecruitArmyCommand;
     using province::core::MoveArmyCommand;
     using province::core::DeclareWarCommand;
+    using province::core::MakePeaceCommand;
+    using province::core::PeaceSettlementPolicy;
     using province::core::ArmyRecruitedEvent;
     using province::core::RoadBuiltEvent;
     using province::core::RoadLevel;
@@ -291,6 +293,29 @@ int main() {
         std::cerr << "War declaration did not enable hostile territory movement\n";
         return 1;
     }
+    const CommandResult restored_peace = paved_move_processor.execute(
+        paved_move_state,
+        MakePeaceCommand{
+            CountryId{"auroria"},
+            CountryId{"solmere"},
+            PeaceSettlementPolicy::restore_legal_owners,
+        }
+    );
+    const CommandResult duplicate_peace = paved_move_processor.execute(
+        paved_move_state,
+        MakePeaceCommand{
+            CountryId{"auroria"},
+            CountryId{"solmere"},
+            PeaceSettlementPolicy::restore_legal_owners,
+        }
+    );
+    if (!restored_peace.accepted || duplicate_peace.accepted ||
+        paved_move_state.are_at_war(CountryId{"auroria"}, CountryId{"solmere"}) ||
+        paved_move_state.controller_of(ProvinceId{"redpass"}) != CountryId{"solmere"} ||
+        paved_move_state.find_army(paved_army_id)->province_id != ProvinceId{"northreach"}) {
+        std::cerr << "Status quo peace did not restore borders and repatriate armies\n";
+        return 1;
+    }
 
     GameState battle_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
     CommandProcessor battle_processor;
@@ -342,6 +367,21 @@ int main() {
     );
     if (occupied_recruitment.accepted) {
         std::cerr << "Legal owner recruited soldiers in an occupied province\n";
+        return 1;
+    }
+    const CommandResult annexation_peace = battle_processor.execute(
+        battle_state,
+        MakePeaceCommand{
+            CountryId{"auroria"},
+            CountryId{"solmere"},
+            PeaceSettlementPolicy::annex_occupied_provinces,
+        }
+    );
+    if (!annexation_peace.accepted ||
+        battle_state.find_province(ProvinceId{"redpass"})->owner_id != CountryId{"auroria"} ||
+        battle_state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"} ||
+        battle_state.are_at_war(CountryId{"auroria"}, CountryId{"solmere"})) {
+        std::cerr << "Annexation peace did not transfer occupied territory\n";
         return 1;
     }
 

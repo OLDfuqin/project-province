@@ -7,6 +7,7 @@
 #include "province/core/game_event.hpp"
 #include "province/core/game_state.hpp"
 #include "province/core/population_system.hpp"
+#include "province/core/peace_system.hpp"
 #include "province/core/movement_system.hpp"
 #include "province/core/road_system.hpp"
 
@@ -48,6 +49,10 @@ private:
         GameState& state,
         const DeclareWarCommand& command
     );
+    [[nodiscard]] CommandResult execute_make_peace(
+        GameState& state,
+        const MakePeaceCommand& command
+    );
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;
@@ -56,6 +61,7 @@ private:
     ArmySystem army_system_;
     MovementSystem movement_system_;
     BattleSystem battle_system_;
+    PeaceSystem peace_system_;
 };
 
 } // namespace province::core
