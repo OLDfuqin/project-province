@@ -18,6 +18,7 @@ var _road_start_id := ""
 var _road_end_id := ""
 var _auto_advance_origin_id := ""
 var _auto_advance_target_id := ""
+var _auto_advance_path: Array = []
 var _roads: Array = []
 var _frontlines: Array = []
 var _armies: Array = []
@@ -116,6 +117,17 @@ func set_road_selection(start_id: String, end_id: String) -> void:
 func set_auto_advance_target(origin_id: String, target_id: String) -> void:
     _auto_advance_origin_id = origin_id
     _auto_advance_target_id = target_id
+    _auto_advance_path = [] if origin_id.is_empty() or target_id.is_empty() else [
+        origin_id,
+        target_id,
+    ]
+    queue_redraw()
+
+
+func set_auto_advance_path(path: Array) -> void:
+    _auto_advance_path = path.duplicate(true)
+    _auto_advance_origin_id = "" if _auto_advance_path.is_empty() else String(_auto_advance_path.front())
+    _auto_advance_target_id = "" if _auto_advance_path.is_empty() else String(_auto_advance_path.back())
     queue_redraw()
 
 
@@ -241,13 +253,17 @@ func _draw() -> void:
         var preview_end := _polygon_center(_polygons[_road_end_id])
         draw_line(preview_start, preview_end, Color("fff0a6"), 3.0 / _zoom, true)
 
-    if not _auto_advance_origin_id.is_empty() and not _auto_advance_target_id.is_empty() and \
-            _polygons.has(_auto_advance_origin_id) and _polygons.has(_auto_advance_target_id):
-        var advance_start := _polygon_center(_polygons[_auto_advance_origin_id])
-        var advance_end := _polygon_center(_polygons[_auto_advance_target_id])
-        draw_line(advance_start, advance_end, Color("80deea"), 4.0 / _zoom, true)
-        draw_circle(advance_start, 6.0 / _zoom, Color("b2ebf2"))
-        draw_circle(advance_end, 8.0 / _zoom, Color("00e5ff"))
+    if _auto_advance_path.size() >= 2:
+        for index: int in range(1, _auto_advance_path.size()):
+            var previous_id := String(_auto_advance_path[index - 1])
+            var next_id := String(_auto_advance_path[index])
+            if not _polygons.has(previous_id) or not _polygons.has(next_id):
+                continue
+            var advance_start := _polygon_center(_polygons[previous_id])
+            var advance_end := _polygon_center(_polygons[next_id])
+            draw_line(advance_start, advance_end, Color("80deea"), 4.0 / _zoom, true)
+            draw_circle(advance_start, 5.0 / _zoom, Color("b2ebf2"))
+            draw_circle(advance_end, 6.0 / _zoom, Color("00e5ff"))
 
     var armies_by_province: Dictionary = {}
     for army: Dictionary in _armies:

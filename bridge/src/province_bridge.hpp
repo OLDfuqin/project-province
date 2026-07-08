@@ -55,6 +55,10 @@ public:
         const godot::String& army_id,
         const godot::String& target
     );
+    [[nodiscard]] godot::Dictionary get_auto_advance_path(
+        const godot::String& army_id,
+        const godot::String& target
+    ) const;
     [[nodiscard]] godot::Dictionary declare_war(
         const godot::String& aggressor_id,
         const godot::String& defender_id

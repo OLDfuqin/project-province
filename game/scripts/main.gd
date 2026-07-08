@@ -693,7 +693,7 @@ func _refresh_movement_selection() -> void:
         moving_army_id.is_empty() or movement_destination_id.is_empty()
     )
     auto_advance_button.disabled = moving_army_id.is_empty()
-    province_map.set_auto_advance_target(movement_origin_id, auto_advance_target_id)
+    province_map.set_auto_advance_path([])
     if moving_army_id.is_empty():
         $Center/ArmyControls/MovementStatus.text = "移动：请选择有己方军队的地区"
         return
@@ -704,6 +704,12 @@ func _refresh_movement_selection() -> void:
             movement_points = int(army["movement_points"])
             break
     if not auto_advance_target_id.is_empty():
+        var path_preview: Dictionary = bridge.get_auto_advance_path(
+            moving_army_id,
+            auto_advance_target_id
+        )
+        if path_preview.get("accepted", false):
+            province_map.set_auto_advance_path(path_preview.get("path", []))
         $Center/ArmyControls/MovementStatus.text = "Auto target: %s · %s => %s · %dMP" % [
             moving_army_id,
             province_by_id[movement_origin_id]["name"],

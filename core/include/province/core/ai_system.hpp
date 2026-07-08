@@ -28,6 +28,11 @@ public:
         const Army& army,
         const ProvinceId& target
     ) const;
+    [[nodiscard]] std::vector<ProvinceId> find_path_toward(
+        const GameState& state,
+        const Army& army,
+        const ProvinceId& target
+    ) const;
 
 private:
     static constexpr std::int64_t recruitment_batch = 500;

@@ -3,6 +3,7 @@
 #include "province/core/ai_system.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_status.hpp"
+#include "province/core/movement_system.hpp"
 #include "province/core/scenario_loader.hpp"
 #include "province/core/save_game.hpp"
 #include "province/core/version.hpp"
@@ -11,6 +12,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace province::bridge {
 
@@ -776,6 +778,71 @@ godot::Dictionary ProvinceBridge::auto_advance_army_to(
     return response;
 }
 
+godot::Dictionary ProvinceBridge::get_auto_advance_path(
+    const godot::String& army_id,
+    const godot::String& target
+) const {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        if (target.is_empty()) {
+            response["accepted"] = false;
+            response["error"] = "target province is required";
+            return response;
+        }
+        const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        const province::core::ProvinceId target_id{target.utf8().get_data()};
+        const province::core::Army* army = state_->find_army(core_army_id);
+        if (army == nullptr) {
+            response["accepted"] = false;
+            response["error"] = "army not found";
+            return response;
+        }
+        if (state_->find_province(target_id) == nullptr) {
+            response["accepted"] = false;
+            response["error"] = "target province not found";
+            return response;
+        }
+
+        const std::vector<province::core::ProvinceId> path =
+            province::core::AiSystem{}.find_path_toward(*state_, *army, target_id);
+        if (path.empty()) {
+            response["accepted"] = false;
+            response["error"] = "army has no path to target";
+            return response;
+        }
+
+        godot::Array path_ids;
+        std::int32_t total_cost = 0;
+        for (std::size_t index = 0; index < path.size(); ++index) {
+            path_ids.push_back(godot::String::utf8(path[index].value().c_str()));
+            if (index > 0) {
+                const province::core::Province* province = state_->find_province(path[index]);
+                const std::int32_t cost =
+                    state_->road_level(path[index - 1], path[index]) ==
+                            province::core::RoadLevel::paved
+                        ? province::core::MovementSystem::paved_road_cost
+                        : province::core::terrain_movement_cost(province->terrain);
+                total_cost += cost;
+            }
+        }
+        response["accepted"] = true;
+        response["path"] = path_ids;
+        response["step_count"] = static_cast<std::int64_t>(
+            path.size() > 0 ? path.size() - 1 : 0
+        );
+        response["total_movement_cost"] = total_cost;
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
 godot::Dictionary ProvinceBridge::declare_war(
     const godot::String& aggressor_id,
     const godot::String& defender_id
@@ -961,6 +1028,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("auto_advance_army_to", "army_id", "target"),
         &ProvinceBridge::auto_advance_army_to
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_auto_advance_path", "army_id", "target"),
+        &ProvinceBridge::get_auto_advance_path
     );
     godot::ClassDB::bind_method(
         godot::D_METHOD("declare_war", "aggressor_id", "defender_id"),

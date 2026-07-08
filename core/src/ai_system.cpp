@@ -94,15 +94,17 @@ std::optional<ProvinceId> choose_wartime_step(
     return step == army.province_id ? std::nullopt : std::optional<ProvinceId>{step};
 }
 
-std::optional<ProvinceId> choose_step_toward(
+std::vector<ProvinceId> choose_path_toward(
     const GameState& state,
     const Army& army,
     const ProvinceId& target
 ) {
     if (state.find_province(army.province_id) == nullptr ||
-        state.find_province(target) == nullptr ||
-        army.province_id == target) {
-        return std::nullopt;
+        state.find_province(target) == nullptr) {
+        return {};
+    }
+    if (army.province_id == target) {
+        return {army.province_id};
     }
 
     using QueueItem = std::pair<std::int32_t, ProvinceId>;
@@ -153,13 +155,37 @@ std::optional<ProvinceId> choose_step_toward(
     }
 
     if (!previous.contains(target)) {
+        return {};
+    }
+    std::vector<ProvinceId> reversed_path;
+    ProvinceId current = target;
+    reversed_path.push_back(current);
+    while (previous.contains(current)) {
+        current = previous.at(current);
+        reversed_path.push_back(current);
+        if (current == army.province_id) {
+            break;
+        }
+    }
+    if (reversed_path.back() != army.province_id) {
+        return {};
+    }
+    return std::vector<ProvinceId>{
+        reversed_path.rbegin(),
+        reversed_path.rend(),
+    };
+}
+
+std::optional<ProvinceId> choose_step_toward(
+    const GameState& state,
+    const Army& army,
+    const ProvinceId& target
+) {
+    const std::vector<ProvinceId> path = choose_path_toward(state, army, target);
+    if (path.size() < 2) {
         return std::nullopt;
     }
-    ProvinceId step = target;
-    while (previous.contains(step) && previous.at(step) != army.province_id) {
-        step = previous.at(step);
-    }
-    return step == army.province_id ? std::nullopt : std::optional<ProvinceId>{step};
+    return path[1];
 }
 
 } // namespace
@@ -286,6 +312,14 @@ std::optional<ProvinceId> AiSystem::find_step_toward(
     const ProvinceId& target
 ) const {
     return choose_step_toward(state, army, target);
+}
+
+std::vector<ProvinceId> AiSystem::find_path_toward(
+    const GameState& state,
+    const Army& army,
+    const ProvinceId& target
+) const {
+    return choose_path_toward(state, army, target);
 }
 
 } // namespace province::core

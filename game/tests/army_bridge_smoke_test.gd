@@ -128,6 +128,17 @@ func _initialize() -> void:
     bridge.build_road("auroria", "northreach", "westmark")
     bridge.declare_war("auroria", "verdantia")
     bridge.advance_turn(3)
+    var path_preview: Dictionary = bridge.get_auto_advance_path(
+        deep_army["army_id"], "greenvale"
+    )
+    if not path_preview.get("accepted", false) or \
+            path_preview.get("path", []) != ["northreach", "westmark", "greenvale"] or \
+            path_preview.get("step_count", 0) != 2 or \
+            path_preview.get("total_movement_cost", 0) != 3:
+        push_error("Auto advance path preview was not reflected in bridge state")
+        bridge.free()
+        quit(1)
+        return
     var auto_entry: Dictionary = bridge.auto_advance_army_to(
         deep_army["army_id"], "greenvale"
     )
