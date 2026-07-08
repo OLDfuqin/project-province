@@ -398,7 +398,7 @@ func _select_army(army_id: String) -> void:
         moving_army_id = army_id
         movement_origin_id = army["province_id"]
         movement_destination_id = ""
-        auto_advance_target_id = ""
+        auto_advance_target_id = army.get("advance_target_id", "")
         var province_name: String = province_by_id.get(movement_origin_id, {}).get(
             "name", movement_origin_id
         )
@@ -601,6 +601,7 @@ func _on_move_army_pressed() -> void:
     movement_origin_id = result.get("army_province_id", result["destination"])
     movement_destination_id = ""
     auto_advance_target_id = ""
+    bridge.clear_army_advance_target(moving_army_id)
     _refresh_map_data()
     _refresh_country_details()
     _refresh_game_status()
@@ -659,9 +660,19 @@ func _update_movement_from_province(province_id: String) -> void:
         if _are_provinces_adjacent(movement_origin_id, province_id):
             movement_destination_id = province_id
             auto_advance_target_id = ""
+            bridge.clear_army_advance_target(moving_army_id)
         else:
             movement_destination_id = ""
             auto_advance_target_id = province_id
+            var target_result: Dictionary = bridge.set_army_advance_target(
+                moving_army_id,
+                auto_advance_target_id
+            )
+            if not target_result.get("accepted", false):
+                event_log.text = "Set advance target failed: %s" % target_result.get(
+                    "error", "unknown"
+                )
+                auto_advance_target_id = ""
     _refresh_movement_selection()
 
 
@@ -681,6 +692,8 @@ func _find_player_army_in_province(province_id: String) -> Dictionary:
 
 
 func _clear_movement_selection() -> void:
+    if not moving_army_id.is_empty():
+        bridge.clear_army_advance_target(moving_army_id)
     moving_army_id = ""
     movement_origin_id = ""
     movement_destination_id = ""

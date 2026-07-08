@@ -128,6 +128,19 @@ func _initialize() -> void:
     bridge.build_road("auroria", "northreach", "westmark")
     bridge.declare_war("auroria", "verdantia")
     bridge.advance_turn(3)
+    var set_target: Dictionary = bridge.set_army_advance_target(
+        deep_army["army_id"], "greenvale"
+    )
+    var planned_army: Dictionary = {}
+    for army_summary: Dictionary in bridge.get_army_summaries():
+        if army_summary["id"] == deep_army["army_id"]:
+            planned_army = army_summary
+    if not set_target.get("accepted", false) or \
+            planned_army.get("advance_target_id", "") != "greenvale":
+        push_error("Army advance target was not stored in bridge state")
+        bridge.free()
+        quit(1)
+        return
     var path_preview: Dictionary = bridge.get_auto_advance_path(
         deep_army["army_id"], "greenvale"
     )
@@ -152,6 +165,15 @@ func _initialize() -> void:
             auto_entry.get("movement_cost", 0) != 3 or \
             not auto_entry.get("province_occupied", false):
         push_error("Multi-step auto advance was not reflected in bridge state")
+        bridge.free()
+        quit(1)
+        return
+    var arrived_army: Dictionary = {}
+    for army_summary: Dictionary in bridge.get_army_summaries():
+        if army_summary["id"] == deep_army["army_id"]:
+            arrived_army = army_summary
+    if arrived_army.get("advance_target_id", "") != "":
+        push_error("Army advance target was not cleared after reaching target")
         bridge.free()
         quit(1)
         return

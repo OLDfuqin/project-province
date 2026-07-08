@@ -1,6 +1,7 @@
 #include "province/core/game_state.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -169,7 +170,7 @@ ArmyId GameState::create_army(
     ArmyId id{"army_" + std::to_string(next_army_sequence_++)};
     const auto [iterator, inserted] = armies_.emplace(
         id,
-        Army{id, owner_id, province_id, manpower, 0}
+        Army{id, owner_id, province_id, manpower, 0, std::nullopt}
     );
     if (!inserted) {
         throw std::logic_error{"generated duplicate army ID"};
@@ -328,6 +329,10 @@ std::vector<std::string> GameState::validate() const {
         }
         if (army.movement_points < 0) {
             issues.push_back("army '" + army_id.value() + "' has negative movement points");
+        }
+        if (army.advance_target.has_value() &&
+            !provinces_.contains(*army.advance_target)) {
+            issues.push_back("army '" + army_id.value() + "' has an unknown advance target");
         }
     }
     for (const auto& [country_id, country] : countries_) {

@@ -21,6 +21,7 @@ func _initialize() -> void:
     bridge.declare_war("auroria", "solmere")
     bridge.advance_turn(1)
     bridge.move_army(army["army_id"], "redpass")
+    bridge.set_army_advance_target(army["army_id"], "goldcoast")
 
     var save_path := ProjectSettings.globalize_path(
         "res://../build/godot_save_roundtrip_test.json"
@@ -36,12 +37,17 @@ func _initialize() -> void:
             redpass = province
     var failed_load: Dictionary = bridge.load_game(save_path + ".missing")
     var date_after_failed_load: Dictionary = bridge.get_current_date()
+    var loaded_army: Dictionary = {}
+    for summary: Dictionary in bridge.get_army_summaries():
+        if summary["id"] == army["army_id"]:
+            loaded_army = summary
 
     if not save_result.get("accepted", false) or \
             not load_result.get("accepted", false) or \
             failed_load.get("accepted", false) or \
             loaded_date != saved_date or date_after_failed_load != loaded_date or \
             bridge.get_army_summaries().size() != 1 or \
+            loaded_army.get("advance_target_id", "") != "goldcoast" or \
             bridge.get_road_summaries().size() != 1 or \
             bridge.get_diplomatic_relations().size() != 1 or \
             redpass.get("owner_id", "") != "auroria" or \

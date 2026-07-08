@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -113,13 +114,17 @@ void SaveGameSerializer::save(
         });
     }
     for (const auto& [army_id, army] : state.armies_) {
-        document["armies"].push_back({
+        Json army_document = {
             {"id", army_id.value()},
             {"owner_id", army.owner_id.value()},
             {"province_id", army.province_id.value()},
             {"manpower", army.manpower},
             {"movement_points", army.movement_points},
-        });
+        };
+        if (army.advance_target.has_value()) {
+            army_document["advance_target"] = army.advance_target->value();
+        }
+        document["armies"].push_back(std::move(army_document));
     }
     for (const auto& [province_id, controller_id] : state.occupations_) {
         document["occupations"].push_back({
@@ -229,6 +234,10 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
         }
         for (const Json& entry : document.at("armies")) {
             const ArmyId id{entry.at("id").get<std::string>()};
+            std::optional<ProvinceId> advance_target;
+            if (entry.contains("advance_target")) {
+                advance_target.emplace(entry.at("advance_target").get<std::string>());
+            }
             const auto [iterator, inserted] = state.armies_.emplace(
                 id,
                 Army{
@@ -237,6 +246,7 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                     ProvinceId{entry.at("province_id").get<std::string>()},
                     entry.at("manpower").get<std::int64_t>(),
                     entry.at("movement_points").get<std::int32_t>(),
+                    std::move(advance_target),
                 }
             );
             static_cast<void>(iterator);
