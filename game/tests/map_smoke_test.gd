@@ -4,17 +4,39 @@ extends SceneTree
 func _initialize() -> void:
     var map_script := load("res://scripts/province_map.gd")
     var province_map: Control = map_script.new()
+    if not province_map.load_map_geometry("res://data/map_geometry.json") or \
+            province_map.geometry_count() != 32:
+        push_error("Data-driven map geometry failed to load")
+        province_map.free()
+        quit(1)
+        return
+    var bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    var data_directory := ProjectSettings.globalize_path("res://data")
+    if bridge == null or not bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Scenario could not be loaded for geometry validation")
+        province_map.free()
+        quit(1)
+        return
+    for province: Dictionary in bridge.get_province_summaries():
+        if not province_map.has_geometry(province["id"]):
+            push_error("Scenario province has no geometry: %s" % province["id"])
+            bridge.free()
+            province_map.free()
+            quit(1)
+            return
 
     var cases := {
-        Vector2(90, 90): "northreach",
-        Vector2(300, 80): "westmark",
-        Vector2(500, 80): "greenvale",
-        Vector2(720, 100): "sunmeadow",
-        Vector2(720, 410): "blueharbor",
-        Vector2(500, 430): "skyplain",
-        Vector2(300, 430): "goldcoast",
-        Vector2(80, 400): "redpass",
-        Vector2(400, 250): "",
+        Vector2(50, 50): "northreach",
+        Vector2(150, 50): "westmark",
+        Vector2(250, 50): "greenvale",
+        Vector2(350, 50): "sunmeadow",
+        Vector2(450, 50): "blueharbor",
+        Vector2(550, 50): "skyplain",
+        Vector2(650, 50): "goldcoast",
+        Vector2(750, 50): "redpass",
+        Vector2(50, 180): "z_nr_1",
+        Vector2(750, 440): "z_rp_3",
+        Vector2(900, 600): "",
     }
 
     for point: Vector2 in cases:
@@ -50,5 +72,6 @@ func _initialize() -> void:
         return
 
     print("Province map hit-test smoke test passed")
+    bridge.free()
     province_map.free()
     quit(0)

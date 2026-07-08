@@ -21,6 +21,10 @@ var movement_origin_id := ""
 var movement_destination_id := ""
 
 func _ready() -> void:
+    if not province_map.load_map_geometry("res://data/map_geometry.json"):
+        $Center/Status.text = "Map load failed: %s" % province_map.geometry_error()
+        push_error(province_map.geometry_error())
+        return
     var data_directory := ProjectSettings.globalize_path("res://data")
     if not bridge.load_scenario(data_directory, 1000, 1):
         $Center/Status.text = "Scenario load failed: %s" % bridge.get_last_error()

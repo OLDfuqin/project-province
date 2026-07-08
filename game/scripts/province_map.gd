@@ -4,41 +4,12 @@ extends Control
 signal province_hovered(province_id: String)
 signal province_selected(province_id: String)
 
-const MAP_SIZE := Vector2(800.0, 500.0)
 const MIN_ZOOM := 0.35
 const MAX_ZOOM := 3.0
 
-var _polygons: Dictionary = {
-    "northreach": PackedVector2Array([
-        Vector2(0, 250), Vector2(0, 0), Vector2(200, 0),
-        Vector2(250, 180), Vector2(220, 250)
-    ]),
-    "westmark": PackedVector2Array([
-        Vector2(200, 0), Vector2(400, 0), Vector2(400, 160), Vector2(250, 180)
-    ]),
-    "greenvale": PackedVector2Array([
-        Vector2(400, 0), Vector2(600, 0), Vector2(550, 180), Vector2(400, 160)
-    ]),
-    "sunmeadow": PackedVector2Array([
-        Vector2(600, 0), Vector2(800, 0), Vector2(800, 250),
-        Vector2(580, 250), Vector2(550, 180)
-    ]),
-    "blueharbor": PackedVector2Array([
-        Vector2(800, 250), Vector2(800, 500), Vector2(600, 500),
-        Vector2(550, 320), Vector2(580, 250)
-    ]),
-    "skyplain": PackedVector2Array([
-        Vector2(600, 500), Vector2(400, 500), Vector2(400, 340), Vector2(550, 320)
-    ]),
-    "goldcoast": PackedVector2Array([
-        Vector2(400, 500), Vector2(200, 500), Vector2(250, 320), Vector2(400, 340)
-    ]),
-    "redpass": PackedVector2Array([
-        Vector2(200, 500), Vector2(0, 500), Vector2(0, 250),
-        Vector2(220, 250), Vector2(250, 320)
-    ]),
-}
-
+var _map_size := Vector2(800.0, 500.0)
+var _polygons: Dictionary = {}
+var _geometry_error := ""
 var _province_data: Dictionary = {}
 var _country_colors: Dictionary = {}
 var _hovered_id := ""
@@ -60,6 +31,58 @@ func _ready() -> void:
     _initialize_view()
 
 
+func load_map_geometry(path: String) -> bool:
+    _geometry_error = ""
+    var file := FileAccess.open(path, FileAccess.READ)
+    if file == null:
+        _geometry_error = "Cannot open map geometry: %s" % path
+        return false
+    var document = JSON.parse_string(file.get_as_text())
+    if not document is Dictionary:
+        _geometry_error = "Map geometry root must be an object"
+        return false
+    if int(document.get("schema_version", 0)) != 1:
+        _geometry_error = "Unsupported map geometry schema version"
+        return false
+    var size_data: Array = document.get("map_size", [])
+    if size_data.size() != 2 or float(size_data[0]) <= 0 or float(size_data[1]) <= 0:
+        _geometry_error = "Map geometry requires a positive map_size"
+        return false
+
+    var loaded_polygons: Dictionary = {}
+    for entry: Dictionary in document.get("provinces", []):
+        var province_id: String = entry.get("id", "")
+        var points_data: Array = entry.get("polygon", [])
+        if province_id.is_empty() or loaded_polygons.has(province_id) or points_data.size() < 3:
+            _geometry_error = "Invalid or duplicate province geometry: %s" % province_id
+            return false
+        var polygon := PackedVector2Array()
+        for coordinates: Array in points_data:
+            if coordinates.size() != 2:
+                _geometry_error = "Invalid polygon point for province: %s" % province_id
+                return false
+            polygon.append(Vector2(float(coordinates[0]), float(coordinates[1])))
+        loaded_polygons[province_id] = polygon
+
+    _map_size = Vector2(float(size_data[0]), float(size_data[1]))
+    _polygons = loaded_polygons
+    _view_initialized = false
+    _initialize_view()
+    return true
+
+
+func geometry_error() -> String:
+    return _geometry_error
+
+
+func geometry_count() -> int:
+    return _polygons.size()
+
+
+func has_geometry(province_id: String) -> bool:
+    return _polygons.has(province_id)
+
+
 func set_scenario_data(provinces: Array, countries: Array) -> void:
     _province_data.clear()
     _country_colors.clear()
@@ -72,6 +95,8 @@ func set_scenario_data(provinces: Array, countries: Array) -> void:
         )
     for province: Dictionary in provinces:
         _province_data[province["id"]] = province
+        if not _polygons.has(province["id"]):
+            push_warning("Province has no map geometry: %s" % province["id"])
     queue_redraw()
 
 
@@ -114,8 +139,12 @@ func _initialize_view() -> void:
     if size.x <= 0.0 or size.y <= 0.0:
         return
     if not _view_initialized:
-        _zoom = clampf(minf((size.x - 48.0) / MAP_SIZE.x, (size.y - 72.0) / MAP_SIZE.y), MIN_ZOOM, 1.2)
-        _pan = (size - MAP_SIZE * _zoom) * 0.5
+        _zoom = clampf(
+            minf((size.x - 48.0) / _map_size.x, (size.y - 72.0) / _map_size.y),
+            MIN_ZOOM,
+            1.2
+        )
+        _pan = (size - _map_size * _zoom) * 0.5
         _view_initialized = true
     queue_redraw()
 
@@ -150,11 +179,12 @@ func _draw() -> void:
         if not province.is_empty():
             var center := _polygon_center(polygon)
             var name: String = province.get("name", province_id)
+            var label_size := 12
             var text_size := ThemeDB.fallback_font.get_string_size(
                 name,
                 HORIZONTAL_ALIGNMENT_LEFT,
                 -1,
-                17
+                label_size
             )
             draw_string(
                 ThemeDB.fallback_font,
@@ -162,20 +192,9 @@ func _draw() -> void:
                 name,
                 HORIZONTAL_ALIGNMENT_LEFT,
                 -1,
-                17,
+                label_size,
                 Color.WHITE
             )
-
-    draw_circle(Vector2(400, 250), 66, Color("233c59"))
-    draw_string(
-        ThemeDB.fallback_font,
-        Vector2(370, 257),
-        "内海",
-        HORIZONTAL_ALIGNMENT_LEFT,
-        -1,
-        18,
-        Color("9fc6e8")
-    )
 
     for road: Dictionary in _roads:
         var province_a: String = road.get("province_a", "")

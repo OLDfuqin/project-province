@@ -122,7 +122,7 @@ int main() {
     }
 
     const GameState loaded_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
-    if (loaded_state.country_count() != 4 || loaded_state.province_count() != 8) {
+    if (loaded_state.country_count() != 4 || loaded_state.province_count() != 32) {
         std::cerr << "ScenarioLoader returned incorrect entity counts\n";
         return 1;
     }
@@ -525,14 +525,14 @@ int main() {
         return 1;
     }
     const Country* auroria_after_turn = turn_state.find_country(CountryId{"auroria"});
-    if (auroria_after_turn == nullptr || auroria_after_turn->treasury != 10'450) {
+    if (auroria_after_turn == nullptr || auroria_after_turn->treasury != 10'900) {
         std::cerr << "EconomySystem did not add proportional monthly income\n";
         return 1;
     }
     bool found_auroria_income = false;
     for (const auto& income : economy_event.incomes) {
         if (income.country_id == CountryId{"auroria"}) {
-            found_auroria_income = income.amount == 450;
+            found_auroria_income = income.amount == 900;
         }
     }
     if (!found_auroria_income) {
@@ -560,7 +560,7 @@ int main() {
         const Country* proportional_country =
             proportional_state.find_country(CountryId{"auroria"});
         if (!proportional_result.accepted || proportional_country == nullptr ||
-            proportional_country->treasury != 10'000 + 150 * months) {
+            proportional_country->treasury != 10'000 + 300 * months) {
             std::cerr << "Economy income is not proportional for turn length "
                       << months << "\n";
             return 1;
@@ -605,7 +605,7 @@ int main() {
     );
     if (!economy_research.accepted || economy_tech_state.find_technology(
             CountryId{"auroria"})->economy_level != 1 ||
-        economy_tech_state.find_country(CountryId{"auroria"})->treasury != 9'165) {
+        economy_tech_state.find_country(CountryId{"auroria"})->treasury != 9'329) {
         std::cerr << "Economy technology did not increase monthly income by ten percent\n";
         return 1;
     }

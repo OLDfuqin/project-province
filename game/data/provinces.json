@@ -1,45 +1,44 @@
 {
   "schema_version": 1,
   "provinces": [
-    {
-      "id": "northreach", "name": "北境", "owner_id": "auroria",
-      "population": 120000, "soldier_population": 2000, "economy": 80,
-      "neighbors": ["redpass", "westmark"]
-    },
-    {
-      "id": "westmark", "name": "西境", "owner_id": "auroria",
-      "population": 100000, "soldier_population": 1600, "economy": 70,
-      "neighbors": ["greenvale", "northreach"]
-    },
-    {
-      "id": "greenvale", "name": "翠谷", "owner_id": "verdantia",
-      "population": 115000, "soldier_population": 1800, "economy": 75,
-      "neighbors": ["sunmeadow", "westmark"]
-    },
-    {
-      "id": "sunmeadow", "name": "阳原", "owner_id": "verdantia",
-      "population": 95000, "soldier_population": 1400, "economy": 65,
-      "neighbors": ["blueharbor", "greenvale"]
-    },
-    {
-      "id": "blueharbor", "name": "蓝港", "owner_id": "caelus",
-      "population": 130000, "soldier_population": 2100, "economy": 90,
-      "neighbors": ["skyplain", "sunmeadow"]
-    },
-    {
-      "id": "skyplain", "name": "天原", "owner_id": "caelus",
-      "population": 105000, "soldier_population": 1700, "economy": 72,
-      "neighbors": ["blueharbor", "goldcoast"]
-    },
-    {
-      "id": "goldcoast", "name": "金岸", "owner_id": "solmere",
-      "population": 125000, "soldier_population": 1900, "economy": 85,
-      "neighbors": ["redpass", "skyplain"]
-    },
-    {
-      "id": "redpass", "name": "赤隘", "owner_id": "solmere",
-      "population": 90000, "soldier_population": 1500, "economy": 60,
-      "neighbors": ["goldcoast", "northreach"]
-    }
+    {"id":"northreach","name":"北境","owner_id":"auroria","population":120000,"soldier_population":2000,"economy":80,"neighbors":["redpass","westmark","z_nr_1"]},
+    {"id":"z_nr_1","name":"霜原","owner_id":"auroria","population":30000,"soldier_population":500,"economy":30,"neighbors":["northreach","z_nr_2","z_rp_1","z_wm_1"]},
+    {"id":"z_nr_2","name":"白岭","owner_id":"auroria","population":25000,"soldier_population":400,"economy":25,"neighbors":["z_nr_1","z_nr_3","z_rp_2","z_wm_2"]},
+    {"id":"z_nr_3","name":"寒湾","owner_id":"auroria","population":20000,"soldier_population":300,"economy":20,"neighbors":["z_nr_2","z_rp_3","z_wm_3"]},
+
+    {"id":"westmark","name":"西境","owner_id":"auroria","population":100000,"soldier_population":1600,"economy":70,"neighbors":["greenvale","northreach","z_wm_1"]},
+    {"id":"z_wm_1","name":"河间","owner_id":"auroria","population":30000,"soldier_population":500,"economy":30,"neighbors":["westmark","z_gv_1","z_nr_1","z_wm_2"]},
+    {"id":"z_wm_2","name":"丘陵","owner_id":"auroria","population":25000,"soldier_population":400,"economy":25,"neighbors":["z_gv_2","z_nr_2","z_wm_1","z_wm_3"]},
+    {"id":"z_wm_3","name":"西港","owner_id":"auroria","population":20000,"soldier_population":300,"economy":20,"neighbors":["z_gv_3","z_nr_3","z_wm_2"]},
+
+    {"id":"greenvale","name":"翠谷","owner_id":"verdantia","population":115000,"soldier_population":1800,"economy":75,"neighbors":["sunmeadow","westmark","z_gv_1"]},
+    {"id":"z_gv_1","name":"青森","owner_id":"verdantia","population":30000,"soldier_population":500,"economy":30,"neighbors":["greenvale","z_gv_2","z_sm_1","z_wm_1"]},
+    {"id":"z_gv_2","name":"绿湖","owner_id":"verdantia","population":25000,"soldier_population":400,"economy":25,"neighbors":["z_gv_1","z_gv_3","z_sm_2","z_wm_2"]},
+    {"id":"z_gv_3","name":"南林","owner_id":"verdantia","population":20000,"soldier_population":300,"economy":20,"neighbors":["z_gv_2","z_sm_3","z_wm_3"]},
+
+    {"id":"sunmeadow","name":"阳原","owner_id":"verdantia","population":95000,"soldier_population":1400,"economy":65,"neighbors":["blueharbor","greenvale","z_sm_1"]},
+    {"id":"z_sm_1","name":"花野","owner_id":"verdantia","population":30000,"soldier_population":500,"economy":30,"neighbors":["sunmeadow","z_bh_1","z_gv_1","z_sm_2"]},
+    {"id":"z_sm_2","name":"暖川","owner_id":"verdantia","population":25000,"soldier_population":400,"economy":25,"neighbors":["z_bh_2","z_gv_2","z_sm_1","z_sm_3"]},
+    {"id":"z_sm_3","name":"日角","owner_id":"verdantia","population":20000,"soldier_population":300,"economy":20,"neighbors":["z_bh_3","z_gv_3","z_sm_2"]},
+
+    {"id":"blueharbor","name":"蓝港","owner_id":"caelus","population":130000,"soldier_population":2100,"economy":90,"neighbors":["skyplain","sunmeadow","z_bh_1"]},
+    {"id":"z_bh_1","name":"潮岸","owner_id":"caelus","population":30000,"soldier_population":500,"economy":30,"neighbors":["blueharbor","z_bh_2","z_sm_1","z_sp_1"]},
+    {"id":"z_bh_2","name":"群岛","owner_id":"caelus","population":25000,"soldier_population":400,"economy":25,"neighbors":["z_bh_1","z_bh_3","z_sm_2","z_sp_2"]},
+    {"id":"z_bh_3","name":"远海","owner_id":"caelus","population":20000,"soldier_population":300,"economy":20,"neighbors":["z_bh_2","z_sm_3","z_sp_3"]},
+
+    {"id":"skyplain","name":"天原","owner_id":"caelus","population":105000,"soldier_population":1700,"economy":72,"neighbors":["blueharbor","goldcoast","z_sp_1"]},
+    {"id":"z_sp_1","name":"高台","owner_id":"caelus","population":30000,"soldier_population":500,"economy":30,"neighbors":["skyplain","z_bh_1","z_gc_1","z_sp_2"]},
+    {"id":"z_sp_2","name":"云岭","owner_id":"caelus","population":25000,"soldier_population":400,"economy":25,"neighbors":["z_bh_2","z_gc_2","z_sp_1","z_sp_3"]},
+    {"id":"z_sp_3","name":"风谷","owner_id":"caelus","population":20000,"soldier_population":300,"economy":20,"neighbors":["z_bh_3","z_gc_3","z_sp_2"]},
+
+    {"id":"goldcoast","name":"金岸","owner_id":"solmere","population":125000,"soldier_population":1900,"economy":85,"neighbors":["redpass","skyplain","z_gc_1"]},
+    {"id":"z_gc_1","name":"金沙","owner_id":"solmere","population":30000,"soldier_population":500,"economy":30,"neighbors":["goldcoast","z_gc_2","z_rp_1","z_sp_1"]},
+    {"id":"z_gc_2","name":"盐泽","owner_id":"solmere","population":25000,"soldier_population":400,"economy":25,"neighbors":["z_gc_1","z_gc_3","z_rp_2","z_sp_2"]},
+    {"id":"z_gc_3","name":"南湾","owner_id":"solmere","population":20000,"soldier_population":300,"economy":20,"neighbors":["z_gc_2","z_rp_3","z_sp_3"]},
+
+    {"id":"redpass","name":"赤隘","owner_id":"solmere","population":90000,"soldier_population":1500,"economy":60,"neighbors":["goldcoast","northreach","z_rp_1"]},
+    {"id":"z_rp_1","name":"红岭","owner_id":"solmere","population":30000,"soldier_population":500,"economy":30,"neighbors":["redpass","z_gc_1","z_nr_1","z_rp_2"]},
+    {"id":"z_rp_2","name":"燧原","owner_id":"solmere","population":25000,"soldier_population":400,"economy":25,"neighbors":["z_gc_2","z_nr_2","z_rp_1","z_rp_3"]},
+    {"id":"z_rp_3","name":"火山口","owner_id":"solmere","population":20000,"soldier_population":300,"economy":20,"neighbors":["z_gc_3","z_nr_3","z_rp_2"]}
   ]
 }
