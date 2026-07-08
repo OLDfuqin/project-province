@@ -193,20 +193,27 @@ func _draw() -> void:
         var preview_end := _polygon_center(_polygons[_road_end_id])
         draw_line(preview_start, preview_end, Color("fff0a6"), 3.0 / _zoom, true)
 
-    var manpower_by_province: Dictionary = {}
+    var armies_by_province: Dictionary = {}
     for army: Dictionary in _armies:
         var province_id: String = army.get("province_id", "")
-        manpower_by_province[province_id] = (
-            int(manpower_by_province.get(province_id, 0)) + int(army.get("manpower", 0))
+        var aggregate: Dictionary = armies_by_province.get(
+            province_id,
+            {"manpower": 0, "movement_points": 0}
         )
-    for province_id: String in manpower_by_province:
+        aggregate["manpower"] += int(army.get("manpower", 0))
+        aggregate["movement_points"] += int(army.get("movement_points", 0))
+        armies_by_province[province_id] = aggregate
+    for province_id: String in armies_by_province:
         if not _polygons.has(province_id):
             continue
         var center := _polygon_center(_polygons[province_id])
         var radius := 22.0 / _zoom
         draw_circle(center, radius, Color("202938"))
         draw_arc(center, radius, 0.0, TAU, 24, Color("f7f1d0"), 3.0 / _zoom, true)
-        var manpower_text := str(manpower_by_province[province_id])
+        var army_data: Dictionary = armies_by_province[province_id]
+        var manpower_text := "%d · %dMP" % [
+            army_data["manpower"], army_data["movement_points"]
+        ]
         var text_size := ThemeDB.fallback_font.get_string_size(
             manpower_text,
             HORIZONTAL_ALIGNMENT_LEFT,

@@ -17,6 +17,8 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
                 return execute_build_road(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, RecruitArmyCommand>) {
                 return execute_recruit_army(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, MoveArmyCommand>) {
+                return execute_move_army(state, concrete_command);
             }
         },
         command
@@ -83,6 +85,39 @@ CommandResult CommandProcessor::execute_recruit_army(
     return {true, {}, {std::move(event)}};
 }
 
+CommandResult CommandProcessor::execute_move_army(
+    GameState& state,
+    const MoveArmyCommand& command
+) {
+    GameState working_state = state;
+    const ArmyMoveResult move = movement_system_.move(
+        working_state,
+        command.army_id,
+        command.destination
+    );
+    if (!move.accepted) {
+        return {false, move.error, {}};
+    }
+
+    const Army* army = working_state.find_army(command.army_id);
+    if (army == nullptr) {
+        return {false, "army disappeared after movement", {}};
+    }
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::army_moved,
+        ArmyMovedEvent{
+            command.army_id,
+            move.origin,
+            move.destination,
+            move.cost,
+            army->movement_points,
+        },
+    };
+    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
+}
+
 bool CommandProcessor::is_supported_turn_length(const std::int32_t months) noexcept {
     constexpr std::array supported_lengths{1, 3, 6, 12};
     for (const std::int32_t supported : supported_lengths) {
@@ -110,6 +145,7 @@ CommandResult CommandProcessor::execute_advance_turn(
     GameState working_state = state;
     std::map<CountryId, std::int64_t> total_income;
     std::map<ProvinceId, ProvincePopulationChange> population_changes;
+    std::map<ArmyId, ArmyMovementGrant> movement_grants;
 
     // Intentionally tick one month at a time. Economy, population and AI
     // systems will be inserted inside this loop without changing commands.
@@ -129,6 +165,17 @@ CommandResult CommandProcessor::execute_advance_turn(
                 existing->second.growth += change.growth;
             }
         }
+        const MonthlyMovementReport movement_report =
+            movement_system_.grant_monthly_points(working_state);
+        for (const ArmyMovementGrant& grant : movement_report.grants) {
+            const auto existing = movement_grants.find(grant.army_id);
+            if (existing == movement_grants.end()) {
+                movement_grants.emplace(grant.army_id, grant);
+            } else {
+                existing->second.amount += grant.amount;
+                existing->second.current_points = grant.current_points;
+            }
+        }
         working_state.clock().advance_months(1);
     }
 
@@ -143,6 +190,12 @@ CommandResult CommandProcessor::execute_advance_turn(
         static_cast<void>(province_id);
         changes.push_back(change);
     }
+    std::vector<ArmyMovementGrant> grants;
+    grants.reserve(movement_grants.size());
+    for (const auto& [army_id, grant] : movement_grants) {
+        static_cast<void>(army_id);
+        grants.push_back(grant);
+    }
 
     GameEvent economy_event{
         next_event_sequence_++,
@@ -155,6 +208,11 @@ CommandResult CommandProcessor::execute_advance_turn(
         PopulationResolvedEvent{command.months, std::move(changes)},
     };
     GameEvent date_event{
+        next_event_sequence_++,
+        GameEventType::movement_points_granted,
+        MovementPointsGrantedEvent{command.months, std::move(grants)},
+    };
+    GameEvent turn_event{
         next_event_sequence_++,
         GameEventType::turn_advanced,
         TurnAdvancedEvent{
@@ -170,7 +228,12 @@ CommandResult CommandProcessor::execute_advance_turn(
     return CommandResult{
         true,
         {},
-        {std::move(economy_event), std::move(population_event), std::move(date_event)},
+        {
+            std::move(economy_event),
+            std::move(population_event),
+            std::move(date_event),
+            std::move(turn_event),
+        },
     };
 }
 

@@ -278,6 +278,43 @@ godot::Array ProvinceBridge::get_army_summaries() const {
     return summaries;
 }
 
+godot::Dictionary ProvinceBridge::move_army(
+    const godot::String& army_id,
+    const godot::String& destination
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const province::core::CommandResult result = command_processor_.execute(
+            *state_,
+            province::core::MoveArmyCommand{
+                province::core::ArmyId{army_id.utf8().get_data()},
+                province::core::ProvinceId{destination.utf8().get_data()},
+            }
+        );
+        response["accepted"] = result.accepted;
+        response["error"] = godot::String::utf8(result.error.c_str());
+        if (result.accepted) {
+            const province::core::GameEvent& event = result.events.front();
+            const auto& moved = std::get<province::core::ArmyMovedEvent>(event.payload);
+            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            response["movement_cost"] = moved.movement_cost;
+            response["remaining_points"] = moved.remaining_points;
+            response["origin"] = godot::String::utf8(moved.origin.value().c_str());
+            response["destination"] =
+                godot::String::utf8(moved.destination.value().c_str());
+        }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
 void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_core_version"),
@@ -330,6 +367,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_army_summaries"),
         &ProvinceBridge::get_army_summaries
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("move_army", "army_id", "destination"),
+        &ProvinceBridge::move_army
     );
 }
 

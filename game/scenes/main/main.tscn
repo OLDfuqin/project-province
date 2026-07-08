@@ -92,6 +92,26 @@ layout_mode = 2
 disabled = true
 text = "招募1000陆军（1000）"
 
+[node name="MovementStatus" type="Label" parent="Center/ArmyControls"]
+layout_mode = 2
+text = "移动：请选择有己方军队的地区"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="MovementButtons" type="HBoxContainer" parent="Center/ArmyControls"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="MoveArmy" type="Button" parent="Center/ArmyControls/MovementButtons"]
+layout_mode = 2
+disabled = true
+text = "移动军队"
+
+[node name="ClearMovement" type="Button" parent="Center/ArmyControls/MovementButtons"]
+layout_mode = 2
+text = "清除移动选择"
+
 [node name="RoadControls" type="VBoxContainer" parent="Center"]
 layout_mode = 2
 theme_override_constants/separation = 6

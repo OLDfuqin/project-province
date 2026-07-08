@@ -4,6 +4,7 @@
 #include "province/core/game_event.hpp"
 #include "province/core/economy_system.hpp"
 #include "province/core/population_system.hpp"
+#include "province/core/movement_system.hpp"
 #include "province/core/road.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_state.hpp"
@@ -19,6 +20,7 @@
 int main() {
     using province::core::Country;
     using province::core::CountryId;
+    using province::core::ArmyId;
     using province::core::GameClock;
     using province::core::GameState;
     using province::core::Province;
@@ -30,8 +32,10 @@ int main() {
     using province::core::TurnAdvancedEvent;
     using province::core::EconomyResolvedEvent;
     using province::core::PopulationResolvedEvent;
+    using province::core::MovementPointsGrantedEvent;
     using province::core::BuildRoadCommand;
     using province::core::RecruitArmyCommand;
+    using province::core::MoveArmyCommand;
     using province::core::ArmyRecruitedEvent;
     using province::core::RoadBuiltEvent;
     using province::core::RoadLevel;
@@ -196,6 +200,74 @@ int main() {
         return 1;
     }
 
+    GameState normal_move_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor normal_move_processor;
+    const CommandResult normal_recruit = normal_move_processor.execute(
+        normal_move_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 1'000}
+    );
+    const ArmyId normal_army_id =
+        std::get<ArmyRecruitedEvent>(normal_recruit.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult normal_month = normal_move_processor.execute(
+        normal_move_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult normal_move = normal_move_processor.execute(
+        normal_move_state,
+        MoveArmyCommand{normal_army_id, ProvinceId{"westmark"}}
+    );
+    const CommandResult normal_move_back = normal_move_processor.execute(
+        normal_move_state,
+        MoveArmyCommand{normal_army_id, ProvinceId{"northreach"}}
+    );
+    if (!normal_move.accepted || normal_move_back.accepted ||
+        normal_move_state.find_army(normal_army_id)->movement_points != 0 ||
+        normal_move_state.find_army(normal_army_id)->province_id != ProvinceId{"westmark"}) {
+        std::cerr << "Normal connection movement cost is incorrect\n";
+        return 1;
+    }
+
+    GameState paved_move_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor paved_move_processor;
+    const CommandResult paved_recruit = paved_move_processor.execute(
+        paved_move_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 1'000}
+    );
+    const ArmyId paved_army_id =
+        std::get<ArmyRecruitedEvent>(paved_recruit.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult paved_road = paved_move_processor.execute(
+        paved_move_state,
+        BuildRoadCommand{
+            CountryId{"auroria"}, ProvinceId{"northreach"}, ProvinceId{"westmark"}
+        }
+    );
+    [[maybe_unused]] const CommandResult paved_month = paved_move_processor.execute(
+        paved_move_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult paved_outbound = paved_move_processor.execute(
+        paved_move_state,
+        MoveArmyCommand{paved_army_id, ProvinceId{"westmark"}}
+    );
+    const CommandResult paved_return = paved_move_processor.execute(
+        paved_move_state,
+        MoveArmyCommand{paved_army_id, ProvinceId{"northreach"}}
+    );
+    if (!paved_outbound.accepted || !paved_return.accepted ||
+        paved_move_state.find_army(paved_army_id)->movement_points != 0 ||
+        paved_move_state.find_army(paved_army_id)->province_id != ProvinceId{"northreach"}) {
+        std::cerr << "Paved road did not allow two moves per monthly allowance\n";
+        return 1;
+    }
+    const CommandResult foreign_move = paved_move_processor.execute(
+        paved_move_state,
+        MoveArmyCommand{paved_army_id, ProvinceId{"redpass"}}
+    );
+    if (foreign_move.accepted) {
+        std::cerr << "Army entered foreign territory during peace\n";
+        return 1;
+    }
+
     GameState road_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
     CommandProcessor road_processor;
     const CommandResult road_built = road_processor.execute(
@@ -277,17 +349,20 @@ int main() {
     CommandProcessor processor;
     const CommandResult accepted = processor.execute(turn_state, AdvanceTurnCommand{3});
     if (!accepted.accepted || turn_state.clock().year() != 1001 ||
-        turn_state.clock().month() != 2 || accepted.events.size() != 3) {
+        turn_state.clock().month() != 2 || accepted.events.size() != 4) {
         std::cerr << "AdvanceTurnCommand did not advance the state correctly\n";
         return 1;
     }
     const auto& economy_event = std::get<EconomyResolvedEvent>(accepted.events[0].payload);
     const auto& population_event =
         std::get<PopulationResolvedEvent>(accepted.events[1].payload);
-    const auto& turn_event = std::get<TurnAdvancedEvent>(accepted.events[2].payload);
+    const auto& movement_event =
+        std::get<MovementPointsGrantedEvent>(accepted.events[2].payload);
+    const auto& turn_event = std::get<TurnAdvancedEvent>(accepted.events[3].payload);
     if (accepted.events[0].sequence != 1 || accepted.events[1].sequence != 2 ||
-        accepted.events[2].sequence != 3 ||
+        accepted.events[2].sequence != 3 || accepted.events[3].sequence != 4 ||
         economy_event.elapsed_months != 3 || turn_event.elapsed_months != 3 ||
+        movement_event.elapsed_months != 3 ||
         turn_event.previous_year != 1000 || turn_event.previous_month != 11) {
         std::cerr << "TurnAdvancedEvent contained incorrect data\n";
         return 1;

@@ -6,6 +6,7 @@
 #include "province/core/game_event.hpp"
 #include "province/core/game_state.hpp"
 #include "province/core/population_system.hpp"
+#include "province/core/movement_system.hpp"
 #include "province/core/road_system.hpp"
 
 #include <cstdint>
@@ -38,12 +39,17 @@ private:
         GameState& state,
         const RecruitArmyCommand& command
     );
+    [[nodiscard]] CommandResult execute_move_army(
+        GameState& state,
+        const MoveArmyCommand& command
+    );
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;
     PopulationSystem population_system_;
     RoadSystem road_system_;
     ArmySystem army_system_;
+    MovementSystem movement_system_;
 };
 
 } // namespace province::core

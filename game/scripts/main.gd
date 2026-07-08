@@ -8,10 +8,14 @@ const PLAYER_COUNTRY_ID := "auroria"
 @onready var event_log: Label = $Center/EventLog
 @onready var province_map := $MapPanel/ProvinceMap
 @onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
+@onready var move_army_button: Button = $Center/ArmyControls/MovementButtons/MoveArmy
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
 var road_end_id := ""
+var moving_army_id := ""
+var movement_origin_id := ""
+var movement_destination_id := ""
 
 func _ready() -> void:
     var data_directory := ProjectSettings.globalize_path("res://data")
@@ -26,6 +30,10 @@ func _ready() -> void:
     $Center/RoadControls/Buttons/BuildRoad.pressed.connect(_on_build_road_pressed)
     $Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
     recruit_button.pressed.connect(_on_recruit_army_pressed)
+    move_army_button.pressed.connect(_on_move_army_pressed)
+    $Center/ArmyControls/MovementButtons/ClearMovement.pressed.connect(
+        _clear_movement_selection
+    )
     var provinces: Array = bridge.get_province_summaries()
     var countries: Array = bridge.get_country_summaries()
     $Center/Status.text = "Core %s · %d countries · %d provinces" % [
@@ -99,6 +107,7 @@ func _on_advance_turn_pressed() -> void:
     _refresh_province_summary()
     if not province_map.selected_province_id().is_empty():
         _show_province_details(province_map.selected_province_id())
+    _refresh_movement_selection()
     var total_income := 0
     for income: Dictionary in result["incomes"]:
         total_income += int(income["amount"])
@@ -140,6 +149,7 @@ func _on_province_selected(province_id: String) -> void:
         road_start_id = province_id
         road_end_id = ""
     _refresh_road_selection()
+    _update_movement_from_province(province_id)
 
 
 func _show_province_details(province_id: String) -> void:
@@ -207,6 +217,84 @@ func _on_recruit_army_pressed() -> void:
     _refresh_map_data()
     _refresh_province_summary()
     _show_province_details(province_id)
+    moving_army_id = result["army_id"]
+    movement_origin_id = province_id
+    movement_destination_id = ""
+    _refresh_movement_selection()
+
+
+func _on_move_army_pressed() -> void:
+    if moving_army_id.is_empty() or movement_destination_id.is_empty():
+        return
+    var result: Dictionary = bridge.move_army(moving_army_id, movement_destination_id)
+    if not result.get("accepted", false):
+        event_log.text = "移动失败：%s" % result.get("error", "未知错误")
+        return
+
+    event_log.text = "事件 #%d：%s → %s，消耗%d移动点，剩余%d" % [
+        result["event_sequence"],
+        result["origin"],
+        result["destination"],
+        result["movement_cost"],
+        result["remaining_points"],
+    ]
+    movement_origin_id = result["destination"]
+    movement_destination_id = ""
+    _refresh_map_data()
+    _show_province_details(movement_origin_id)
+    _refresh_movement_selection()
+
+
+func _update_movement_from_province(province_id: String) -> void:
+    if moving_army_id.is_empty():
+        var army := _find_player_army_in_province(province_id)
+        if not army.is_empty():
+            moving_army_id = army["id"]
+            movement_origin_id = province_id
+            movement_destination_id = ""
+    elif province_id != movement_origin_id:
+        movement_destination_id = province_id
+    _refresh_movement_selection()
+
+
+func _find_player_army_in_province(province_id: String) -> Dictionary:
+    for army: Dictionary in bridge.get_army_summaries():
+        if army["owner_id"] == PLAYER_COUNTRY_ID and army["province_id"] == province_id:
+            return army
+    return {}
+
+
+func _clear_movement_selection() -> void:
+    moving_army_id = ""
+    movement_origin_id = ""
+    movement_destination_id = ""
+    _refresh_movement_selection()
+
+
+func _refresh_movement_selection() -> void:
+    move_army_button.disabled = (
+        moving_army_id.is_empty() or movement_destination_id.is_empty()
+    )
+    if moving_army_id.is_empty():
+        $Center/ArmyControls/MovementStatus.text = "移动：请选择有己方军队的地区"
+        return
+
+    var movement_points := 0
+    for army: Dictionary in bridge.get_army_summaries():
+        if army["id"] == moving_army_id:
+            movement_points = int(army["movement_points"])
+            break
+    if movement_destination_id.is_empty():
+        $Center/ArmyControls/MovementStatus.text = "%s（%dMP）· 请选择目的地" % [
+            moving_army_id, movement_points
+        ]
+    else:
+        $Center/ArmyControls/MovementStatus.text = "%s：%s → %s（%dMP）" % [
+            moving_army_id,
+            province_by_id[movement_origin_id]["name"],
+            province_by_id[movement_destination_id]["name"],
+            movement_points,
+        ]
 
 
 func _clear_road_selection() -> void:

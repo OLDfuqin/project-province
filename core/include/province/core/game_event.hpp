@@ -3,6 +3,7 @@
 #include "province/core/army.hpp"
 #include "province/core/economy_system.hpp"
 #include "province/core/population_system.hpp"
+#include "province/core/movement_system.hpp"
 #include "province/core/road.hpp"
 
 #include <cstdint>
@@ -14,6 +15,8 @@ enum class GameEventType : std::uint8_t {
     economy_resolved,
     population_resolved,
     army_recruited,
+    army_moved,
+    movement_points_granted,
     road_built,
     turn_advanced,
 };
@@ -52,11 +55,26 @@ struct ArmyRecruitedEvent final {
     std::int64_t cost{};
 };
 
+struct ArmyMovedEvent final {
+    ArmyId army_id;
+    ProvinceId origin;
+    ProvinceId destination;
+    std::int32_t movement_cost{};
+    std::int32_t remaining_points{};
+};
+
+struct MovementPointsGrantedEvent final {
+    std::int32_t elapsed_months{};
+    std::vector<ArmyMovementGrant> grants;
+};
+
 using GameEventPayload =
     std::variant<
         EconomyResolvedEvent,
         PopulationResolvedEvent,
         ArmyRecruitedEvent,
+        ArmyMovedEvent,
+        MovementPointsGrantedEvent,
         RoadBuiltEvent,
         TurnAdvancedEvent
     >;

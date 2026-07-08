@@ -39,6 +39,25 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var road_result: Dictionary = bridge.build_road(
+        "auroria", "northreach", "westmark"
+    )
+    var turn_result: Dictionary = bridge.advance_turn(1)
+    var move_result: Dictionary = bridge.move_army(
+        result["army_id"], "westmark"
+    )
+    armies = bridge.get_army_summaries()
+    if not road_result.get("accepted", false) or \
+            not turn_result.get("accepted", false) or \
+            not move_result.get("accepted", false) or \
+            move_result.get("movement_cost", 0) != 1 or \
+            armies[0]["province_id"] != "westmark" or \
+            armies[0]["movement_points"] != 1:
+        push_error("Road movement was not reflected in bridge snapshots")
+        bridge.free()
+        quit(1)
+        return
+
     print("ProvinceBridge army recruitment smoke test passed")
     bridge.free()
     quit(0)

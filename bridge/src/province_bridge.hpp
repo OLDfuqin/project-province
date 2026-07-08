@@ -46,6 +46,10 @@ public:
         std::int64_t manpower
     );
     [[nodiscard]] godot::Array get_army_summaries() const;
+    [[nodiscard]] godot::Dictionary move_army(
+        const godot::String& army_id,
+        const godot::String& destination
+    );
 
 protected:
     static void _bind_methods();

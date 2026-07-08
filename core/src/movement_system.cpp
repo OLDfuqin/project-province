@@ -1,0 +1,71 @@
+#include "province/core/movement_system.hpp"
+
+#include <limits>
+#include <stdexcept>
+
+namespace province::core {
+
+MonthlyMovementReport MovementSystem::grant_monthly_points(GameState& state) const {
+    MonthlyMovementReport report;
+    report.grants.reserve(state.army_count());
+    for (const auto& [army_id, army_snapshot] : state.armies()) {
+        Army* army = state.find_army(army_id);
+        if (army == nullptr) {
+            throw std::logic_error{"army disappeared during movement point grant"};
+        }
+        if (army_snapshot.movement_points >
+            std::numeric_limits<std::int32_t>::max() - monthly_movement_points) {
+            throw std::overflow_error{"army movement point overflow"};
+        }
+        army->movement_points += monthly_movement_points;
+        report.grants.push_back(ArmyMovementGrant{
+            army_id,
+            monthly_movement_points,
+            army->movement_points,
+        });
+    }
+    return report;
+}
+
+ArmyMoveResult MovementSystem::move(
+    GameState& state,
+    const ArmyId& army_id,
+    const ProvinceId& destination
+) const {
+    Army* army = state.find_army(army_id);
+    const Province* destination_province = state.find_province(destination);
+    if (army == nullptr) {
+        return {false, "army does not exist", destination, destination, 0};
+    }
+    const ProvinceId origin = army->province_id;
+    if (destination_province == nullptr) {
+        return {false, "movement destination does not exist", origin, destination, 0};
+    }
+    if (!state.are_adjacent(origin, destination)) {
+        return {false, "army can only move to an adjacent province", origin, destination, 0};
+    }
+    if (destination_province->owner_id != army->owner_id) {
+        return {
+            false,
+            "army cannot enter foreign territory without war or military access",
+            origin,
+            destination,
+            0,
+        };
+    }
+
+    const std::int32_t cost =
+        state.road_level(origin, destination) == RoadLevel::paved
+            ? paved_road_cost
+            : normal_connection_cost;
+    if (army->movement_points < cost) {
+        return {false, "army has insufficient movement points", origin, destination, cost};
+    }
+
+    army->movement_points -= cost;
+    army->province_id = destination;
+    return {true, {}, origin, destination, cost};
+}
+
+} // namespace province::core
+
