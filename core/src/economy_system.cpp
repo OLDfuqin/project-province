@@ -14,8 +14,7 @@ MonthlyEconomyReport EconomySystem::resolve_month(GameState& state) const {
     }
 
     for (const auto& [province_id, province] : state.provinces()) {
-        static_cast<void>(province_id);
-        auto income = income_by_country.find(province.owner_id);
+        auto income = income_by_country.find(state.controller_of(province_id));
         if (income == income_by_country.end()) {
             throw std::logic_error{"cannot resolve economy for province with unknown owner"};
         }
@@ -42,4 +41,3 @@ MonthlyEconomyReport EconomySystem::resolve_month(GameState& state) const {
 }
 
 } // namespace province::core
-

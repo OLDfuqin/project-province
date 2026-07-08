@@ -137,7 +137,7 @@ CommandResult CommandProcessor::execute_move_army(
     if (army == nullptr) {
         return {false, "army disappeared after movement", {}};
     }
-    GameEvent event{
+    GameEvent move_event{
         next_event_sequence_++,
         GameEventType::army_moved,
         ArmyMovedEvent{
@@ -148,8 +148,22 @@ CommandResult CommandProcessor::execute_move_army(
             army->movement_points,
         },
     };
+    const BattleResolution battle = battle_system_.resolve_entry(
+        working_state,
+        command.army_id,
+        move.origin
+    );
+    std::vector<GameEvent> events;
+    events.push_back(std::move(move_event));
+    if (battle.occurred || battle.province_occupied) {
+        events.push_back(GameEvent{
+            next_event_sequence_++,
+            GameEventType::battle_resolved,
+            battle,
+        });
+    }
     state = std::move(working_state);
-    return {true, {}, {std::move(event)}};
+    return {true, {}, std::move(events)};
 }
 
 bool CommandProcessor::is_supported_turn_length(const std::int32_t months) noexcept {

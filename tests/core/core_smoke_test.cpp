@@ -286,8 +286,98 @@ int main() {
     );
     if (!war_declared.accepted || duplicate_war.accepted || !wartime_move.accepted ||
         !paved_move_state.are_at_war(CountryId{"auroria"}, CountryId{"solmere"}) ||
-        paved_move_state.find_army(paved_army_id)->province_id != ProvinceId{"redpass"}) {
+        paved_move_state.find_army(paved_army_id)->province_id != ProvinceId{"redpass"} ||
+        paved_move_state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"}) {
         std::cerr << "War declaration did not enable hostile territory movement\n";
+        return 1;
+    }
+
+    GameState battle_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor battle_processor;
+    const CommandResult attacker_recruit = battle_processor.execute(
+        battle_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 1'000}
+    );
+    const CommandResult defender_recruit = battle_processor.execute(
+        battle_state,
+        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"redpass"}, 500}
+    );
+    const ArmyId attacker_id =
+        std::get<ArmyRecruitedEvent>(attacker_recruit.events.front().payload).army_id;
+    const ArmyId defender_id =
+        std::get<ArmyRecruitedEvent>(defender_recruit.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult battle_war = battle_processor.execute(
+        battle_state,
+        DeclareWarCommand{CountryId{"auroria"}, CountryId{"solmere"}}
+    );
+    [[maybe_unused]] const CommandResult battle_month = battle_processor.execute(
+        battle_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult battle_move = battle_processor.execute(
+        battle_state,
+        MoveArmyCommand{attacker_id, ProvinceId{"redpass"}}
+    );
+    if (!battle_move.accepted || battle_move.events.size() != 2 ||
+        battle_state.find_army(attacker_id) == nullptr ||
+        battle_state.find_army(attacker_id)->manpower != 875 ||
+        battle_state.find_army(defender_id) == nullptr ||
+        battle_state.find_army(defender_id)->manpower != 250 ||
+        battle_state.find_army(defender_id)->province_id != ProvinceId{"goldcoast"} ||
+        battle_state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"} ||
+        battle_state.find_province(ProvinceId{"redpass"})->owner_id != CountryId{"solmere"}) {
+        std::cerr << "Battle casualties, retreat or occupation are incorrect\n";
+        return 1;
+    }
+    const auto& battle =
+        std::get<province::core::BattleResolution>(battle_move.events.back().payload);
+    if (!battle.occurred || !battle.attacker_won || !battle.province_occupied ||
+        battle.armies.size() != 2) {
+        std::cerr << "BattleResolved event is incorrect\n";
+        return 1;
+    }
+    const CommandResult occupied_recruitment = battle_processor.execute(
+        battle_state,
+        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"redpass"}, 100}
+    );
+    if (occupied_recruitment.accepted) {
+        std::cerr << "Legal owner recruited soldiers in an occupied province\n";
+        return 1;
+    }
+
+    GameState defeat_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor defeat_processor;
+    const CommandResult weak_recruit = defeat_processor.execute(
+        defeat_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 300}
+    );
+    const CommandResult strong_recruit = defeat_processor.execute(
+        defeat_state,
+        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"redpass"}, 500}
+    );
+    const ArmyId weak_id =
+        std::get<ArmyRecruitedEvent>(weak_recruit.events.front().payload).army_id;
+    const ArmyId strong_id =
+        std::get<ArmyRecruitedEvent>(strong_recruit.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult defeat_war = defeat_processor.execute(
+        defeat_state,
+        DeclareWarCommand{CountryId{"auroria"}, CountryId{"solmere"}}
+    );
+    [[maybe_unused]] const CommandResult defeat_month = defeat_processor.execute(
+        defeat_state,
+        AdvanceTurnCommand{1}
+    );
+    const CommandResult defeated_attack = defeat_processor.execute(
+        defeat_state,
+        MoveArmyCommand{weak_id, ProvinceId{"redpass"}}
+    );
+    if (!defeated_attack.accepted || defeat_state.find_army(weak_id) == nullptr ||
+        defeat_state.find_army(weak_id)->province_id != ProvinceId{"northreach"} ||
+        defeat_state.find_army(weak_id)->manpower != 175 ||
+        defeat_state.find_army(strong_id) == nullptr ||
+        defeat_state.find_army(strong_id)->manpower != 425 ||
+        defeat_state.controller_of(ProvinceId{"redpass"}) != CountryId{"solmere"}) {
+        std::cerr << "Defeated attacker did not take losses and retreat\n";
         return 1;
     }
 

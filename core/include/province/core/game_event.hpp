@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/army.hpp"
+#include "province/core/battle_system.hpp"
 #include "province/core/economy_system.hpp"
 #include "province/core/population_system.hpp"
 #include "province/core/movement_system.hpp"
@@ -16,6 +17,7 @@ enum class GameEventType : std::uint8_t {
     population_resolved,
     army_recruited,
     army_moved,
+    battle_resolved,
     movement_points_granted,
     road_built,
     war_declared,
@@ -80,6 +82,7 @@ using GameEventPayload =
         PopulationResolvedEvent,
         ArmyRecruitedEvent,
         ArmyMovedEvent,
+        BattleResolution,
         MovementPointsGrantedEvent,
         RoadBuiltEvent,
         TurnAdvancedEvent,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/army_system.hpp"
+#include "province/core/battle_system.hpp"
 #include "province/core/game_command.hpp"
 #include "province/core/economy_system.hpp"
 #include "province/core/game_event.hpp"
@@ -54,6 +55,7 @@ private:
     RoadSystem road_system_;
     ArmySystem army_system_;
     MovementSystem movement_system_;
+    BattleSystem battle_system_;
 };
 
 } // namespace province::core

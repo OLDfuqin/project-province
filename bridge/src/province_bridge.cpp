@@ -69,8 +69,8 @@ godot::Array ProvinceBridge::get_country_summaries() const {
     for (const auto& [country_id, country] : state_->countries()) {
         std::int64_t province_count = 0;
         for (const auto& [province_id, province] : state_->provinces()) {
-            static_cast<void>(province_id);
-            if (province.owner_id == country_id) {
+            static_cast<void>(province);
+            if (state_->controller_of(province_id) == country_id) {
                 ++province_count;
             }
         }
@@ -96,7 +96,10 @@ godot::Array ProvinceBridge::get_province_summaries() const {
         godot::Dictionary summary;
         summary["id"] = godot::String::utf8(province_id.value().c_str());
         summary["name"] = godot::String::utf8(province.name.c_str());
-        summary["owner_id"] = godot::String::utf8(province.owner_id.value().c_str());
+        const province::core::CountryId controller = state_->controller_of(province_id);
+        summary["owner_id"] = godot::String::utf8(controller.value().c_str());
+        summary["legal_owner_id"] = godot::String::utf8(province.owner_id.value().c_str());
+        summary["occupied"] = controller != province.owner_id;
         summary["population"] = province.population;
         summary["soldier_population"] = province.soldier_population;
         summary["economy"] = province.economy;
@@ -299,14 +302,47 @@ godot::Dictionary ProvinceBridge::move_army(
         response["accepted"] = result.accepted;
         response["error"] = godot::String::utf8(result.error.c_str());
         if (result.accepted) {
-            const province::core::GameEvent& event = result.events.front();
-            const auto& moved = std::get<province::core::ArmyMovedEvent>(event.payload);
-            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
-            response["movement_cost"] = moved.movement_cost;
-            response["remaining_points"] = moved.remaining_points;
-            response["origin"] = godot::String::utf8(moved.origin.value().c_str());
-            response["destination"] =
-                godot::String::utf8(moved.destination.value().c_str());
+            for (const province::core::GameEvent& event : result.events) {
+                if (event.type == province::core::GameEventType::army_moved) {
+                    const auto& moved =
+                        std::get<province::core::ArmyMovedEvent>(event.payload);
+                    response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+                    response["movement_cost"] = moved.movement_cost;
+                    response["remaining_points"] = moved.remaining_points;
+                    response["origin"] = godot::String::utf8(moved.origin.value().c_str());
+                    response["destination"] =
+                        godot::String::utf8(moved.destination.value().c_str());
+                } else if (event.type == province::core::GameEventType::battle_resolved) {
+                    const auto& battle =
+                        std::get<province::core::BattleResolution>(event.payload);
+                    response["battle_event_sequence"] =
+                        static_cast<std::int64_t>(event.sequence);
+                    response["battle_occurred"] = battle.occurred;
+                    response["attacker_won"] = battle.attacker_won;
+                    response["province_occupied"] = battle.province_occupied;
+                    godot::Array outcomes;
+                    for (const province::core::ArmyBattleOutcome& outcome : battle.armies) {
+                        godot::Dictionary summary;
+                        summary["army_id"] =
+                            godot::String::utf8(outcome.army_id.value().c_str());
+                        summary["casualties"] = outcome.casualties;
+                        summary["remaining_manpower"] = outcome.remaining_manpower;
+                        summary["destroyed"] = outcome.destroyed;
+                        summary["retreat_province"] = outcome.retreat_province.has_value()
+                            ? godot::String::utf8(outcome.retreat_province->value().c_str())
+                            : godot::String{};
+                        outcomes.push_back(summary);
+                    }
+                    response["battle_outcomes"] = outcomes;
+                }
+            }
+            const province::core::Army* current_army = state_->find_army(
+                province::core::ArmyId{army_id.utf8().get_data()}
+            );
+            response["army_destroyed"] = current_army == nullptr;
+            response["army_province_id"] = current_army == nullptr
+                ? godot::String{}
+                : godot::String::utf8(current_army->province_id.value().c_str());
         }
     } catch (const std::exception& error) {
         response["accepted"] = false;

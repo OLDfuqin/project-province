@@ -58,16 +58,38 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var defender: Dictionary = bridge.recruit_army("verdantia", "greenvale", 500)
     var peace_entry: Dictionary = bridge.move_army(result["army_id"], "greenvale")
     var war_result: Dictionary = bridge.declare_war("auroria", "verdantia")
     bridge.advance_turn(1)
     var war_entry: Dictionary = bridge.move_army(result["army_id"], "greenvale")
     var relations: Array = bridge.get_diplomatic_relations()
     if peace_entry.get("accepted", false) or \
+            not defender.get("accepted", false) or \
             not war_result.get("accepted", false) or \
             not war_entry.get("accepted", false) or \
+            not war_entry.get("battle_occurred", false) or \
+            not war_entry.get("attacker_won", false) or \
+            not war_entry.get("province_occupied", false) or \
             relations.size() != 1 or relations[0].get("status", "") != "war":
         push_error("War declaration was not reflected in bridge state")
+        bridge.free()
+        quit(1)
+        return
+
+    var occupied_greenvale: Dictionary = {}
+    var defender_after: Dictionary = {}
+    for province: Dictionary in bridge.get_province_summaries():
+        if province["id"] == "greenvale":
+            occupied_greenvale = province
+    for army: Dictionary in bridge.get_army_summaries():
+        if army["id"] == defender["army_id"]:
+            defender_after = army
+    if occupied_greenvale.get("owner_id", "") != "auroria" or \
+            occupied_greenvale.get("legal_owner_id", "") != "verdantia" or \
+            not occupied_greenvale.get("occupied", false) or \
+            defender_after.get("province_id", "") != "sunmeadow":
+        push_error("Battle occupation or defender retreat was not reflected")
         bridge.free()
         quit(1)
         return

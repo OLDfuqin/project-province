@@ -180,6 +180,44 @@ std::size_t GameState::army_count() const noexcept {
     return armies_.size();
 }
 
+void GameState::remove_army(const ArmyId& id) {
+    if (armies_.erase(id) == 0) {
+        throw std::invalid_argument{"army does not exist"};
+    }
+}
+
+CountryId GameState::controller_of(const ProvinceId& province_id) const {
+    const Province* province = find_province(province_id);
+    if (province == nullptr) {
+        throw std::invalid_argument{"province does not exist"};
+    }
+    const auto occupation = occupations_.find(province_id);
+    return occupation == occupations_.end() ? province->owner_id : occupation->second;
+}
+
+void GameState::set_occupation(
+    const ProvinceId& province_id,
+    const CountryId& controller_id
+) {
+    const Province* province = find_province(province_id);
+    if (province == nullptr || find_country(controller_id) == nullptr) {
+        throw std::invalid_argument{"occupation province and controller must exist"};
+    }
+    if (province->owner_id == controller_id) {
+        occupations_.erase(province_id);
+    } else {
+        occupations_.insert_or_assign(province_id, controller_id);
+    }
+}
+
+void GameState::clear_occupation(const ProvinceId& province_id) {
+    occupations_.erase(province_id);
+}
+
+const std::map<ProvinceId, CountryId>& GameState::occupations() const noexcept {
+    return occupations_;
+}
+
 DiplomaticStatus GameState::diplomatic_status(
     const CountryId& country_a,
     const CountryId& country_b

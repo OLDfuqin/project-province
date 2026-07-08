@@ -26,8 +26,8 @@ ArmyRecruitResult ArmySystem::recruit(
     if (province == nullptr) {
         return {false, "recruitment province does not exist", 0, std::nullopt};
     }
-    if (province->owner_id != country_id) {
-        return {false, "recruitment province does not belong to the country", 0, std::nullopt};
+    if (state.controller_of(province_id) != country_id) {
+        return {false, "recruitment province is not controlled by the country", 0, std::nullopt};
     }
     if (province->soldier_population < manpower) {
         return {false, "province soldier population is insufficient", 0, std::nullopt};
@@ -45,4 +45,3 @@ ArmyRecruitResult ArmySystem::recruit(
 }
 
 } // namespace province::core
-

@@ -21,8 +21,9 @@ RoadBuildResult RoadSystem::build_paved_road(
     if (!state.are_adjacent(province_a, province_b)) {
         return {false, "road endpoint provinces are not adjacent", 0};
     }
-    if (first->owner_id != country_id || second->owner_id != country_id) {
-        return {false, "road endpoint provinces must belong to the paying country", 0};
+    if (state.controller_of(province_a) != country_id ||
+        state.controller_of(province_b) != country_id) {
+        return {false, "road endpoint provinces must be controlled by the paying country", 0};
     }
     if (state.road_level(province_a, province_b) != RoadLevel::none) {
         return {false, "a paved road already exists on this connection", 0};
@@ -37,4 +38,3 @@ RoadBuildResult RoadSystem::build_paved_road(
 }
 
 } // namespace province::core
-

@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,6 +55,11 @@ public:
     [[nodiscard]] Army* find_army(const ArmyId& id) noexcept;
     [[nodiscard]] const std::map<ArmyId, Army>& armies() const noexcept;
     [[nodiscard]] std::size_t army_count() const noexcept;
+    void remove_army(const ArmyId& id);
+    [[nodiscard]] CountryId controller_of(const ProvinceId& province_id) const;
+    void set_occupation(const ProvinceId& province_id, const CountryId& controller_id);
+    void clear_occupation(const ProvinceId& province_id);
+    [[nodiscard]] const std::map<ProvinceId, CountryId>& occupations() const noexcept;
     [[nodiscard]] DiplomaticStatus diplomatic_status(
         const CountryId& country_a,
         const CountryId& country_b
@@ -76,6 +82,7 @@ private:
     std::map<ProvinceId, Province> provinces_;
     std::map<ProvinceConnectionKey, RoadLevel> roads_;
     std::map<ArmyId, Army> armies_;
+    std::map<ProvinceId, CountryId> occupations_;
     std::map<CountryRelationKey, DiplomaticStatus> relations_;
     std::uint64_t next_army_sequence_{1};
 };

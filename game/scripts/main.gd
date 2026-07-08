@@ -263,9 +263,23 @@ func _on_move_army_pressed() -> void:
         result["movement_cost"],
         result["remaining_points"],
     ]
-    movement_origin_id = result["destination"]
+    if result.get("battle_occurred", false):
+        var total_casualties := 0
+        for outcome: Dictionary in result.get("battle_outcomes", []):
+            total_casualties += int(outcome.get("casualties", 0))
+        event_log.text = "Battle resolved: %s; casualties %d%s" % [
+            "attacker victory" if result.get("attacker_won", false) else "defender victory",
+            total_casualties,
+            "; province occupied" if result.get("province_occupied", false) else "",
+        ]
+    elif result.get("province_occupied", false):
+        event_log.text = "Province occupied without resistance"
+    movement_origin_id = result.get("army_province_id", result["destination"])
     movement_destination_id = ""
     _refresh_map_data()
+    if result.get("army_destroyed", false):
+        _clear_movement_selection()
+        return
     _show_province_details(movement_origin_id)
     _refresh_movement_selection()
 
