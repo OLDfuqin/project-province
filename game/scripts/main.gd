@@ -26,6 +26,7 @@ var road_end_id := ""
 var moving_army_id := ""
 var movement_origin_id := ""
 var movement_destination_id := ""
+var auto_advance_target_id := ""
 var event_history_lines: Array[String] = []
 
 func _ready() -> void:
@@ -374,6 +375,7 @@ func _refresh_army_selector() -> void:
         moving_army_id = ""
         movement_origin_id = ""
         movement_destination_id = ""
+        auto_advance_target_id = ""
         army_details.text = "No player armies"
         _refresh_movement_selection()
         return
@@ -396,6 +398,7 @@ func _select_army(army_id: String) -> void:
         moving_army_id = army_id
         movement_origin_id = army["province_id"]
         movement_destination_id = ""
+        auto_advance_target_id = ""
         var province_name: String = province_by_id.get(movement_origin_id, {}).get(
             "name", movement_origin_id
         )
@@ -571,6 +574,7 @@ func _on_recruit_army_pressed() -> void:
     moving_army_id = result["army_id"]
     movement_origin_id = province_id
     movement_destination_id = ""
+    auto_advance_target_id = ""
     _refresh_army_selector()
     _refresh_movement_selection()
 
@@ -596,6 +600,7 @@ func _on_move_army_pressed() -> void:
     _record_event(event_log.text)
     movement_origin_id = result.get("army_province_id", result["destination"])
     movement_destination_id = ""
+    auto_advance_target_id = ""
     _refresh_map_data()
     _refresh_country_details()
     _refresh_game_status()
@@ -610,10 +615,10 @@ func _on_auto_advance_pressed() -> void:
     if moving_army_id.is_empty():
         return
     var result: Dictionary = {}
-    if movement_destination_id.is_empty():
+    if auto_advance_target_id.is_empty():
         result = bridge.auto_advance_army(moving_army_id)
     else:
-        result = bridge.auto_advance_army_to(moving_army_id, movement_destination_id)
+        result = bridge.auto_advance_army_to(moving_army_id, auto_advance_target_id)
     if not result.get("accepted", false):
         event_log.text = "自动推进失败：%s" % result.get("error", "未知错误")
         return
@@ -631,6 +636,7 @@ func _on_auto_advance_pressed() -> void:
     _record_event(event_log.text)
     movement_origin_id = result.get("army_province_id", result["destination"])
     movement_destination_id = ""
+    auto_advance_target_id = ""
     _refresh_map_data()
     _refresh_country_details()
     _refresh_game_status()
@@ -648,9 +654,23 @@ func _update_movement_from_province(province_id: String) -> void:
             moving_army_id = army["id"]
             movement_origin_id = province_id
             movement_destination_id = ""
+            auto_advance_target_id = ""
     elif province_id != movement_origin_id:
-        movement_destination_id = province_id
+        if _are_provinces_adjacent(movement_origin_id, province_id):
+            movement_destination_id = province_id
+            auto_advance_target_id = ""
+        else:
+            movement_destination_id = ""
+            auto_advance_target_id = province_id
     _refresh_movement_selection()
+
+
+func _are_provinces_adjacent(origin_id: String, target_id: String) -> bool:
+    var origin: Dictionary = province_by_id.get(origin_id, {})
+    for neighbor_id in origin.get("neighbors", []):
+        if String(neighbor_id) == target_id:
+            return true
+    return false
 
 
 func _find_player_army_in_province(province_id: String) -> Dictionary:
@@ -664,6 +684,7 @@ func _clear_movement_selection() -> void:
     moving_army_id = ""
     movement_origin_id = ""
     movement_destination_id = ""
+    auto_advance_target_id = ""
     _refresh_movement_selection()
 
 
@@ -672,6 +693,7 @@ func _refresh_movement_selection() -> void:
         moving_army_id.is_empty() or movement_destination_id.is_empty()
     )
     auto_advance_button.disabled = moving_army_id.is_empty()
+    province_map.set_auto_advance_target(movement_origin_id, auto_advance_target_id)
     if moving_army_id.is_empty():
         $Center/ArmyControls/MovementStatus.text = "移动：请选择有己方军队的地区"
         return
@@ -681,6 +703,14 @@ func _refresh_movement_selection() -> void:
         if army["id"] == moving_army_id:
             movement_points = int(army["movement_points"])
             break
+    if not auto_advance_target_id.is_empty():
+        $Center/ArmyControls/MovementStatus.text = "Auto target: %s · %s => %s · %dMP" % [
+            moving_army_id,
+            province_by_id[movement_origin_id]["name"],
+            province_by_id[auto_advance_target_id]["name"],
+            movement_points,
+        ]
+        return
     if movement_destination_id.is_empty():
         $Center/ArmyControls/MovementStatus.text = "%s（%dMP）· 请选择目的地" % [
             moving_army_id, movement_points
