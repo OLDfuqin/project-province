@@ -44,6 +44,7 @@ int main() {
     using province::core::ResearchTechnologyCommand;
     using province::core::TechnologyTrack;
     using province::core::ArmyRecruitedEvent;
+    using province::core::ArmyMovedEvent;
     using province::core::RoadBuiltEvent;
     using province::core::RoadLevel;
 
@@ -272,6 +273,29 @@ int main() {
     );
     if (foreign_move.accepted) {
         std::cerr << "Army entered foreign territory during peace\n";
+        return 1;
+    }
+    GameState terrain_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor terrain_processor;
+    const CommandResult terrain_recruit = terrain_processor.execute(
+        terrain_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 100}
+    );
+    const ArmyId terrain_army =
+        std::get<ArmyRecruitedEvent>(terrain_recruit.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult terrain_months = terrain_processor.execute(
+        terrain_state, AdvanceTurnCommand{3}
+    );
+    [[maybe_unused]] const CommandResult plains_move = terrain_processor.execute(
+        terrain_state, MoveArmyCommand{terrain_army, ProvinceId{"z_nr_1"}}
+    );
+    const CommandResult mountain_move = terrain_processor.execute(
+        terrain_state, MoveArmyCommand{terrain_army, ProvinceId{"z_nr_2"}}
+    );
+    if (!mountain_move.accepted ||
+        std::get<ArmyMovedEvent>(mountain_move.events.front().payload).movement_cost != 4 ||
+        terrain_state.find_army(terrain_army)->movement_points != 0) {
+        std::cerr << "Mountain terrain movement cost is incorrect\n";
         return 1;
     }
     const CommandResult war_declared = paved_move_processor.execute(

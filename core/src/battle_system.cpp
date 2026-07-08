@@ -76,6 +76,10 @@ BattleResolution BattleSystem::resolve_entry(
     }
 
     const std::int64_t attacker_manpower = attacker->manpower;
+    const Province* battlefield = state.find_province(battle_province);
+    if (battlefield == nullptr) throw std::logic_error{"battle province disappeared"};
+    defender_strength = defender_strength *
+        (100 + terrain_defense_bonus(battlefield->terrain)) / 100;
     const std::int64_t attacker_strength =
         effective_strength(state, attacker_country, attacker_manpower);
     const bool attacker_won = attacker_strength > defender_strength;

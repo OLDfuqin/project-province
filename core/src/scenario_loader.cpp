@@ -100,7 +100,7 @@ void load_provinces(GameState& state, const std::filesystem::path& path) {
                 neighbors.emplace_back(neighbor.get<std::string>());
             }
 
-            state.add_province(Province{
+            Province province{
                 ProvinceId{entry.at("id").get<std::string>()},
                 entry.at("name").get<std::string>(),
                 CountryId{entry.at("owner_id").get<std::string>()},
@@ -108,7 +108,9 @@ void load_provinces(GameState& state, const std::filesystem::path& path) {
                 entry.at("soldier_population").get<std::int64_t>(),
                 entry.at("economy").get<std::int64_t>(),
                 std::move(neighbors),
-            });
+            };
+            province.terrain = terrain_from_string(entry.value("terrain", "plains"));
+            state.add_province(std::move(province));
         }
     } catch (const DataLoadError&) {
         throw;
@@ -148,4 +150,3 @@ GameState ScenarioLoader::load(
 }
 
 } // namespace province::core
-

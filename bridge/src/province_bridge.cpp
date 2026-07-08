@@ -105,6 +105,7 @@ godot::Array ProvinceBridge::get_province_summaries() const {
         summary["population"] = province.population;
         summary["soldier_population"] = province.soldier_population;
         summary["economy"] = province.economy;
+        summary["terrain"] = province::core::terrain_name(province.terrain);
         summary["neighbor_count"] = static_cast<std::int64_t>(province.neighbors.size());
         summaries.push_back(summary);
     }

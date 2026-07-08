@@ -65,7 +65,7 @@ ArmyMoveResult MovementSystem::move(
     const std::int32_t cost =
         state.road_level(origin, destination) == RoadLevel::paved
             ? paved_road_cost
-            : normal_connection_cost;
+            : terrain_movement_cost(destination_province->terrain);
     if (army->movement_points < cost) {
         return {false, "army has insufficient movement points", origin, destination, cost};
     }

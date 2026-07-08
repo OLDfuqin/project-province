@@ -102,6 +102,7 @@ void SaveGameSerializer::save(
             {"economy", province.economy},
             {"neighbors", std::move(neighbors)},
             {"population_growth_remainder", province.population_growth_remainder},
+            {"terrain", terrain_name(province.terrain)},
         });
     }
     for (const auto& [connection, level] : state.roads_) {
@@ -216,6 +217,7 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                 entry.at("economy").get<std::int64_t>(),
                 std::move(neighbors),
                 entry.at("population_growth_remainder").get<std::int64_t>(),
+                terrain_from_string(entry.value("terrain", "plains")),
             });
         }
         for (const Json& entry : document.at("roads")) {

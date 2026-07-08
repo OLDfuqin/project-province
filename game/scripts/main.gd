@@ -280,8 +280,9 @@ func _show_province_details(province_id: String) -> void:
     for army: Dictionary in bridge.get_army_summaries():
         if army["province_id"] == province_id:
             stationed_manpower += int(army["manpower"])
-    $Center/SelectionStatus.text = "%s · 人口%d · 士兵%d · 经济%d" % [
+    $Center/SelectionStatus.text = "%s · %s · 人口%d · 士兵%d · 经济%d" % [
         province["name"],
+        province.get("terrain", "plains"),
         province["population"],
         province["soldier_population"],
         province["economy"],

@@ -158,6 +158,10 @@ func _draw() -> void:
         var province: Dictionary = _province_data.get(province_id, {})
         var owner_id: String = province.get("owner_id", "")
         var color: Color = _country_colors.get(owner_id, Color("596579"))
+        match province.get("terrain", "plains"):
+            "forest": color = color.darkened(0.16)
+            "hills": color = color.darkened(0.08)
+            "mountains": color = color.darkened(0.28)
         if province_id == _selected_id:
             color = color.lightened(0.28)
         elif province_id == _hovered_id:

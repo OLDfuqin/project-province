@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/stable_id.hpp"
+#include "province/core/terrain.hpp"
 
 #include <cstdint>
 #include <string>
@@ -17,6 +18,7 @@ struct Province final {
     std::int64_t economy{};
     std::vector<ProvinceId> neighbors;
     std::int64_t population_growth_remainder{};
+    TerrainType terrain{TerrainType::plains};
 };
 
 } // namespace province::core
