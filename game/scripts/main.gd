@@ -459,9 +459,10 @@ func _refresh_advance_plans() -> void:
             ]
         else:
             status = "blocked: %s" % path_preview.get("error", "unknown")
-        lines.append("[url=%s]%s[/url]: %s => %s | %s" % [
+        lines.append("[url=select:%s]%s[/url]: %s => %s | %s [url=clear:%s][clear][/url]" % [
             army["id"],
-            army["id"], origin_name, target_name, status
+            army["id"], origin_name, target_name, status,
+            army["id"],
         ])
     if lines.is_empty():
         advance_plans.text = "No advance plans"
@@ -470,9 +471,24 @@ func _refresh_advance_plans() -> void:
 
 
 func _on_advance_plan_clicked(meta: Variant) -> void:
-    var army_id := String(meta)
-    if army_id.is_empty():
+    var command := String(meta)
+    if command.is_empty():
         return
+    if command.begins_with("clear:"):
+        var army_id := command.trim_prefix("clear:")
+        var result: Dictionary = bridge.clear_army_advance_target(army_id)
+        if not result.get("accepted", false):
+            event_log.text = "Clear advance plan failed: %s" % result.get("error", "unknown")
+            return
+        if army_id == moving_army_id:
+            auto_advance_target_id = ""
+            province_map.set_auto_advance_path([])
+            _refresh_movement_selection()
+        _refresh_map_data()
+        _refresh_advance_plans()
+        _record_event("Cleared advance plan: %s" % army_id)
+        return
+    var army_id := command.trim_prefix("select:")
     _select_army_in_selector(army_id)
     _record_event("Selected advance plan: %s" % army_id)
 
