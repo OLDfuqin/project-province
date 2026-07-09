@@ -95,6 +95,11 @@ func _initialize() -> void:
         bridge.free()
         quit(1)
         return
+    if war_entry.get("battle_outcomes", []).is_empty():
+        push_error("Battle outcome details were not reflected in bridge state")
+        bridge.free()
+        quit(1)
+        return
 
     var peace_result: Dictionary = bridge.make_peace("auroria", "verdantia", false)
     relations = bridge.get_diplomatic_relations()
@@ -192,6 +197,7 @@ func _initialize() -> void:
     )
     var turn_plan: Dictionary = bridge.advance_turn(3)
     var planned_move_seen := false
+    var planned_battle_seen := false
     for action: Dictionary in turn_plan.get("turn_actions", []):
         if action.get("type", "") == "army_moved" and \
                 action.get("army_id", "") == planned["army_id"] and \
@@ -199,6 +205,10 @@ func _initialize() -> void:
                 action.get("destination", "") == "westmark" and \
                 action.get("movement_cost", 0) == 1:
             planned_move_seen = true
+        if action.get("type", "") == "battle_resolved" and \
+                action.get("province_id", "") == "greenvale" and \
+                action.get("province_occupied", false):
+            planned_battle_seen = true
     var planned_after: Dictionary = {}
     var planned_greenvale: Dictionary = {}
     for army_summary: Dictionary in bridge.get_army_summaries():
@@ -210,6 +220,7 @@ func _initialize() -> void:
     if not plan_result.get("accepted", false) or \
             not turn_plan.get("accepted", false) or \
             not planned_move_seen or \
+            not planned_battle_seen or \
             planned_after.get("province_id", "") != "greenvale" or \
             planned_after.get("advance_target_id", "") != "" or \
             planned_greenvale.get("owner_id", "") != "auroria" or \

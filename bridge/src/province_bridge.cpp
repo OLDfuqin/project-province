@@ -216,10 +216,22 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
                 action["attacker_won"] = battle.attacker_won;
                 action["province_occupied"] = battle.province_occupied;
                 std::int64_t casualties = 0;
+                godot::Array outcomes;
                 for (const province::core::ArmyBattleOutcome& outcome : battle.armies) {
                     casualties += outcome.casualties;
+                    godot::Dictionary summary;
+                    summary["army_id"] =
+                        godot::String::utf8(outcome.army_id.value().c_str());
+                    summary["casualties"] = outcome.casualties;
+                    summary["remaining_manpower"] = outcome.remaining_manpower;
+                    summary["destroyed"] = outcome.destroyed;
+                    summary["retreat_province"] = outcome.retreat_province.has_value()
+                        ? godot::String::utf8(outcome.retreat_province->value().c_str())
+                        : godot::String{};
+                    outcomes.push_back(summary);
                 }
                 action["casualties"] = casualties;
+                action["battle_outcomes"] = outcomes;
             } else if (event.type == province::core::GameEventType::technology_researched) {
                 const auto& research =
                     std::get<province::core::TechnologyResearchResult>(event.payload);

@@ -122,15 +122,7 @@ func _record_turn_actions(actions: Array) -> void:
                     action.get("remaining_points", 0),
                 ])
             "battle_resolved":
-                var battle_text := "Turn: occupied %s without resistance" % action.get("province_id", "?")
-                if action.get("battle_occurred", false):
-                    battle_text = "Turn battle at %s: %s, casualties %d%s" % [
-                        action.get("province_id", "?"),
-                        "attacker victory" if action.get("attacker_won", false) else "defender victory",
-                        action.get("casualties", 0),
-                        ", occupied" if action.get("province_occupied", false) else "",
-                    ]
-                _record_event(battle_text)
+                _record_event(_battle_action_report(action))
             "technology_researched":
                 _record_event("Turn: %s researched technology" % action.get("country_id", "?"))
 
@@ -174,6 +166,31 @@ func _battle_report(result: Dictionary) -> String:
         "attacker victory" if result.get("attacker_won", false) else "defender victory",
         total_casualties,
         "; province occupied" if result.get("province_occupied", false) else "",
+        ", ".join(details),
+    ]
+
+
+func _battle_action_report(action: Dictionary) -> String:
+    if not action.get("battle_occurred", false):
+        return "Turn: occupied %s without resistance" % action.get("province_id", "?")
+    var details: Array[String] = []
+    for outcome: Dictionary in action.get("battle_outcomes", []):
+        var suffix := ""
+        if outcome.get("destroyed", false):
+            suffix = " destroyed"
+        elif String(outcome.get("retreat_province", "")) != "":
+            suffix = " retreated to %s" % outcome["retreat_province"]
+        details.append("%s -%d, %d left%s" % [
+            outcome.get("army_id", "?"),
+            outcome.get("casualties", 0),
+            outcome.get("remaining_manpower", 0),
+            suffix,
+        ])
+    return "Turn battle at %s: %s, casualties %d%s | %s" % [
+        action.get("province_id", "?"),
+        "attacker victory" if action.get("attacker_won", false) else "defender victory",
+        action.get("casualties", 0),
+        ", occupied" if action.get("province_occupied", false) else "",
         ", ".join(details),
     ]
 
