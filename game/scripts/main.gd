@@ -444,6 +444,7 @@ func _refresh_advance_plans() -> void:
         if target_id.is_empty():
             continue
         var is_enabled := bool(army.get("advance_enabled", true))
+        var strategy: String = army.get("advance_strategy", "max")
         var origin_id: String = army["province_id"]
         var origin_name: String = province_by_id.get(origin_id, {"name": origin_id})["name"]
         var target_name: String = province_by_id.get(target_id, {"name": target_id})["name"]
@@ -464,9 +465,15 @@ func _refresh_advance_plans() -> void:
             status = "blocked: %s" % path_preview.get("error", "unknown")
         var toggle_command := "pause" if is_enabled else "resume"
         var toggle_label := "pause" if is_enabled else "resume"
-        lines.append("[url=select:%s]%s[/url]: %s => %s | %s [url=%s:%s][%s][/url] [url=clear:%s][clear][/url]" % [
+        var next_strategy := "one_step" if strategy == "max" else "max"
+        var strategy_label := "one-step" if strategy == "max" else "max"
+        lines.append("[url=select:%s]%s[/url]: %s => %s | %s | strategy %s [url=strategy:%s:%s][%s][/url] [url=%s:%s][%s][/url] [url=clear:%s][clear][/url]" % [
             army["id"],
             army["id"], origin_name, target_name, status,
+            strategy,
+            army["id"],
+            next_strategy,
+            strategy_label,
             toggle_command,
             army["id"],
             toggle_label,
@@ -511,6 +518,21 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
             "Resumed" if enabled else "Paused",
             army_id,
         ])
+        return
+    if command.begins_with("strategy:"):
+        var parts := command.split(":")
+        if parts.size() != 3:
+            return
+        var army_id := String(parts[1])
+        var strategy := String(parts[2])
+        var result: Dictionary = bridge.set_army_advance_strategy(army_id, strategy)
+        if not result.get("accepted", false):
+            event_log.text = "Set advance strategy failed: %s" % result.get("error", "unknown")
+            return
+        _refresh_map_data()
+        _refresh_advance_plans()
+        _refresh_movement_selection()
+        _record_event("Set advance strategy: %s -> %s" % [army_id, strategy])
         return
     var army_id := command.trim_prefix("select:")
     _select_army_in_selector(army_id)

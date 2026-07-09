@@ -222,6 +222,32 @@ func _initialize() -> void:
         return
 
     if not bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Scenario reload for one-step advance failed: %s" % bridge.get_last_error())
+        bridge.free()
+        quit(1)
+        return
+    bridge.set_ai_enabled(false, "auroria")
+    var one_step: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.declare_war("auroria", "verdantia")
+    bridge.set_army_advance_target(one_step["army_id"], "z_gv_2")
+    var strategy_result: Dictionary = bridge.set_army_advance_strategy(
+        one_step["army_id"], "one_step"
+    )
+    bridge.advance_turn(1)
+    var one_step_after: Dictionary = {}
+    for army_summary: Dictionary in bridge.get_army_summaries():
+        if army_summary["id"] == one_step["army_id"]:
+            one_step_after = army_summary
+    if not strategy_result.get("accepted", false) or \
+            one_step_after.get("advance_strategy", "") != "one_step" or \
+            one_step_after.get("province_id", "") == "z_gv_2" or \
+            one_step_after.get("province_id", "") == "northreach":
+        push_error("One-step army advance strategy was not respected during turn advance")
+        bridge.free()
+        quit(1)
+        return
+
+    if not bridge.load_scenario(data_directory, 1000, 1):
         push_error("Scenario reload for planned advance failed: %s" % bridge.get_last_error())
         bridge.free()
         quit(1)

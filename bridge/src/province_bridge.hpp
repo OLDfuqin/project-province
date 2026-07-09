@@ -70,6 +70,10 @@ public:
         const godot::String& army_id,
         bool enabled
     );
+    [[nodiscard]] godot::Dictionary set_army_advance_strategy(
+        const godot::String& army_id,
+        const godot::String& strategy
+    );
     [[nodiscard]] godot::Dictionary declare_war(
         const godot::String& aggressor_id,
         const godot::String& defender_id

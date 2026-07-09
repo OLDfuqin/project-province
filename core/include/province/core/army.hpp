@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 namespace province::core {
 
@@ -15,6 +16,7 @@ struct Army final {
     std::int32_t movement_points{};
     std::optional<ProvinceId> advance_target;
     bool advance_enabled{true};
+    std::string advance_strategy{"max"};
 };
 
 } // namespace province::core

@@ -331,6 +331,7 @@ CommandResult CommandProcessor::execute_advance_turn(
                 if (!next_step.has_value()) {
                     break;
                 }
+                const std::string advance_strategy = army->advance_strategy;
                 const CommandResult move_result = execute(
                     working_state,
                     MoveArmyCommand{army_id, *next_step}
@@ -352,6 +353,9 @@ CommandResult CommandProcessor::execute_advance_turn(
                     move_result.events.begin(),
                     move_result.events.end()
                 );
+                if (advance_strategy == "one_step") {
+                    break;
+                }
                 const Army* moved_army = working_state.find_army(army_id);
                 if (moved_army == nullptr || !moved_army->advance_target.has_value() ||
                     should_stop) {

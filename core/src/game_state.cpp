@@ -170,7 +170,7 @@ ArmyId GameState::create_army(
     ArmyId id{"army_" + std::to_string(next_army_sequence_++)};
     const auto [iterator, inserted] = armies_.emplace(
         id,
-        Army{id, owner_id, province_id, manpower, 0, std::nullopt, true}
+        Army{id, owner_id, province_id, manpower, 0, std::nullopt, true, "max"}
     );
     if (!inserted) {
         throw std::logic_error{"generated duplicate army ID"};
@@ -333,6 +333,9 @@ std::vector<std::string> GameState::validate() const {
         if (army.advance_target.has_value() &&
             !provinces_.contains(*army.advance_target)) {
             issues.push_back("army '" + army_id.value() + "' has an unknown advance target");
+        }
+        if (army.advance_strategy != "max" && army.advance_strategy != "one_step") {
+            issues.push_back("army '" + army_id.value() + "' has an unknown advance strategy");
         }
     }
     for (const auto& [country_id, country] : countries_) {

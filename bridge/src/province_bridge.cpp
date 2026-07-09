@@ -616,6 +616,7 @@ godot::Array ProvinceBridge::get_army_summaries() const {
             ? godot::String::utf8(army.advance_target->value().c_str())
             : godot::String{};
         summary["advance_enabled"] = army.advance_enabled;
+        summary["advance_strategy"] = godot::String::utf8(army.advance_strategy.c_str());
         summaries.push_back(summary);
     }
     return summaries;
@@ -907,6 +908,7 @@ godot::Dictionary ProvinceBridge::set_army_advance_target(
         }
         army->advance_target = target_id;
         army->advance_enabled = true;
+        army->advance_strategy = "max";
         response["accepted"] = true;
         response["army_id"] = army_id;
         response["advance_target_id"] = target;
@@ -974,6 +976,47 @@ godot::Dictionary ProvinceBridge::set_army_advance_enabled(
         response["accepted"] = true;
         response["army_id"] = army_id;
         response["advance_enabled"] = enabled;
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
+godot::Dictionary ProvinceBridge::set_army_advance_strategy(
+    const godot::String& army_id,
+    const godot::String& strategy
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const std::string strategy_value{strategy.utf8().get_data()};
+        if (strategy_value != "max" && strategy_value != "one_step") {
+            response["accepted"] = false;
+            response["error"] = "advance strategy must be 'max' or 'one_step'";
+            return response;
+        }
+        province::core::Army* army = state_->find_army(
+            province::core::ArmyId{army_id.utf8().get_data()}
+        );
+        if (army == nullptr) {
+            response["accepted"] = false;
+            response["error"] = "army not found";
+            return response;
+        }
+        if (!army->advance_target.has_value()) {
+            response["accepted"] = false;
+            response["error"] = "army has no advance target";
+            return response;
+        }
+        army->advance_strategy = strategy_value;
+        response["accepted"] = true;
+        response["army_id"] = army_id;
+        response["advance_strategy"] = strategy;
     } catch (const std::exception& error) {
         response["accepted"] = false;
         response["error"] = godot::String::utf8(error.what());
@@ -1182,6 +1225,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("set_army_advance_enabled", "army_id", "enabled"),
         &ProvinceBridge::set_army_advance_enabled
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("set_army_advance_strategy", "army_id", "strategy"),
+        &ProvinceBridge::set_army_advance_strategy
     );
     godot::ClassDB::bind_method(
         godot::D_METHOD("declare_war", "aggressor_id", "defender_id"),
