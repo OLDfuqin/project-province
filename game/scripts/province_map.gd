@@ -19,6 +19,8 @@ var _road_end_id := ""
 var _auto_advance_origin_id := ""
 var _auto_advance_target_id := ""
 var _auto_advance_path: Array = []
+var _auto_advance_preview_path: Array = []
+var _auto_advance_stop_reason := ""
 var _roads: Array = []
 var _frontlines: Array = []
 var _armies: Array = []
@@ -121,13 +123,26 @@ func set_auto_advance_target(origin_id: String, target_id: String) -> void:
         origin_id,
         target_id,
     ]
+    _auto_advance_preview_path = _auto_advance_path.duplicate(true)
+    _auto_advance_stop_reason = ""
     queue_redraw()
 
 
 func set_auto_advance_path(path: Array) -> void:
     _auto_advance_path = path.duplicate(true)
+    _auto_advance_preview_path = path.duplicate(true)
     _auto_advance_origin_id = "" if _auto_advance_path.is_empty() else String(_auto_advance_path.front())
     _auto_advance_target_id = "" if _auto_advance_path.is_empty() else String(_auto_advance_path.back())
+    _auto_advance_stop_reason = ""
+    queue_redraw()
+
+
+func set_auto_advance_paths(full_path: Array, preview_path: Array, stop_reason: String) -> void:
+    _auto_advance_path = full_path.duplicate(true)
+    _auto_advance_preview_path = preview_path.duplicate(true)
+    _auto_advance_origin_id = "" if _auto_advance_path.is_empty() else String(_auto_advance_path.front())
+    _auto_advance_target_id = "" if _auto_advance_path.is_empty() else String(_auto_advance_path.back())
+    _auto_advance_stop_reason = stop_reason
     queue_redraw()
 
 
@@ -152,6 +167,18 @@ func set_armies(armies: Array) -> void:
 
 func army_count() -> int:
     return _armies.size()
+
+
+func _blocked_auto_advance_province() -> String:
+    if _auto_advance_path.size() < 2:
+        return ""
+    if _auto_advance_preview_path.is_empty():
+        return "" if _auto_advance_path.is_empty() else String(_auto_advance_path.front())
+    var preview_end := String(_auto_advance_preview_path.back())
+    for index: int in range(0, _auto_advance_path.size() - 1):
+        if String(_auto_advance_path[index]) == preview_end:
+            return String(_auto_advance_path[index + 1])
+    return ""
 
 
 func province_at_map_position(map_position: Vector2) -> String:
@@ -261,9 +288,27 @@ func _draw() -> void:
                 continue
             var advance_start := _polygon_center(_polygons[previous_id])
             var advance_end := _polygon_center(_polygons[next_id])
-            draw_line(advance_start, advance_end, Color("80deea"), 4.0 / _zoom, true)
+            draw_line(advance_start, advance_end, Color("244f6f"), 3.0 / _zoom, true)
+            draw_circle(advance_end, 4.0 / _zoom, Color("3f6f91"))
+
+    if _auto_advance_preview_path.size() >= 2:
+        for index: int in range(1, _auto_advance_preview_path.size()):
+            var previous_id := String(_auto_advance_preview_path[index - 1])
+            var next_id := String(_auto_advance_preview_path[index])
+            if not _polygons.has(previous_id) or not _polygons.has(next_id):
+                continue
+            var advance_start := _polygon_center(_polygons[previous_id])
+            var advance_end := _polygon_center(_polygons[next_id])
+            draw_line(advance_start, advance_end, Color("80deea"), 5.0 / _zoom, true)
             draw_circle(advance_start, 5.0 / _zoom, Color("b2ebf2"))
-            draw_circle(advance_end, 6.0 / _zoom, Color("00e5ff"))
+            draw_circle(advance_end, 7.0 / _zoom, Color("00e5ff"))
+
+    if _auto_advance_stop_reason == "enemy_border" and _auto_advance_path.size() >= 2:
+        var blocked_id := _blocked_auto_advance_province()
+        if not blocked_id.is_empty() and _polygons.has(blocked_id):
+            var blocked_center := _polygon_center(_polygons[blocked_id])
+            draw_circle(blocked_center, 9.0 / _zoom, Color("ff4d4d"))
+            draw_arc(blocked_center, 13.0 / _zoom, 0.0, TAU, 24, Color("ffd6d6"), 3.0 / _zoom, true)
 
     var armies_by_province: Dictionary = {}
     for army: Dictionary in _armies:

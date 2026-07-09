@@ -902,7 +902,11 @@ func _refresh_movement_selection() -> void:
         )
         var preview_text := "no path"
         if path_preview.get("accepted", false):
-            province_map.set_auto_advance_path(path_preview.get("preview_path", []))
+            province_map.set_auto_advance_paths(
+                path_preview.get("path", []),
+                path_preview.get("preview_path", []),
+                path_preview.get("preview_stop_reason", "unknown")
+            )
             var first_step_cost := int(path_preview.get("first_step_cost", 0))
             auto_advance_button.disabled = (
                 int(path_preview.get("step_count", 0)) <= 0 or
