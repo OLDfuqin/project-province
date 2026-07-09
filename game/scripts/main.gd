@@ -66,6 +66,7 @@ func _ready() -> void:
     $Center/ArmyControls/MovementButtons/ClearMovement.pressed.connect(
         _clear_movement_selection
     )
+    advance_plans.meta_clicked.connect(_on_advance_plan_clicked)
     var provinces: Array = bridge.get_province_summaries()
     var countries: Array = bridge.get_country_summaries()
     $Center/Status.text = "Core %s · %d countries · %d provinces" % [
@@ -458,13 +459,30 @@ func _refresh_advance_plans() -> void:
             ]
         else:
             status = "blocked: %s" % path_preview.get("error", "unknown")
-        lines.append("%s: %s => %s | %s" % [
+        lines.append("[url=%s]%s[/url]: %s => %s | %s" % [
+            army["id"],
             army["id"], origin_name, target_name, status
         ])
     if lines.is_empty():
         advance_plans.text = "No advance plans"
     else:
         advance_plans.text = "[b]Advance plans[/b]\n%s" % "\n".join(lines)
+
+
+func _on_advance_plan_clicked(meta: Variant) -> void:
+    var army_id := String(meta)
+    if army_id.is_empty():
+        return
+    _select_army_in_selector(army_id)
+    _record_event("Selected advance plan: %s" % army_id)
+
+
+func _select_army_in_selector(army_id: String) -> void:
+    for index: int in range(army_selector.item_count):
+        if String(army_selector.get_item_metadata(index)) == army_id:
+            army_selector.select(index)
+            _select_army(army_id)
+            return
 
 
 func _refresh_province_summary() -> void:
