@@ -17,6 +17,7 @@ const QUICK_SAVE_PATH := "user://quick_save.json"
 @onready var auto_advance_button: Button = $Center/ArmyControls/MovementButtons/AutoAdvance
 @onready var army_selector: OptionButton = $Center/ArmyControls/ArmySelector
 @onready var army_details: Label = $Center/ArmyControls/ArmyDetails
+@onready var advance_plans: RichTextLabel = $Center/ArmyControls/AdvancePlans
 @onready var war_target: OptionButton = $Center/DiplomacyControls/WarTarget
 @onready var peace_policy: OptionButton = $Center/DiplomacyControls/PeacePolicy
 
@@ -375,6 +376,7 @@ func _refresh_map_data() -> void:
     province_map.set_frontlines(bridge.get_frontline_edges())
     province_map.set_armies(bridge.get_army_summaries())
     _refresh_army_selector()
+    _refresh_advance_plans()
 
 
 func _refresh_army_selector() -> void:
@@ -430,6 +432,39 @@ func _select_army(army_id: String) -> void:
         ]
         _refresh_movement_selection()
         return
+
+
+func _refresh_advance_plans() -> void:
+    var lines: Array[String] = []
+    for army: Dictionary in bridge.get_army_summaries():
+        if army["owner_id"] != PLAYER_COUNTRY_ID:
+            continue
+        var target_id: String = army.get("advance_target_id", "")
+        if target_id.is_empty():
+            continue
+        var origin_id: String = army["province_id"]
+        var origin_name: String = province_by_id.get(origin_id, {"name": origin_id})["name"]
+        var target_name: String = province_by_id.get(target_id, {"name": target_id})["name"]
+        var path_preview: Dictionary = bridge.get_auto_advance_path(army["id"], target_id)
+        var status := "blocked"
+        if path_preview.get("accepted", false):
+            var first_cost := int(path_preview.get("first_step_cost", 0))
+            status = "%d step(s), first %dMP, total %dMP, ready %dMP%s" % [
+                path_preview.get("step_count", 0),
+                first_cost,
+                path_preview.get("total_movement_cost", 0),
+                army.get("movement_points", 0),
+                "" if int(army.get("movement_points", 0)) >= first_cost else " (waiting)",
+            ]
+        else:
+            status = "blocked: %s" % path_preview.get("error", "unknown")
+        lines.append("%s: %s => %s | %s" % [
+            army["id"], origin_name, target_name, status
+        ])
+    if lines.is_empty():
+        advance_plans.text = "No advance plans"
+    else:
+        advance_plans.text = "[b]Advance plans[/b]\n%s" % "\n".join(lines)
 
 
 func _refresh_province_summary() -> void:
@@ -629,6 +664,7 @@ func _on_move_army_pressed() -> void:
     _refresh_map_data()
     _refresh_country_details()
     _refresh_game_status()
+    _refresh_advance_plans()
     if result.get("army_destroyed", false):
         _clear_movement_selection()
         return
@@ -665,6 +701,7 @@ func _on_auto_advance_pressed() -> void:
     _refresh_map_data()
     _refresh_country_details()
     _refresh_game_status()
+    _refresh_advance_plans()
     if result.get("army_destroyed", false):
         _clear_movement_selection()
         return
@@ -697,6 +734,7 @@ func _update_movement_from_province(province_id: String) -> void:
                     "error", "unknown"
                 )
                 auto_advance_target_id = ""
+            _refresh_advance_plans()
     _refresh_movement_selection()
 
 
@@ -722,6 +760,7 @@ func _clear_movement_selection() -> void:
     movement_origin_id = ""
     movement_destination_id = ""
     auto_advance_target_id = ""
+    _refresh_advance_plans()
     _refresh_movement_selection()
 
 

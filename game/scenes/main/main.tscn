@@ -208,6 +208,14 @@ text = "Auto Advance"
 layout_mode = 2
 text = "清除移动选择"
 
+[node name="AdvancePlans" type="RichTextLabel" parent="Center/ArmyControls"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 90)
+bbcode_enabled = true
+text = "No advance plans"
+fit_content = true
+scroll_active = false
+
 [node name="RoadControls" type="VBoxContainer" parent="Center"]
 layout_mode = 2
 theme_override_constants/separation = 6
