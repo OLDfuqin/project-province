@@ -892,22 +892,30 @@ func _refresh_movement_selection() -> void:
             movement_points = int(army["movement_points"])
             break
     if not auto_advance_target_id.is_empty():
-        var path_preview: Dictionary = bridge.get_auto_advance_path(
+        var preview_months := 1
+        if turn_length.item_count > 0:
+            preview_months = int(turn_length.get_selected_metadata())
+        var path_preview: Dictionary = bridge.get_auto_advance_path_for_months(
             moving_army_id,
-            auto_advance_target_id
+            auto_advance_target_id,
+            preview_months
         )
         var preview_text := "no path"
         if path_preview.get("accepted", false):
-            province_map.set_auto_advance_path(path_preview.get("path", []))
+            province_map.set_auto_advance_path(path_preview.get("preview_path", []))
             var first_step_cost := int(path_preview.get("first_step_cost", 0))
             auto_advance_button.disabled = (
                 int(path_preview.get("step_count", 0)) <= 0 or
                 movement_points < first_step_cost
             )
-            preview_text = "%d step(s), first %dMP, total %dMP" % [
+            preview_text = "%d step(s), first %dMP, total %dMP, turn %dmo: %d step, %dMP, %s" % [
                 path_preview.get("step_count", 0),
                 first_step_cost,
                 path_preview.get("total_movement_cost", 0),
+                preview_months,
+                path_preview.get("preview_step_count", 0),
+                path_preview.get("preview_movement_cost", 0),
+                path_preview.get("preview_stop_reason", "unknown"),
             ]
         else:
             auto_advance_button.disabled = true

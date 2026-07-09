@@ -876,6 +876,7 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path_for_months(
         }
 
         godot::Array path_ids;
+        godot::Array preview_path_ids;
         std::int32_t total_cost = 0;
         std::int32_t first_step_cost = 0;
         std::int32_t preview_cost = 0;
@@ -884,6 +885,9 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path_for_months(
         std::string preview_stop_reason{"target_reached"};
         for (std::size_t index = 0; index < path.size(); ++index) {
             path_ids.push_back(godot::String::utf8(path[index].value().c_str()));
+            if (index == 0) {
+                preview_path_ids.push_back(godot::String::utf8(path[index].value().c_str()));
+            }
             if (index > 0) {
                 const province::core::Province* province = state_->find_province(path[index]);
                 const std::int32_t cost =
@@ -910,6 +914,7 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path_for_months(
                 preview_cost += cost;
                 ++preview_steps;
                 preview_destination = path[index];
+                preview_path_ids.push_back(godot::String::utf8(path[index].value().c_str()));
                 if (army->advance_strategy == "one_step") {
                     preview_stop_reason = "strategy_limit";
                 }
@@ -917,6 +922,7 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path_for_months(
         }
         response["accepted"] = true;
         response["path"] = path_ids;
+        response["preview_path"] = preview_path_ids;
         response["step_count"] = static_cast<std::int64_t>(
             path.size() > 0 ? path.size() - 1 : 0
         );

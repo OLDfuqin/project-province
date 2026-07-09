@@ -264,6 +264,7 @@ func _initialize() -> void:
         border_stop["army_id"], "greenvale", 1
     )
     if not border_preview.get("accepted", false) or \
+            border_preview.get("preview_path", []) != ["northreach", "westmark"] or \
             border_preview.get("preview_destination_id", "") != "westmark" or \
             border_preview.get("preview_step_count", 0) != 1 or \
             border_preview.get("preview_movement_cost", 0) != 1 or \
