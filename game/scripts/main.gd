@@ -465,8 +465,14 @@ func _refresh_advance_plans() -> void:
             status = "blocked: %s" % path_preview.get("error", "unknown")
         var toggle_command := "pause" if is_enabled else "resume"
         var toggle_label := "pause" if is_enabled else "resume"
-        var next_strategy := "one_step" if strategy == "max" else "max"
-        var strategy_label := "one-step" if strategy == "max" else "max"
+        var next_strategy := "one_step"
+        var strategy_label := "one-step"
+        if strategy == "one_step":
+            next_strategy = "stop_before_enemy"
+            strategy_label = "border-stop"
+        elif strategy == "stop_before_enemy":
+            next_strategy = "max"
+            strategy_label = "max"
         lines.append("[url=select:%s]%s[/url]: %s => %s | %s | strategy %s [url=strategy:%s:%s][%s][/url] [url=%s:%s][%s][/url] [url=clear:%s][clear][/url]" % [
             army["id"],
             army["id"], origin_name, target_name, status,

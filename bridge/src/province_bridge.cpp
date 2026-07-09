@@ -995,9 +995,11 @@ godot::Dictionary ProvinceBridge::set_army_advance_strategy(
     }
     try {
         const std::string strategy_value{strategy.utf8().get_data()};
-        if (strategy_value != "max" && strategy_value != "one_step") {
+        if (strategy_value != "max" && strategy_value != "one_step" &&
+            strategy_value != "stop_before_enemy") {
             response["accepted"] = false;
-            response["error"] = "advance strategy must be 'max' or 'one_step'";
+            response["error"] =
+                "advance strategy must be 'max', 'one_step' or 'stop_before_enemy'";
             return response;
         }
         province::core::Army* army = state_->find_army(

@@ -23,7 +23,7 @@ func _initialize() -> void:
     bridge.move_army(army["army_id"], "redpass")
     bridge.set_army_advance_target(army["army_id"], "goldcoast")
     bridge.set_army_advance_enabled(army["army_id"], false)
-    bridge.set_army_advance_strategy(army["army_id"], "one_step")
+    bridge.set_army_advance_strategy(army["army_id"], "stop_before_enemy")
 
     var save_path := ProjectSettings.globalize_path(
         "res://../build/godot_save_roundtrip_test.json"
@@ -51,7 +51,7 @@ func _initialize() -> void:
             bridge.get_army_summaries().size() != 1 or \
             loaded_army.get("advance_target_id", "") != "goldcoast" or \
             loaded_army.get("advance_enabled", true) or \
-            loaded_army.get("advance_strategy", "") != "one_step" or \
+            loaded_army.get("advance_strategy", "") != "stop_before_enemy" or \
             bridge.get_road_summaries().size() != 1 or \
             bridge.get_diplomatic_relations().size() != 1 or \
             redpass.get("owner_id", "") != "auroria" or \

@@ -334,7 +334,8 @@ std::vector<std::string> GameState::validate() const {
             !provinces_.contains(*army.advance_target)) {
             issues.push_back("army '" + army_id.value() + "' has an unknown advance target");
         }
-        if (army.advance_strategy != "max" && army.advance_strategy != "one_step") {
+        if (army.advance_strategy != "max" && army.advance_strategy != "one_step" &&
+            army.advance_strategy != "stop_before_enemy") {
             issues.push_back("army '" + army_id.value() + "' has an unknown advance strategy");
         }
     }

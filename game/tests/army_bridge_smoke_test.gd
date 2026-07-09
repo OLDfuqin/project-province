@@ -248,6 +248,38 @@ func _initialize() -> void:
         return
 
     if not bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Scenario reload for border-stop advance failed: %s" % bridge.get_last_error())
+        bridge.free()
+        quit(1)
+        return
+    bridge.set_ai_enabled(false, "auroria")
+    var border_stop: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.build_road("auroria", "northreach", "westmark")
+    bridge.declare_war("auroria", "verdantia")
+    bridge.set_army_advance_target(border_stop["army_id"], "greenvale")
+    var border_strategy: Dictionary = bridge.set_army_advance_strategy(
+        border_stop["army_id"], "stop_before_enemy"
+    )
+    bridge.advance_turn(3)
+    var border_after: Dictionary = {}
+    var border_greenvale: Dictionary = {}
+    for army_summary: Dictionary in bridge.get_army_summaries():
+        if army_summary["id"] == border_stop["army_id"]:
+            border_after = army_summary
+    for province_summary: Dictionary in bridge.get_province_summaries():
+        if province_summary["id"] == "greenvale":
+            border_greenvale = province_summary
+    if not border_strategy.get("accepted", false) or \
+            border_after.get("advance_strategy", "") != "stop_before_enemy" or \
+            border_after.get("province_id", "") != "westmark" or \
+            border_after.get("advance_target_id", "") != "greenvale" or \
+            border_greenvale.get("owner_id", "") != "verdantia":
+        push_error("Border-stop army advance strategy was not respected during turn advance")
+        bridge.free()
+        quit(1)
+        return
+
+    if not bridge.load_scenario(data_directory, 1000, 1):
         push_error("Scenario reload for planned advance failed: %s" % bridge.get_last_error())
         bridge.free()
         quit(1)

@@ -332,6 +332,10 @@ CommandResult CommandProcessor::execute_advance_turn(
                     break;
                 }
                 const std::string advance_strategy = army->advance_strategy;
+                if (advance_strategy == "stop_before_enemy" &&
+                    working_state.controller_of(*next_step) != army->owner_id) {
+                    break;
+                }
                 const CommandResult move_result = execute(
                     working_state,
                     MoveArmyCommand{army_id, *next_step}
