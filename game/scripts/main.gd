@@ -104,21 +104,21 @@ func _record_event(message: String) -> void:
     event_history.text = "\n".join(event_history_lines)
 
 
-func _record_ai_actions(actions: Array) -> void:
+func _record_turn_actions(actions: Array) -> void:
     for action: Dictionary in actions:
         match String(action.get("type", "other")):
             "army_recruited":
-                _record_event("AI %s recruited an army" % action.get("country_id", "?"))
+                _record_event("Turn: %s recruited an army" % action.get("country_id", "?"))
             "war_declared":
-                _record_event("AI %s declared war on %s" % [
+                _record_event("Turn: %s declared war on %s" % [
                     action.get("country_id", "?"), action.get("target_id", "?")
                 ])
             "army_moved":
-                _record_event("AI moved %s" % action.get("army_id", "?"))
+                _record_event("Turn: moved %s" % action.get("army_id", "?"))
             "battle_resolved":
-                var battle_text := "AI occupied %s without resistance" % action.get("province_id", "?")
+                var battle_text := "Turn: occupied %s without resistance" % action.get("province_id", "?")
                 if action.get("battle_occurred", false):
-                    battle_text = "AI battle at %s: %s, casualties %d%s" % [
+                    battle_text = "Turn battle at %s: %s, casualties %d%s" % [
                         action.get("province_id", "?"),
                         "attacker victory" if action.get("attacker_won", false) else "defender victory",
                         action.get("casualties", 0),
@@ -126,7 +126,7 @@ func _record_ai_actions(actions: Array) -> void:
                     ]
                 _record_event(battle_text)
             "technology_researched":
-                _record_event("AI %s researched technology" % action.get("country_id", "?"))
+                _record_event("Turn: %s researched technology" % action.get("country_id", "?"))
 
 
 func _refresh_country_list() -> void:
@@ -450,10 +450,11 @@ func _on_advance_turn_pressed() -> void:
         result["previous_year"],
         result["previous_month"],
     ]
-    var ai_action_count: int = result.get("ai_actions", []).size()
-    if ai_action_count > 0:
-        event_log.text += " | AI actions: %d" % ai_action_count
-        _record_ai_actions(result.get("ai_actions", []))
+    var turn_actions: Array = result.get("turn_actions", result.get("ai_actions", []))
+    var turn_action_count := turn_actions.size()
+    if turn_action_count > 0:
+        event_log.text += " | Turn actions: %d" % turn_action_count
+        _record_turn_actions(turn_actions)
     _record_event(event_log.text)
 
 

@@ -150,7 +150,7 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
 
     godot::Array incomes;
     godot::Array population_changes;
-    godot::Array ai_actions;
+    godot::Array turn_actions;
     for (const province::core::GameEvent& event : result.events) {
         if (event.type == province::core::GameEventType::economy_resolved) {
             const auto& economy = std::get<province::core::EconomyResolvedEvent>(event.payload);
@@ -224,12 +224,13 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
             } else {
                 action["type"] = "other";
             }
-            ai_actions.push_back(action);
+            turn_actions.push_back(action);
         }
     }
     response["incomes"] = incomes;
     response["population_changes"] = population_changes;
-    response["ai_actions"] = ai_actions;
+    response["turn_actions"] = turn_actions;
+    response["ai_actions"] = turn_actions;
     return response;
 }
 

@@ -40,6 +40,7 @@ func _initialize() -> void:
     if bridge.get_army_summaries().size() != 9 or player_armies != 0 or \
             bridge.get_diplomatic_relations().is_empty() or \
             occupied_provinces == 0 or \
+            last_result.get("turn_actions", []).is_empty() or \
             last_result.get("ai_actions", []).is_empty():
         push_error("AI actions were not reflected through the bridge")
         bridge.free()
