@@ -59,6 +59,11 @@ public:
         const godot::String& army_id,
         const godot::String& target
     ) const;
+    [[nodiscard]] godot::Dictionary get_auto_advance_path_for_months(
+        const godot::String& army_id,
+        const godot::String& target,
+        std::int32_t months
+    ) const;
     [[nodiscard]] godot::Dictionary set_army_advance_target(
         const godot::String& army_id,
         const godot::String& target

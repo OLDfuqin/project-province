@@ -78,6 +78,7 @@ func _ready() -> void:
         turn_length.add_item("%d个月" % months)
         turn_length.set_item_metadata(turn_length.item_count - 1, months)
     turn_length.select(0)
+    turn_length.item_selected.connect(_on_turn_length_selected)
     $Center/TurnControls/AdvanceTurn.pressed.connect(_on_advance_turn_pressed)
     _refresh_date()
 
@@ -437,6 +438,9 @@ func _select_army(army_id: String) -> void:
 
 func _refresh_advance_plans() -> void:
     var lines: Array[String] = []
+    var preview_months := 1
+    if turn_length.item_count > 0:
+        preview_months = int(turn_length.get_selected_metadata())
     for army: Dictionary in bridge.get_army_summaries():
         if army["owner_id"] != PLAYER_COUNTRY_ID:
             continue
@@ -448,7 +452,11 @@ func _refresh_advance_plans() -> void:
         var origin_id: String = army["province_id"]
         var origin_name: String = province_by_id.get(origin_id, {"name": origin_id})["name"]
         var target_name: String = province_by_id.get(target_id, {"name": target_id})["name"]
-        var path_preview: Dictionary = bridge.get_auto_advance_path(army["id"], target_id)
+        var path_preview: Dictionary = bridge.get_auto_advance_path_for_months(
+            army["id"],
+            target_id,
+            preview_months
+        )
         var status := "blocked"
         if not is_enabled:
             status = "paused"
@@ -462,13 +470,14 @@ func _refresh_advance_plans() -> void:
                 preview_destination_id,
                 {"name": preview_destination_id}
             )["name"]
-            status = "%d step(s), first %dMP, total %dMP, ready %dMP%s, next %s (%d step, %dMP, %s)" % [
+            status = "%d step(s), first %dMP, total %dMP, ready %d+%dMP, next %s in %dmo (%d step, %dMP, %s)" % [
                 path_preview.get("step_count", 0),
                 first_cost,
                 path_preview.get("total_movement_cost", 0),
                 army.get("movement_points", 0),
-                "" if int(army.get("movement_points", 0)) >= first_cost else " (waiting)",
+                path_preview.get("preview_movement_granted", 0),
                 preview_destination_name,
+                preview_months,
                 path_preview.get("preview_step_count", 0),
                 path_preview.get("preview_movement_cost", 0),
                 path_preview.get("preview_stop_reason", "unknown"),
@@ -574,6 +583,11 @@ func _refresh_province_summary() -> void:
     $Center/ProvinceSummary.text = "总人口 %d · 士兵人口 %d" % [
         total_population, soldier_population
     ]
+
+
+func _on_turn_length_selected(_index: int) -> void:
+    _refresh_advance_plans()
+    _refresh_movement_selection()
 
 
 func _on_advance_turn_pressed() -> void:

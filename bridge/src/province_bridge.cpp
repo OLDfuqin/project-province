@@ -815,6 +815,14 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
     const godot::String& army_id,
     const godot::String& target
 ) const {
+    return get_auto_advance_path_for_months(army_id, target, 0);
+}
+
+godot::Dictionary ProvinceBridge::get_auto_advance_path_for_months(
+    const godot::String& army_id,
+    const godot::String& target,
+    const std::int32_t months
+) const {
     godot::Dictionary response;
     if (!state_) {
         response["accepted"] = false;
@@ -825,6 +833,11 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
         if (target.is_empty()) {
             response["accepted"] = false;
             response["error"] = "target province is required";
+            return response;
+        }
+        if (months < 0) {
+            response["accepted"] = false;
+            response["error"] = "preview months cannot be negative";
             return response;
         }
         const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
@@ -840,6 +853,19 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
             response["error"] = "target province not found";
             return response;
         }
+        const province::core::CountryTechnology* technology =
+            state_->find_technology(army->owner_id);
+        if (technology == nullptr) {
+            response["accepted"] = false;
+            response["error"] = "army owner has no technology state";
+            return response;
+        }
+        const std::int64_t movement_granted =
+            static_cast<std::int64_t>(months) *
+            (province::core::MovementSystem::monthly_movement_points +
+             technology->roads_level);
+        const std::int64_t preview_available_movement =
+            static_cast<std::int64_t>(army->movement_points) + movement_granted;
 
         const std::vector<province::core::ProvinceId> path =
             province::core::AiSystem{}.find_path_toward(*state_, *army, target_id);
@@ -877,7 +903,7 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
                     preview_stop_reason = "enemy_border";
                     continue;
                 }
-                if (army->movement_points < preview_cost + cost) {
+                if (preview_available_movement < preview_cost + cost) {
                     preview_stop_reason = "insufficient_movement";
                     continue;
                 }
@@ -896,6 +922,9 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
         );
         response["first_step_cost"] = first_step_cost;
         response["total_movement_cost"] = total_cost;
+        response["preview_months"] = months;
+        response["preview_movement_granted"] = movement_granted;
+        response["preview_available_movement"] = preview_available_movement;
         response["preview_destination_id"] =
             godot::String::utf8(preview_destination.value().c_str());
         response["preview_step_count"] = preview_steps;
@@ -1242,6 +1271,10 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(
         godot::D_METHOD("get_auto_advance_path", "army_id", "target"),
         &ProvinceBridge::get_auto_advance_path
+    );
+    godot::ClassDB::bind_method(
+        godot::D_METHOD("get_auto_advance_path_for_months", "army_id", "target", "months"),
+        &ProvinceBridge::get_auto_advance_path_for_months
     );
     godot::ClassDB::bind_method(
         godot::D_METHOD("set_army_advance_target", "army_id", "target"),
