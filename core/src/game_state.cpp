@@ -170,7 +170,7 @@ ArmyId GameState::create_army(
     ArmyId id{"army_" + std::to_string(next_army_sequence_++)};
     const auto [iterator, inserted] = armies_.emplace(
         id,
-        Army{id, owner_id, province_id, manpower, 0, std::nullopt}
+        Army{id, owner_id, province_id, manpower, 0, std::nullopt, true}
     );
     if (!inserted) {
         throw std::logic_error{"generated duplicate army ID"};

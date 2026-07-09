@@ -443,12 +443,15 @@ func _refresh_advance_plans() -> void:
         var target_id: String = army.get("advance_target_id", "")
         if target_id.is_empty():
             continue
+        var is_enabled := bool(army.get("advance_enabled", true))
         var origin_id: String = army["province_id"]
         var origin_name: String = province_by_id.get(origin_id, {"name": origin_id})["name"]
         var target_name: String = province_by_id.get(target_id, {"name": target_id})["name"]
         var path_preview: Dictionary = bridge.get_auto_advance_path(army["id"], target_id)
         var status := "blocked"
-        if path_preview.get("accepted", false):
+        if not is_enabled:
+            status = "paused"
+        elif path_preview.get("accepted", false):
             var first_cost := int(path_preview.get("first_step_cost", 0))
             status = "%d step(s), first %dMP, total %dMP, ready %dMP%s" % [
                 path_preview.get("step_count", 0),
@@ -459,9 +462,14 @@ func _refresh_advance_plans() -> void:
             ]
         else:
             status = "blocked: %s" % path_preview.get("error", "unknown")
-        lines.append("[url=select:%s]%s[/url]: %s => %s | %s [url=clear:%s][clear][/url]" % [
+        var toggle_command := "pause" if is_enabled else "resume"
+        var toggle_label := "pause" if is_enabled else "resume"
+        lines.append("[url=select:%s]%s[/url]: %s => %s | %s [url=%s:%s][%s][/url] [url=clear:%s][clear][/url]" % [
             army["id"],
             army["id"], origin_name, target_name, status,
+            toggle_command,
+            army["id"],
+            toggle_label,
             army["id"],
         ])
     if lines.is_empty():
@@ -487,6 +495,22 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
         _refresh_map_data()
         _refresh_advance_plans()
         _record_event("Cleared advance plan: %s" % army_id)
+        return
+    if command.begins_with("pause:") or command.begins_with("resume:"):
+        var enabled := command.begins_with("resume:")
+        var separator := command.find(":")
+        var army_id := command.substr(separator + 1)
+        var result: Dictionary = bridge.set_army_advance_enabled(army_id, enabled)
+        if not result.get("accepted", false):
+            event_log.text = "Toggle advance plan failed: %s" % result.get("error", "unknown")
+            return
+        _refresh_map_data()
+        _refresh_advance_plans()
+        _refresh_movement_selection()
+        _record_event("%s advance plan: %s" % [
+            "Resumed" if enabled else "Paused",
+            army_id,
+        ])
         return
     var army_id := command.trim_prefix("select:")
     _select_army_in_selector(army_id)

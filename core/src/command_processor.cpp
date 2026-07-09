@@ -311,14 +311,15 @@ CommandResult CommandProcessor::execute_advance_turn(
         std::vector<ArmyId> planned_armies;
         planned_armies.reserve(working_state.army_count());
         for (const auto& [army_id, army] : working_state.armies()) {
-            if (army.advance_target.has_value()) {
+            if (army.advance_target.has_value() && army.advance_enabled) {
                 planned_armies.push_back(army_id);
             }
         }
         for (const ArmyId& army_id : planned_armies) {
             for (std::size_t step = 0; step < working_state.province_count(); ++step) {
                 const Army* army = working_state.find_army(army_id);
-                if (army == nullptr || !army->advance_target.has_value()) {
+                if (army == nullptr || !army->advance_target.has_value() ||
+                    !army->advance_enabled) {
                     break;
                 }
                 const std::optional<ProvinceId> next_step =

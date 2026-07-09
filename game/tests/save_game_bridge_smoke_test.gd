@@ -22,6 +22,7 @@ func _initialize() -> void:
     bridge.advance_turn(1)
     bridge.move_army(army["army_id"], "redpass")
     bridge.set_army_advance_target(army["army_id"], "goldcoast")
+    bridge.set_army_advance_enabled(army["army_id"], false)
 
     var save_path := ProjectSettings.globalize_path(
         "res://../build/godot_save_roundtrip_test.json"
@@ -48,6 +49,7 @@ func _initialize() -> void:
             loaded_date != saved_date or date_after_failed_load != loaded_date or \
             bridge.get_army_summaries().size() != 1 or \
             loaded_army.get("advance_target_id", "") != "goldcoast" or \
+            loaded_army.get("advance_enabled", true) or \
             bridge.get_road_summaries().size() != 1 or \
             bridge.get_diplomatic_relations().size() != 1 or \
             redpass.get("owner_id", "") != "auroria" or \

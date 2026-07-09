@@ -124,6 +124,7 @@ void SaveGameSerializer::save(
         if (army.advance_target.has_value()) {
             army_document["advance_target"] = army.advance_target->value();
         }
+        army_document["advance_enabled"] = army.advance_enabled;
         document["armies"].push_back(std::move(army_document));
     }
     for (const auto& [province_id, controller_id] : state.occupations_) {
@@ -247,6 +248,7 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                     entry.at("manpower").get<std::int64_t>(),
                     entry.at("movement_points").get<std::int32_t>(),
                     std::move(advance_target),
+                    entry.value("advance_enabled", true),
                 }
             );
             static_cast<void>(iterator);

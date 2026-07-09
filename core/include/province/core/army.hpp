@@ -14,6 +14,7 @@ struct Army final {
     std::int64_t manpower{};
     std::int32_t movement_points{};
     std::optional<ProvinceId> advance_target;
+    bool advance_enabled{true};
 };
 
 } // namespace province::core

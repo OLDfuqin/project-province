@@ -66,6 +66,10 @@ public:
     [[nodiscard]] godot::Dictionary clear_army_advance_target(
         const godot::String& army_id
     );
+    [[nodiscard]] godot::Dictionary set_army_advance_enabled(
+        const godot::String& army_id,
+        bool enabled
+    );
     [[nodiscard]] godot::Dictionary declare_war(
         const godot::String& aggressor_id,
         const godot::String& defender_id

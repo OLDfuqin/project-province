@@ -184,6 +184,44 @@ func _initialize() -> void:
         return
 
     if not bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Scenario reload for paused advance failed: %s" % bridge.get_last_error())
+        bridge.free()
+        quit(1)
+        return
+    bridge.set_ai_enabled(false, "auroria")
+    var paused: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.build_road("auroria", "northreach", "westmark")
+    bridge.declare_war("auroria", "verdantia")
+    bridge.set_army_advance_target(paused["army_id"], "greenvale")
+    var pause_result: Dictionary = bridge.set_army_advance_enabled(
+        paused["army_id"], false
+    )
+    bridge.advance_turn(3)
+    var paused_after: Dictionary = {}
+    for army_summary: Dictionary in bridge.get_army_summaries():
+        if army_summary["id"] == paused["army_id"]:
+            paused_after = army_summary
+    var resume_result: Dictionary = bridge.set_army_advance_enabled(
+        paused["army_id"], true
+    )
+    bridge.advance_turn(1)
+    var resumed_after: Dictionary = {}
+    for army_summary: Dictionary in bridge.get_army_summaries():
+        if army_summary["id"] == paused["army_id"]:
+            resumed_after = army_summary
+    if not pause_result.get("accepted", false) or \
+            not resume_result.get("accepted", false) or \
+            paused_after.get("province_id", "") != "northreach" or \
+            paused_after.get("advance_target_id", "") != "greenvale" or \
+            paused_after.get("advance_enabled", true) or \
+            resumed_after.get("province_id", "") == "northreach" or \
+            not resumed_after.get("advance_enabled", false):
+        push_error("Paused army advance target was not respected during turn advance")
+        bridge.free()
+        quit(1)
+        return
+
+    if not bridge.load_scenario(data_directory, 1000, 1):
         push_error("Scenario reload for planned advance failed: %s" % bridge.get_last_error())
         bridge.free()
         quit(1)
