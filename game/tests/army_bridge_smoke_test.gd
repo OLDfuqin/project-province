@@ -260,6 +260,22 @@ func _initialize() -> void:
     var border_strategy: Dictionary = bridge.set_army_advance_strategy(
         border_stop["army_id"], "stop_before_enemy"
     )
+    bridge.set_army_advance_enabled(border_stop["army_id"], false)
+    bridge.advance_turn(1)
+    var border_preview: Dictionary = bridge.get_auto_advance_path(
+        border_stop["army_id"], "greenvale"
+    )
+    if not border_preview.get("accepted", false) or \
+            border_preview.get("preview_destination_id", "") != "westmark" or \
+            border_preview.get("preview_step_count", 0) != 1 or \
+            border_preview.get("preview_movement_cost", 0) != 1 or \
+            border_preview.get("preview_stop_reason", "") != "enemy_border":
+        push_error("Border-stop army advance preview did not stop before enemy province")
+        bridge.free()
+        quit(1)
+        return
+
+    bridge.set_army_advance_enabled(border_stop["army_id"], true)
     bridge.advance_turn(3)
     var border_after: Dictionary = {}
     var border_greenvale: Dictionary = {}

@@ -454,12 +454,24 @@ func _refresh_advance_plans() -> void:
             status = "paused"
         elif path_preview.get("accepted", false):
             var first_cost := int(path_preview.get("first_step_cost", 0))
-            status = "%d step(s), first %dMP, total %dMP, ready %dMP%s" % [
+            var preview_destination_id: String = path_preview.get(
+                "preview_destination_id",
+                origin_id
+            )
+            var preview_destination_name: String = province_by_id.get(
+                preview_destination_id,
+                {"name": preview_destination_id}
+            )["name"]
+            status = "%d step(s), first %dMP, total %dMP, ready %dMP%s, next %s (%d step, %dMP, %s)" % [
                 path_preview.get("step_count", 0),
                 first_cost,
                 path_preview.get("total_movement_cost", 0),
                 army.get("movement_points", 0),
                 "" if int(army.get("movement_points", 0)) >= first_cost else " (waiting)",
+                preview_destination_name,
+                path_preview.get("preview_step_count", 0),
+                path_preview.get("preview_movement_cost", 0),
+                path_preview.get("preview_stop_reason", "unknown"),
             ]
         else:
             status = "blocked: %s" % path_preview.get("error", "unknown")

@@ -852,6 +852,10 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
         godot::Array path_ids;
         std::int32_t total_cost = 0;
         std::int32_t first_step_cost = 0;
+        std::int32_t preview_cost = 0;
+        std::int64_t preview_steps = 0;
+        province::core::ProvinceId preview_destination = army->province_id;
+        std::string preview_stop_reason{"target_reached"};
         for (std::size_t index = 0; index < path.size(); ++index) {
             path_ids.push_back(godot::String::utf8(path[index].value().c_str()));
             if (index > 0) {
@@ -865,6 +869,24 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
                     first_step_cost = cost;
                 }
                 total_cost += cost;
+                if (preview_stop_reason != "target_reached") {
+                    continue;
+                }
+                if (army->advance_strategy == "stop_before_enemy" &&
+                    state_->controller_of(path[index]) != army->owner_id) {
+                    preview_stop_reason = "enemy_border";
+                    continue;
+                }
+                if (army->movement_points < preview_cost + cost) {
+                    preview_stop_reason = "insufficient_movement";
+                    continue;
+                }
+                preview_cost += cost;
+                ++preview_steps;
+                preview_destination = path[index];
+                if (army->advance_strategy == "one_step") {
+                    preview_stop_reason = "strategy_limit";
+                }
             }
         }
         response["accepted"] = true;
@@ -874,6 +896,11 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path(
         );
         response["first_step_cost"] = first_step_cost;
         response["total_movement_cost"] = total_cost;
+        response["preview_destination_id"] =
+            godot::String::utf8(preview_destination.value().c_str());
+        response["preview_step_count"] = preview_steps;
+        response["preview_movement_cost"] = preview_cost;
+        response["preview_stop_reason"] = godot::String::utf8(preview_stop_reason.c_str());
     } catch (const std::exception& error) {
         response["accepted"] = false;
         response["error"] = godot::String::utf8(error.what());
