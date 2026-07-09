@@ -201,6 +201,11 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
                 const auto& moved = std::get<province::core::ArmyMovedEvent>(event.payload);
                 action["type"] = "army_moved";
                 action["army_id"] = godot::String::utf8(moved.army_id.value().c_str());
+                action["origin"] = godot::String::utf8(moved.origin.value().c_str());
+                action["destination"] =
+                    godot::String::utf8(moved.destination.value().c_str());
+                action["movement_cost"] = moved.movement_cost;
+                action["remaining_points"] = moved.remaining_points;
             } else if (event.type == province::core::GameEventType::battle_resolved) {
                 const auto& battle =
                     std::get<province::core::BattleResolution>(event.payload);

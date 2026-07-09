@@ -114,7 +114,13 @@ func _record_turn_actions(actions: Array) -> void:
                     action.get("country_id", "?"), action.get("target_id", "?")
                 ])
             "army_moved":
-                _record_event("Turn: moved %s" % action.get("army_id", "?"))
+                _record_event("Turn: moved %s from %s to %s, cost %dMP, remaining %dMP" % [
+                    action.get("army_id", "?"),
+                    action.get("origin", "?"),
+                    action.get("destination", "?"),
+                    action.get("movement_cost", 0),
+                    action.get("remaining_points", 0),
+                ])
             "battle_resolved":
                 var battle_text := "Turn: occupied %s without resistance" % action.get("province_id", "?")
                 if action.get("battle_occurred", false):
