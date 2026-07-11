@@ -436,6 +436,20 @@ func _select_army(army_id: String) -> void:
         return
 
 
+func _advance_stop_reason_text(reason: String) -> String:
+    match reason:
+        "target_reached":
+            return "已到达目标"
+        "enemy_border":
+            return "将在敌方边境前停止"
+        "insufficient_movement":
+            return "移动点不足"
+        "strategy_limit":
+            return "单步推进策略限制"
+        _:
+            return reason
+
+
 func _refresh_advance_plans() -> void:
     var lines: Array[String] = []
     var preview_months := 1
@@ -480,7 +494,7 @@ func _refresh_advance_plans() -> void:
                 preview_months,
                 path_preview.get("preview_step_count", 0),
                 path_preview.get("preview_movement_cost", 0),
-                path_preview.get("preview_stop_reason", "unknown"),
+                _advance_stop_reason_text(path_preview.get("preview_stop_reason", "unknown")),
             ]
         else:
             status = "blocked: %s" % path_preview.get("error", "unknown")
@@ -919,7 +933,7 @@ func _refresh_movement_selection() -> void:
                 preview_months,
                 path_preview.get("preview_step_count", 0),
                 path_preview.get("preview_movement_cost", 0),
-                path_preview.get("preview_stop_reason", "unknown"),
+                _advance_stop_reason_text(path_preview.get("preview_stop_reason", "unknown")),
             ]
         else:
             auto_advance_button.disabled = true

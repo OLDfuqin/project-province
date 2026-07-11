@@ -184,33 +184,33 @@ func _blocked_auto_advance_province() -> String:
 func _draw_advance_legend() -> void:
     var origin := Vector2(16, size.y - 48)
     var text_color := Color("d8e6f5")
-    draw_rect(Rect2(origin - Vector2(8, 20), Vector2(430, 28)), Color(0.04, 0.07, 0.11, 0.72))
+    draw_rect(Rect2(origin - Vector2(8, 20), Vector2(500, 28)), Color(0.04, 0.07, 0.11, 0.72))
     draw_line(origin + Vector2(0, -5), origin + Vector2(28, -5), Color("80deea"), 5.0, true)
     draw_string(
         ThemeDB.fallback_font,
         origin + Vector2(36, 0),
-        "turn path",
+        "本回合推进",
         HORIZONTAL_ALIGNMENT_LEFT,
         -1,
         13,
         text_color
     )
-    draw_line(origin + Vector2(118, -5), origin + Vector2(146, -5), Color("244f6f"), 4.0, true)
+    draw_line(origin + Vector2(130, -5), origin + Vector2(158, -5), Color("244f6f"), 4.0, true)
     draw_string(
         ThemeDB.fallback_font,
-        origin + Vector2(154, 0),
-        "full target path",
+        origin + Vector2(166, 0),
+        "长期目标路线",
         HORIZONTAL_ALIGNMENT_LEFT,
         -1,
         13,
         text_color
     )
     if _auto_advance_stop_reason == "enemy_border":
-        draw_circle(origin + Vector2(282, -5), 6.0, Color("ff4d4d"))
+        draw_circle(origin + Vector2(308, -5), 6.0, Color("ff4d4d"))
         draw_string(
             ThemeDB.fallback_font,
-            origin + Vector2(296, 0),
-            "enemy border stop",
+            origin + Vector2(322, 0),
+            "敌方边境停止",
             HORIZONTAL_ALIGNMENT_LEFT,
             -1,
             13,
