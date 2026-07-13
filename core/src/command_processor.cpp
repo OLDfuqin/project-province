@@ -294,6 +294,9 @@ CommandResult CommandProcessor::execute_advance_turn(
             } else {
                 existing->second.current_population = change.current_population;
                 existing->second.growth += change.growth;
+                existing->second.current_recruitable_population =
+                    change.current_recruitable_population;
+                existing->second.recruitable_growth += change.recruitable_growth;
             }
         }
         const MonthlyMovementReport movement_report =

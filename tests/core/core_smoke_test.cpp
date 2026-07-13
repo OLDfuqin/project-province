@@ -600,9 +600,39 @@ int main() {
         turn_state.find_province(ProvinceId{"northreach"});
     if (northreach_after_turn == nullptr ||
         northreach_after_turn->population != 120'360 ||
-        northreach_after_turn->recruitable_population != 2'000 ||
+        northreach_after_turn->recruitable_population != 3'802 ||
         population_event.elapsed_months != 3) {
         std::cerr << "PopulationSystem produced an incorrect three-month result\n";
+        return 1;
+    }
+    bool found_northreach_population_change = false;
+    for (const auto& change : population_event.changes) {
+        if (change.province_id == ProvinceId{"northreach"}) {
+            found_northreach_population_change =
+                change.previous_recruitable_population == 2'000 &&
+                change.current_recruitable_population == 3'802 &&
+                change.recruitable_growth == 1'802;
+        }
+    }
+    if (!found_northreach_population_change) {
+        std::cerr << "PopulationResolvedEvent did not aggregate recruitable growth\n";
+        return 1;
+    }
+
+    GameState cap_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    Province* cap_province = cap_state.find_province(ProvinceId{"northreach"});
+    if (cap_province == nullptr) {
+        std::cerr << "Recruitable population cap fixture was missing\n";
+        return 1;
+    }
+    cap_province->recruitable_population = 12'011;
+    CommandProcessor cap_processor;
+    const CommandResult cap_result = cap_processor.execute(cap_state, AdvanceTurnCommand{1});
+    const Province* capped_province = cap_state.find_province(ProvinceId{"northreach"});
+    if (!cap_result.accepted || capped_province == nullptr ||
+        capped_province->population != 120'120 ||
+        capped_province->recruitable_population != 12'012) {
+        std::cerr << "Recruitable population did not stop at the ten-percent cap\n";
         return 1;
     }
 
@@ -644,6 +674,8 @@ int main() {
         monthly_turn_state.find_province(ProvinceId{"northreach"});
     if (annual_province == nullptr || monthly_province == nullptr ||
         annual_province->population != monthly_province->population ||
+        annual_province->recruitable_population !=
+            monthly_province->recruitable_population ||
         annual_province->population_growth_remainder !=
             monthly_province->population_growth_remainder) {
         std::cerr << "Population growth differs between 12-month and monthly turns\n";

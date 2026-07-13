@@ -1,5 +1,6 @@
 #include "province/core/population_system.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 
@@ -8,6 +9,12 @@ namespace province::core {
 MonthlyPopulationReport PopulationSystem::resolve_month(GameState& state) const {
     MonthlyPopulationReport report;
     report.changes.reserve(state.province_count());
+
+    const auto scaled_floor = [](const std::int64_t value,
+                                 const std::int64_t numerator) {
+        return (value / rate_denominator) * numerator +
+            ((value % rate_denominator) * numerator) / rate_denominator;
+    };
 
     for (const auto& [province_id, province_snapshot] : state.provinces()) {
         Province* province = state.find_province(province_id);
@@ -31,15 +38,34 @@ MonthlyPopulationReport PopulationSystem::resolve_month(GameState& state) const 
         const std::int64_t previous_population = province->population;
         province->population += growth;
         province->population_growth_remainder = remainder;
+
+        const std::int64_t previous_recruitable_population =
+            province->recruitable_population;
+        const std::int64_t candidate_recruitable_growth =
+            scaled_floor(province->population, recruitable_growth_rate);
+        const std::int64_t recruitable_cap =
+            scaled_floor(province->population, recruitable_cap_rate);
+        const std::int64_t available_capacity = std::max<std::int64_t>(
+            0,
+            recruitable_cap - province->recruitable_population
+        );
+        const std::int64_t recruitable_growth = std::min(
+            candidate_recruitable_growth,
+            available_capacity
+        );
+        province->recruitable_population += recruitable_growth;
+
         report.changes.push_back(ProvincePopulationChange{
             province_id,
             previous_population,
             province->population,
             growth,
+            previous_recruitable_population,
+            province->recruitable_population,
+            recruitable_growth,
         });
     }
     return report;
 }
 
 } // namespace province::core
-
