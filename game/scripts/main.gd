@@ -4,23 +4,23 @@ const PLAYER_COUNTRY_ID := "auroria"
 const QUICK_SAVE_PATH := "user://quick_save.json"
 
 @onready var bridge := $SimulationBridge
-@onready var date_label: Label = $Center/TurnControls/DateLabel
-@onready var turn_length: OptionButton = $Center/TurnControls/TurnLength
-@onready var advance_turn_button: Button = $Center/TurnControls/AdvanceTurn
-@onready var event_log: Label = $Center/EventLog
-@onready var event_history: RichTextLabel = $Center/EventHistory
-@onready var country_details: RichTextLabel = $Center/CountryDetails
-@onready var war_overview: RichTextLabel = $Center/WarOverview
-@onready var region_details: RichTextLabel = $Center/RegionDetails
+@onready var date_label: Label = $TurnBar/TurnControls/DateLabel
+@onready var turn_length: OptionButton = $TurnBar/TurnControls/TurnLength
+@onready var advance_turn_button: Button = $TurnBar/TurnControls/AdvanceTurn
+@onready var event_log: Label = $RightPanel/Center/EventLog
+@onready var event_history: RichTextLabel = $RightPanel/Center/EventHistory
+@onready var country_details: RichTextLabel = $RightPanel/Center/CountryDetails
+@onready var war_overview: RichTextLabel = $RightPanel/Center/WarOverview
+@onready var region_details: RichTextLabel = $RightPanel/Center/RegionDetails
 @onready var province_map := $MapPanel/ProvinceMap
-@onready var recruit_button: Button = $Center/ArmyControls/RecruitArmy
-@onready var move_army_button: Button = $Center/ArmyControls/MovementButtons/MoveArmy
-@onready var auto_advance_button: Button = $Center/ArmyControls/MovementButtons/AutoAdvance
-@onready var army_selector: OptionButton = $Center/ArmyControls/ArmySelector
-@onready var army_details: Label = $Center/ArmyControls/ArmyDetails
-@onready var advance_plans: RichTextLabel = $Center/ArmyControls/AdvancePlans
-@onready var war_target: OptionButton = $Center/DiplomacyControls/WarTarget
-@onready var peace_policy: OptionButton = $Center/DiplomacyControls/PeacePolicy
+@onready var recruit_button: Button = $RightPanel/Center/ArmyControls/RecruitArmy
+@onready var move_army_button: Button = $RightPanel/Center/ArmyControls/MovementButtons/MoveArmy
+@onready var auto_advance_button: Button = $RightPanel/Center/ArmyControls/MovementButtons/AutoAdvance
+@onready var army_selector: OptionButton = $RightPanel/Center/ArmyControls/ArmySelector
+@onready var army_details: Label = $RightPanel/Center/ArmyControls/ArmyDetails
+@onready var advance_plans: RichTextLabel = $RightPanel/Center/ArmyControls/AdvancePlans
+@onready var war_target: OptionButton = $RightPanel/Center/DiplomacyControls/WarTarget
+@onready var peace_policy: OptionButton = $RightPanel/Center/DiplomacyControls/PeacePolicy
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
@@ -33,45 +33,44 @@ var event_history_lines: Array[String] = []
 
 func _ready() -> void:
     if not province_map.load_map_geometry("res://data/map_geometry.json"):
-        $Center/Status.text = "Map load failed: %s" % province_map.geometry_error()
+        $RightPanel/Center/Status.text = "Map load failed: %s" % province_map.geometry_error()
         push_error(province_map.geometry_error())
         return
     var data_directory := ProjectSettings.globalize_path("res://data")
     if not bridge.load_scenario(data_directory, 1000, 1):
-        $Center/Status.text = "Scenario load failed: %s" % bridge.get_last_error()
+        $RightPanel/Center/Status.text = "Scenario load failed: %s" % bridge.get_last_error()
         push_error(bridge.get_last_error())
         return
 
-    _promote_turn_controls()
     _refresh_map_data()
     province_map.province_selected.connect(_on_province_selected)
     province_map.province_hovered.connect(_on_province_hovered)
-    $Center/RoadControls/Buttons/BuildRoad.pressed.connect(_on_build_road_pressed)
-    $Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
+    $RightPanel/Center/RoadControls/Buttons/BuildRoad.pressed.connect(_on_build_road_pressed)
+    $RightPanel/Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
     recruit_button.pressed.connect(_on_recruit_army_pressed)
     move_army_button.pressed.connect(_on_move_army_pressed)
     auto_advance_button.pressed.connect(_on_auto_advance_pressed)
     army_selector.item_selected.connect(_on_army_selected)
-    $Center/DiplomacyControls/DeclareWar.pressed.connect(_on_declare_war_pressed)
-    $Center/DiplomacyControls/MakePeace.pressed.connect(_on_make_peace_pressed)
-    $Center/TechnologyControls/Buttons/Economy.pressed.connect(
+    $RightPanel/Center/DiplomacyControls/DeclareWar.pressed.connect(_on_declare_war_pressed)
+    $RightPanel/Center/DiplomacyControls/MakePeace.pressed.connect(_on_make_peace_pressed)
+    $RightPanel/Center/TechnologyControls/Buttons/Economy.pressed.connect(
         _on_research_technology.bind("economy")
     )
-    $Center/TechnologyControls/Buttons/Military.pressed.connect(
+    $RightPanel/Center/TechnologyControls/Buttons/Military.pressed.connect(
         _on_research_technology.bind("military")
     )
-    $Center/TechnologyControls/Buttons/Roads.pressed.connect(
+    $RightPanel/Center/TechnologyControls/Buttons/Roads.pressed.connect(
         _on_research_technology.bind("roads")
     )
-    $Center/SaveControls/Save.pressed.connect(_on_quick_save_pressed)
-    $Center/SaveControls/Load.pressed.connect(_on_quick_load_pressed)
-    $Center/ArmyControls/MovementButtons/ClearMovement.pressed.connect(
+    $RightPanel/Center/SaveControls/Save.pressed.connect(_on_quick_save_pressed)
+    $RightPanel/Center/SaveControls/Load.pressed.connect(_on_quick_load_pressed)
+    $RightPanel/Center/ArmyControls/MovementButtons/ClearMovement.pressed.connect(
         _clear_movement_selection
     )
     advance_plans.meta_clicked.connect(_on_advance_plan_clicked)
     var provinces: Array = bridge.get_province_summaries()
     var countries: Array = bridge.get_country_summaries()
-    $Center/Status.text = "Core %s · %d countries · %d provinces" % [
+    $RightPanel/Center/Status.text = "Core %s · %d countries · %d provinces" % [
         bridge.get_core_version(), countries.size(), provinces.size()
     ]
     _refresh_province_summary()
@@ -97,7 +96,7 @@ func _ready() -> void:
     peace_policy.add_item("Annex occupations")
     peace_policy.set_item_metadata(1, true)
 
-    print($Center/Status.text)
+    print($RightPanel/Center/Status.text)
     _record_event("Scenario loaded: %d provinces" % provinces.size())
 
 
@@ -133,24 +132,6 @@ func _record_turn_actions(actions: Array) -> void:
                 _record_event("Turn: %s researched technology" % action.get("country_id", "?"))
 
 
-func _promote_turn_controls() -> void:
-    var turn_controls := date_label.get_parent() as Control
-    var parent := turn_controls.get_parent()
-    if parent != $MapPanel:
-        parent.remove_child(turn_controls)
-        $MapPanel.add_child(turn_controls)
-    turn_controls.set_anchors_preset(Control.PRESET_TOP_LEFT)
-    turn_controls.position = Vector2(18, 18)
-    turn_controls.size = Vector2(560, 42)
-    turn_controls.custom_minimum_size = Vector2(560, 42)
-    turn_controls.mouse_filter = Control.MOUSE_FILTER_STOP
-    date_label.add_theme_font_size_override("font_size", 18)
-    date_label.add_theme_color_override("font_color", Color("f3f7ff"))
-    advance_turn_button.custom_minimum_size = Vector2(210, 36)
-    advance_turn_button.add_theme_font_size_override("font_size", 16)
-    advance_turn_button.tooltip_text = "结算经济、人口、AI与军队推进计划"
-
-
 func _refresh_turn_controls() -> void:
     var months := 1
     if turn_length.item_count > 0:
@@ -159,7 +140,7 @@ func _refresh_turn_controls() -> void:
 
 
 func _refresh_country_list() -> void:
-    for child: Node in $Center/CountryList.get_children():
+    for child: Node in $RightPanel/Center/CountryList.get_children():
         child.free()
 
     for country: Dictionary in bridge.get_country_summaries():
@@ -174,7 +155,7 @@ func _refresh_country_list() -> void:
             "font_color",
             Color8((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)
         )
-        $Center/CountryList.add_child(label)
+        $RightPanel/Center/CountryList.add_child(label)
 
 
 func _battle_report(result: Dictionary) -> String:
@@ -276,20 +257,20 @@ func _refresh_war_overview() -> void:
 func _refresh_game_status() -> void:
     var status: Dictionary = bridge.get_game_status(PLAYER_COUNTRY_ID)
     if not status.get("has_scenario", false):
-        $Center/GameStatus.text = "No active scenario"
+        $RightPanel/Center/GameStatus.text = "No active scenario"
         return
     if status.get("player_won", false):
-        $Center/GameStatus.text = "Victory: Auroria controls the world"
+        $RightPanel/Center/GameStatus.text = "Victory: Auroria controls the world"
     elif status.get("player_eliminated", false):
-        $Center/GameStatus.text = "Defeat: Auroria has fallen"
+        $RightPanel/Center/GameStatus.text = "Defeat: Auroria has fallen"
     elif status.get("winner_id", "") != "":
-        $Center/GameStatus.text = "Winner: %s" % status["winner_id"]
+        $RightPanel/Center/GameStatus.text = "Winner: %s" % status["winner_id"]
     else:
         var active := 0
         for country: Dictionary in status.get("countries", []):
             if not country.get("eliminated", false):
                 active += 1
-        $Center/GameStatus.text = "Active countries: %d" % active
+        $RightPanel/Center/GameStatus.text = "Active countries: %d" % active
 
 
 func _populate_war_targets() -> void:
@@ -358,7 +339,7 @@ func _refresh_technology_status() -> void:
     for technology: Dictionary in bridge.get_technology_summaries():
         if technology["country_id"] != PLAYER_COUNTRY_ID:
             continue
-        $Center/TechnologyControls/Status.text = "Economy %d | Military %d | Roads %d" % [
+        $RightPanel/Center/TechnologyControls/Status.text = "Economy %d | Military %d | Roads %d" % [
             technology["economy_level"],
             technology["military_level"],
             technology["roads_level"],
@@ -622,7 +603,7 @@ func _refresh_province_summary() -> void:
     for province: Dictionary in bridge.get_province_summaries():
         total_population += int(province["population"])
         soldier_population += int(province["soldier_population"])
-    $Center/ProvinceSummary.text = "总人口 %d · 士兵人口 %d" % [
+    $RightPanel/Center/ProvinceSummary.text = "总人口 %d · 士兵人口 %d" % [
         total_population, soldier_population
     ]
 
@@ -678,14 +659,14 @@ func _refresh_date() -> void:
 
 func _on_province_selected(province_id: String) -> void:
     if province_id.is_empty():
-        $Center/SelectionStatus.text = "请选择一个地区"
+        $RightPanel/Center/SelectionStatus.text = "请选择一个地区"
         region_details.text = "Select a province for details"
         recruit_button.disabled = true
         return
     _show_province_details(province_id)
     var province: Dictionary = province_by_id[province_id]
     recruit_button.disabled = province["owner_id"] != PLAYER_COUNTRY_ID
-    $Center/ArmyControls/ArmyHint.text = (
+    $RightPanel/Center/ArmyControls/ArmyHint.text = (
         "可从此地区招募" if not recruit_button.disabled else "只能从奥罗里亚地区招募"
     )
     if road_start_id.is_empty():
@@ -708,7 +689,7 @@ func _show_province_details(province_id: String) -> void:
         if army["province_id"] == province_id:
             stationed_manpower += int(army["manpower"])
             stationed_armies += 1
-    $Center/SelectionStatus.text = "%s · %s · 人口%d · 士兵%d · 经济%d" % [
+    $RightPanel/Center/SelectionStatus.text = "%s · %s · 人口%d · 士兵%d · 经济%d" % [
         province["name"],
         province.get("terrain", "plains"),
         province["population"],
@@ -716,7 +697,7 @@ func _show_province_details(province_id: String) -> void:
         province["economy"],
     ]
     if stationed_manpower > 0:
-        $Center/SelectionStatus.text += " · 驻军%d" % stationed_manpower
+        $RightPanel/Center/SelectionStatus.text += " · 驻军%d" % stationed_manpower
     region_details.text = "Region: %s\nOwner: %s | Legal: %s | Terrain: %s\nPopulation: %d | Soldiers: %d | Economy: %d\nArmies: %d | Manpower: %d | Neighbors: %d%s" % [
         province["name"],
         province["owner_id"],
@@ -926,7 +907,7 @@ func _refresh_movement_selection() -> void:
     auto_advance_button.disabled = moving_army_id.is_empty()
     province_map.set_auto_advance_path([])
     if moving_army_id.is_empty():
-        $Center/ArmyControls/MovementStatus.text = "移动：请选择有己方军队的地区"
+        $RightPanel/Center/ArmyControls/MovementStatus.text = "移动：请选择有己方军队的地区"
         return
 
     var movement_points := 0
@@ -967,7 +948,7 @@ func _refresh_movement_selection() -> void:
         else:
             auto_advance_button.disabled = true
             preview_text = "blocked: %s" % path_preview.get("error", "unknown")
-        $Center/ArmyControls/MovementStatus.text = "Auto target: %s · %s => %s · %s · ready %dMP" % [
+        $RightPanel/Center/ArmyControls/MovementStatus.text = "Auto target: %s · %s => %s · %s · ready %dMP" % [
             moving_army_id,
             province_by_id[movement_origin_id]["name"],
             province_by_id[auto_advance_target_id]["name"],
@@ -976,11 +957,11 @@ func _refresh_movement_selection() -> void:
         ]
         return
     if movement_destination_id.is_empty():
-        $Center/ArmyControls/MovementStatus.text = "%s（%dMP）· 请选择目的地" % [
+        $RightPanel/Center/ArmyControls/MovementStatus.text = "%s（%dMP）· 请选择目的地" % [
             moving_army_id, movement_points
         ]
     else:
-        $Center/ArmyControls/MovementStatus.text = "%s：%s → %s（%dMP）" % [
+        $RightPanel/Center/ArmyControls/MovementStatus.text = "%s：%s → %s（%dMP）" % [
             moving_army_id,
             province_by_id[movement_origin_id]["name"],
             province_by_id[movement_destination_id]["name"],
@@ -996,17 +977,17 @@ func _clear_road_selection() -> void:
 
 func _refresh_road_selection() -> void:
     province_map.set_road_selection(road_start_id, road_end_id)
-    $Center/RoadControls/Buttons/BuildRoad.disabled = (
+    $RightPanel/Center/RoadControls/Buttons/BuildRoad.disabled = (
         road_start_id.is_empty() or road_end_id.is_empty()
     )
     if road_start_id.is_empty():
-        $Center/RoadControls/RoadSelection.text = "修路：请选择起点（当前玩家：奥罗里亚）"
+        $RightPanel/Center/RoadControls/RoadSelection.text = "修路：请选择起点（当前玩家：奥罗里亚）"
     elif road_end_id.is_empty():
-        $Center/RoadControls/RoadSelection.text = "起点：%s · 请选择终点" % [
+        $RightPanel/Center/RoadControls/RoadSelection.text = "起点：%s · 请选择终点" % [
             province_by_id[road_start_id]["name"]
         ]
     else:
-        $Center/RoadControls/RoadSelection.text = "路线：%s → %s" % [
+        $RightPanel/Center/RoadControls/RoadSelection.text = "路线：%s → %s" % [
             province_by_id[road_start_id]["name"],
             province_by_id[road_end_id]["name"],
         ]

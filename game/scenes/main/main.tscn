@@ -27,8 +27,8 @@ color = Color(0.055, 0.075, 0.11, 1)
 layout_mode = 1
 anchors_preset = 0
 anchor_left = 0.015
-anchor_top = 0.025
-anchor_right = 0.69
+anchor_top = 0.10
+anchor_right = 0.60
 anchor_bottom = 0.975
 
 [node name="ProvinceMap" type="Control" parent="MapPanel"]
@@ -37,178 +37,185 @@ layout_mode = 2
 mouse_filter = 1
 script = ExtResource("2_map")
 
-[node name="Center" type="VBoxContainer" parent="."]
+[node name="RightPanel" type="ScrollContainer" parent="."]
 layout_mode = 1
 anchors_preset = 0
-anchor_left = 0.71
-anchor_top = 0.04
+anchor_left = 0.64
+anchor_top = 0.10
 anchor_right = 0.985
-anchor_bottom = 0.96
+anchor_bottom = 0.975
 grow_horizontal = 2
 grow_vertical = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Center" type="VBoxContainer" parent="RightPanel"]
+custom_minimum_size = Vector2(340, 1120)
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 16
 
-[node name="Title" type="Label" parent="Center"]
+[node name="Title" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "PROJECT PROVINCE"
 horizontal_alignment = 1
 
-[node name="Status" type="Label" parent="Center"]
+[node name="Status" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
 theme_override_font_sizes/font_size = 18
 text = "Connecting to simulation core..."
 horizontal_alignment = 1
 
-[node name="GameStatus" type="Label" parent="Center"]
+[node name="GameStatus" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.82, 0.55, 1)
 text = "Scenario status pending"
 horizontal_alignment = 1
 
-[node name="SaveControls" type="HBoxContainer" parent="Center"]
+[node name="SaveControls" type="HBoxContainer" parent="RightPanel/Center"]
 layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 8
 
-[node name="Save" type="Button" parent="Center/SaveControls"]
+[node name="Save" type="Button" parent="RightPanel/Center/SaveControls"]
 layout_mode = 2
 text = "Quick Save"
 
-[node name="Load" type="Button" parent="Center/SaveControls"]
+[node name="Load" type="Button" parent="RightPanel/Center/SaveControls"]
 layout_mode = 2
 text = "Quick Load"
 
-[node name="CountryList" type="VBoxContainer" parent="Center"]
+[node name="CountryList" type="VBoxContainer" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="DiplomacyControls" type="HBoxContainer" parent="Center"]
+[node name="DiplomacyControls" type="HBoxContainer" parent="RightPanel/Center"]
 layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 8
 
-[node name="WarTarget" type="OptionButton" parent="Center/DiplomacyControls"]
+[node name="WarTarget" type="OptionButton" parent="RightPanel/Center/DiplomacyControls"]
 layout_mode = 2
 
-[node name="DeclareWar" type="Button" parent="Center/DiplomacyControls"]
+[node name="DeclareWar" type="Button" parent="RightPanel/Center/DiplomacyControls"]
 layout_mode = 2
 text = "Declare War"
 
-[node name="PeacePolicy" type="OptionButton" parent="Center/DiplomacyControls"]
+[node name="PeacePolicy" type="OptionButton" parent="RightPanel/Center/DiplomacyControls"]
 layout_mode = 2
 
-[node name="MakePeace" type="Button" parent="Center/DiplomacyControls"]
+[node name="MakePeace" type="Button" parent="RightPanel/Center/DiplomacyControls"]
 layout_mode = 2
 text = "Make Peace"
 
-[node name="ProvinceSummary" type="Label" parent="Center"]
+[node name="ProvinceSummary" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 
-[node name="CountryDetails" type="RichTextLabel" parent="Center"]
+[node name="CountryDetails" type="RichTextLabel" parent="RightPanel/Center"]
 custom_minimum_size = Vector2(0, 96)
 layout_mode = 2
 bbcode_enabled = false
 text = "Country details"
 
-[node name="WarOverview" type="RichTextLabel" parent="Center"]
+[node name="WarOverview" type="RichTextLabel" parent="RightPanel/Center"]
 custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
 bbcode_enabled = false
 text = "No active wars"
 
-[node name="RegionDetails" type="RichTextLabel" parent="Center"]
+[node name="RegionDetails" type="RichTextLabel" parent="RightPanel/Center"]
 custom_minimum_size = Vector2(0, 92)
 layout_mode = 2
 bbcode_enabled = false
 text = "Select a province for details"
 
-[node name="TechnologyControls" type="VBoxContainer" parent="Center"]
+[node name="TechnologyControls" type="VBoxContainer" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="Status" type="Label" parent="Center/TechnologyControls"]
+[node name="Status" type="Label" parent="RightPanel/Center/TechnologyControls"]
 layout_mode = 2
 text = "Technology"
 horizontal_alignment = 1
 
-[node name="Buttons" type="HBoxContainer" parent="Center/TechnologyControls"]
+[node name="Buttons" type="HBoxContainer" parent="RightPanel/Center/TechnologyControls"]
 layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 6
 
-[node name="Economy" type="Button" parent="Center/TechnologyControls/Buttons"]
+[node name="Economy" type="Button" parent="RightPanel/Center/TechnologyControls/Buttons"]
 layout_mode = 2
 text = "Economy"
 
-[node name="Military" type="Button" parent="Center/TechnologyControls/Buttons"]
+[node name="Military" type="Button" parent="RightPanel/Center/TechnologyControls/Buttons"]
 layout_mode = 2
 text = "Military"
 
-[node name="Roads" type="Button" parent="Center/TechnologyControls/Buttons"]
+[node name="Roads" type="Button" parent="RightPanel/Center/TechnologyControls/Buttons"]
 layout_mode = 2
 text = "Roads"
 
-[node name="SelectionStatus" type="Label" parent="Center"]
+[node name="SelectionStatus" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.88, 0.95, 1)
 text = "请选择一个地区"
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="ArmyControls" type="VBoxContainer" parent="Center"]
+[node name="ArmyControls" type="VBoxContainer" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="ArmyHint" type="Label" parent="Center/ArmyControls"]
+[node name="ArmyHint" type="Label" parent="RightPanel/Center/ArmyControls"]
 layout_mode = 2
 text = "选择己方地区以招募陆军"
 horizontal_alignment = 1
 
-[node name="ArmySelector" type="OptionButton" parent="Center/ArmyControls"]
+[node name="ArmySelector" type="OptionButton" parent="RightPanel/Center/ArmyControls"]
 layout_mode = 2
 
-[node name="ArmyDetails" type="Label" parent="Center/ArmyControls"]
+[node name="ArmyDetails" type="Label" parent="RightPanel/Center/ArmyControls"]
 layout_mode = 2
 text = "No army selected"
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="RecruitArmy" type="Button" parent="Center/ArmyControls"]
+[node name="RecruitArmy" type="Button" parent="RightPanel/Center/ArmyControls"]
 layout_mode = 2
 disabled = true
 text = "招募1000陆军（1000）"
 
-[node name="MovementStatus" type="Label" parent="Center/ArmyControls"]
+[node name="MovementStatus" type="Label" parent="RightPanel/Center/ArmyControls"]
 layout_mode = 2
 text = "移动：请选择有己方军队的地区"
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="MovementButtons" type="HBoxContainer" parent="Center/ArmyControls"]
+[node name="MovementButtons" type="HBoxContainer" parent="RightPanel/Center/ArmyControls"]
 layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 8
 
-[node name="MoveArmy" type="Button" parent="Center/ArmyControls/MovementButtons"]
+[node name="MoveArmy" type="Button" parent="RightPanel/Center/ArmyControls/MovementButtons"]
 layout_mode = 2
 disabled = true
 text = "移动军队"
 
-[node name="AutoAdvance" type="Button" parent="Center/ArmyControls/MovementButtons"]
+[node name="AutoAdvance" type="Button" parent="RightPanel/Center/ArmyControls/MovementButtons"]
 layout_mode = 2
 disabled = true
 text = "Auto Advance"
 
-[node name="ClearMovement" type="Button" parent="Center/ArmyControls/MovementButtons"]
+[node name="ClearMovement" type="Button" parent="RightPanel/Center/ArmyControls/MovementButtons"]
 layout_mode = 2
 text = "清除移动选择"
 
-[node name="AdvancePlans" type="RichTextLabel" parent="Center/ArmyControls"]
+[node name="AdvancePlans" type="RichTextLabel" parent="RightPanel/Center/ArmyControls"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 90)
 bbcode_enabled = true
@@ -216,53 +223,64 @@ text = "No advance plans"
 fit_content = true
 scroll_active = false
 
-[node name="RoadControls" type="VBoxContainer" parent="Center"]
+[node name="RoadControls" type="VBoxContainer" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="RoadSelection" type="Label" parent="Center/RoadControls"]
+[node name="RoadSelection" type="Label" parent="RightPanel/Center/RoadControls"]
 layout_mode = 2
 text = "修路：请选择起点（当前玩家：奥罗里亚）"
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="Buttons" type="HBoxContainer" parent="Center/RoadControls"]
+[node name="Buttons" type="HBoxContainer" parent="RightPanel/Center/RoadControls"]
 layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 8
 
-[node name="BuildRoad" type="Button" parent="Center/RoadControls/Buttons"]
+[node name="BuildRoad" type="Button" parent="RightPanel/Center/RoadControls/Buttons"]
 layout_mode = 2
 disabled = true
 text = "建设公路（500）"
 
-[node name="ClearRoad" type="Button" parent="Center/RoadControls/Buttons"]
+[node name="ClearRoad" type="Button" parent="RightPanel/Center/RoadControls/Buttons"]
 layout_mode = 2
 text = "清除选择"
 
-[node name="TurnControls" type="HBoxContainer" parent="Center"]
+[node name="TurnBar" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.015
+anchor_top = 0.015
+anchor_right = 0.985
+anchor_bottom = 0.080
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TurnControls" type="HBoxContainer" parent="TurnBar"]
 layout_mode = 2
 alignment = 1
 theme_override_constants/separation = 12
 
-[node name="DateLabel" type="Label" parent="Center/TurnControls"]
+[node name="DateLabel" type="Label" parent="TurnBar/TurnControls"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 
-[node name="TurnLength" type="OptionButton" parent="Center/TurnControls"]
+[node name="TurnLength" type="OptionButton" parent="TurnBar/TurnControls"]
 layout_mode = 2
 
-[node name="AdvanceTurn" type="Button" parent="Center/TurnControls"]
+[node name="AdvanceTurn" type="Button" parent="TurnBar/TurnControls"]
 layout_mode = 2
 text = "下一回合"
 
-[node name="EventLog" type="Label" parent="Center"]
+[node name="EventLog" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.82, 0.9, 1)
 text = "等待玩家操作"
 horizontal_alignment = 1
 
-[node name="EventHistory" type="RichTextLabel" parent="Center"]
+[node name="EventHistory" type="RichTextLabel" parent="RightPanel/Center"]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 bbcode_enabled = false
