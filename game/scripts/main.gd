@@ -6,6 +6,7 @@ const QUICK_SAVE_PATH := "user://quick_save.json"
 @onready var bridge := $SimulationBridge
 @onready var date_label: Label = $Center/TurnControls/DateLabel
 @onready var turn_length: OptionButton = $Center/TurnControls/TurnLength
+@onready var advance_turn_button: Button = $Center/TurnControls/AdvanceTurn
 @onready var event_log: Label = $Center/EventLog
 @onready var event_history: RichTextLabel = $Center/EventHistory
 @onready var country_details: RichTextLabel = $Center/CountryDetails
@@ -41,6 +42,7 @@ func _ready() -> void:
         push_error(bridge.get_last_error())
         return
 
+    _promote_turn_controls()
     _refresh_map_data()
     province_map.province_selected.connect(_on_province_selected)
     province_map.province_hovered.connect(_on_province_hovered)
@@ -79,7 +81,8 @@ func _ready() -> void:
         turn_length.set_item_metadata(turn_length.item_count - 1, months)
     turn_length.select(0)
     turn_length.item_selected.connect(_on_turn_length_selected)
-    $Center/TurnControls/AdvanceTurn.pressed.connect(_on_advance_turn_pressed)
+    advance_turn_button.pressed.connect(_on_advance_turn_pressed)
+    _refresh_turn_controls()
     _refresh_date()
 
     _refresh_country_list()
@@ -128,6 +131,22 @@ func _record_turn_actions(actions: Array) -> void:
                 _record_event(_battle_action_report(action))
             "technology_researched":
                 _record_event("Turn: %s researched technology" % action.get("country_id", "?"))
+
+
+func _promote_turn_controls() -> void:
+    var turn_controls := $Center/TurnControls
+    $Center.move_child(turn_controls, 3)
+    turn_controls.custom_minimum_size = Vector2(0, 40)
+    advance_turn_button.custom_minimum_size = Vector2(170, 36)
+    advance_turn_button.add_theme_font_size_override("font_size", 16)
+    advance_turn_button.tooltip_text = "结算经济、人口、AI与军队推进计划"
+
+
+func _refresh_turn_controls() -> void:
+    var months := 1
+    if turn_length.item_count > 0:
+        months = int(turn_length.get_selected_metadata())
+    advance_turn_button.text = "进入下一回合（%d个月）" % months
 
 
 func _refresh_country_list() -> void:
@@ -600,6 +619,7 @@ func _refresh_province_summary() -> void:
 
 
 func _on_turn_length_selected(_index: int) -> void:
+    _refresh_turn_controls()
     _refresh_advance_plans()
     _refresh_movement_selection()
 
