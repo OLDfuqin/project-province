@@ -26,3 +26,4 @@ Desktop.ini
 # Local scratch files
 tmp/
 logs/
+.worktrees/
