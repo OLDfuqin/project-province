@@ -134,10 +134,19 @@ func _record_turn_actions(actions: Array) -> void:
 
 
 func _promote_turn_controls() -> void:
-    var turn_controls := $Center/TurnControls
-    $Center.move_child(turn_controls, 3)
-    turn_controls.custom_minimum_size = Vector2(0, 40)
-    advance_turn_button.custom_minimum_size = Vector2(170, 36)
+    var turn_controls := date_label.get_parent() as Control
+    var parent := turn_controls.get_parent()
+    if parent != $MapPanel:
+        parent.remove_child(turn_controls)
+        $MapPanel.add_child(turn_controls)
+    turn_controls.set_anchors_preset(Control.PRESET_TOP_LEFT)
+    turn_controls.position = Vector2(18, 18)
+    turn_controls.size = Vector2(560, 42)
+    turn_controls.custom_minimum_size = Vector2(560, 42)
+    turn_controls.mouse_filter = Control.MOUSE_FILTER_STOP
+    date_label.add_theme_font_size_override("font_size", 18)
+    date_label.add_theme_color_override("font_color", Color("f3f7ff"))
+    advance_turn_button.custom_minimum_size = Vector2(210, 36)
     advance_turn_button.add_theme_font_size_override("font_size", 16)
     advance_turn_button.tooltip_text = "结算经济、人口、AI与军队推进计划"
 
