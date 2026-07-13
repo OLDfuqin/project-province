@@ -195,6 +195,7 @@ int main() {
     if (!recruited.accepted || recruited.events.size() != 1 ||
         recruitment_state.army_count() != 1 || recruiting_country == nullptr ||
         recruiting_country->treasury != 9'000 || recruiting_province == nullptr ||
+        recruiting_province->population != 119'000 ||
         recruiting_province->recruitable_population != 1'000) {
         std::cerr << "RecruitArmyCommand did not transfer funds and soldiers correctly\n";
         return 1;
@@ -236,7 +237,11 @@ int main() {
     );
     if (insufficient_soldiers.accepted || foreign_recruitment.accepted ||
         invalid_recruitment.accepted || recruitment_state.army_count() != 1 ||
-        recruitment_state.find_country(CountryId{"auroria"})->treasury != 9'000) {
+        recruitment_state.find_country(CountryId{"auroria"})->treasury != 9'000 ||
+        recruitment_state.find_province(ProvinceId{"northreach"})->population != 119'000 ||
+        recruitment_state.find_province(
+            ProvinceId{"northreach"}
+        )->recruitable_population != 1'000) {
         std::cerr << "Rejected recruitment command changed game state\n";
         return 1;
     }
