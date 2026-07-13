@@ -29,8 +29,8 @@ ArmyRecruitResult ArmySystem::recruit(
     if (state.controller_of(province_id) != country_id) {
         return {false, "recruitment province is not controlled by the country", 0, std::nullopt};
     }
-    if (province->soldier_population < manpower) {
-        return {false, "province soldier population is insufficient", 0, std::nullopt};
+    if (province->recruitable_population < manpower) {
+        return {false, "province recruitable population is insufficient", 0, std::nullopt};
     }
 
     const std::int64_t cost = manpower * recruitment_cost_per_soldier;
@@ -39,7 +39,7 @@ ArmyRecruitResult ArmySystem::recruit(
     }
 
     country->treasury -= cost;
-    province->soldier_population -= manpower;
+    province->recruitable_population -= manpower;
     const ArmyId army_id = state.create_army(country_id, province_id, manpower);
     return {true, {}, cost, army_id};
 }

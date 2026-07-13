@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "countries": [
     { "id": "auroria", "name": "奥罗里亚", "color": "#C94B4B", "treasury": 10000 },
     { "id": "verdantia", "name": "维丹提亚", "color": "#4FA66B", "treasury": 10000 },

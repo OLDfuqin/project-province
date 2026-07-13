@@ -214,7 +214,7 @@ std::vector<AiDecision> AiSystem::plan_month(
             country.treasury >= recruitment_batch) {
             for (const auto& [province_id, province] : state.provinces()) {
                 if (state.controller_of(province_id) == country_id &&
-                    province.soldier_population >= recruitment_batch) {
+                    province.recruitable_population >= recruitment_batch) {
                     decisions.push_back(AiDecision{
                         country_id,
                         RecruitArmyCommand{country_id, province_id, recruitment_batch},

@@ -195,7 +195,7 @@ int main() {
     if (!recruited.accepted || recruited.events.size() != 1 ||
         recruitment_state.army_count() != 1 || recruiting_country == nullptr ||
         recruiting_country->treasury != 9'000 || recruiting_province == nullptr ||
-        recruiting_province->soldier_population != 1'000) {
+        recruiting_province->recruitable_population != 1'000) {
         std::cerr << "RecruitArmyCommand did not transfer funds and soldiers correctly\n";
         return 1;
     }
@@ -600,7 +600,7 @@ int main() {
         turn_state.find_province(ProvinceId{"northreach"});
     if (northreach_after_turn == nullptr ||
         northreach_after_turn->population != 120'360 ||
-        northreach_after_turn->soldier_population != 2'000 ||
+        northreach_after_turn->recruitable_population != 2'000 ||
         population_event.elapsed_months != 3) {
         std::cerr << "PopulationSystem produced an incorrect three-month result\n";
         return 1;

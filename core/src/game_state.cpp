@@ -29,11 +29,11 @@ void GameState::add_province(Province province) {
     if (province.name.empty()) {
         throw std::invalid_argument{"province name cannot be empty"};
     }
-    if (province.population < 0 || province.soldier_population < 0) {
+    if (province.population < 0 || province.recruitable_population < 0) {
         throw std::invalid_argument{"province population cannot be negative"};
     }
-    if (province.soldier_population > province.population) {
-        throw std::invalid_argument{"soldier population cannot exceed total population"};
+    if (province.recruitable_population > province.population) {
+        throw std::invalid_argument{"recruitable population cannot exceed total population"};
     }
     if (province.economy < 0) {
         throw std::invalid_argument{"province economy cannot be negative"};

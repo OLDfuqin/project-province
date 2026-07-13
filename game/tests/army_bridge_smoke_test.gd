@@ -32,8 +32,14 @@ func _initialize() -> void:
     for country: Dictionary in bridge.get_country_summaries():
         if country["id"] == "auroria":
             auroria = country
+    if not northreach.has("recruitable_population") or \
+            northreach.has("soldier_population"):
+        push_error("Province summary did not expose only recruitable_population")
+        bridge.free()
+        quit(1)
+        return
     if armies.size() != 1 or armies[0]["manpower"] != 1000 or \
-            northreach.get("soldier_population", -1) != 1000 or \
+            northreach.get("recruitable_population", -1) != 1000 or \
             auroria.get("treasury", -1) != 9000:
         push_error("Recruitment was not reflected in bridge snapshots")
         bridge.free()

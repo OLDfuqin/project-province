@@ -107,7 +107,7 @@ godot::Array ProvinceBridge::get_province_summaries() const {
         summary["legal_owner_id"] = godot::String::utf8(province.owner_id.value().c_str());
         summary["occupied"] = controller != province.owner_id;
         summary["population"] = province.population;
-        summary["soldier_population"] = province.soldier_population;
+        summary["recruitable_population"] = province.recruitable_population;
         summary["economy"] = province.economy;
         summary["terrain"] = province::core::terrain_name(province.terrain);
         summary["neighbor_count"] = static_cast<std::int64_t>(province.neighbors.size());

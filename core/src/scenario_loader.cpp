@@ -18,7 +18,7 @@
 namespace province::core {
 namespace {
 
-constexpr std::int32_t supported_schema_version = 1;
+constexpr std::int32_t supported_schema_version = 2;
 
 using Json = nlohmann::json;
 
@@ -105,7 +105,7 @@ void load_provinces(GameState& state, const std::filesystem::path& path) {
                 entry.at("name").get<std::string>(),
                 CountryId{entry.at("owner_id").get<std::string>()},
                 entry.at("population").get<std::int64_t>(),
-                entry.at("soldier_population").get<std::int64_t>(),
+                entry.at("recruitable_population").get<std::int64_t>(),
                 entry.at("economy").get<std::int64_t>(),
                 std::move(neighbors),
             };
