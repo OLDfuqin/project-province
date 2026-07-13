@@ -47,7 +47,7 @@ func load_map_geometry(path: String) -> bool:
     if not document is Dictionary:
         _geometry_error = "Map geometry root must be an object"
         return false
-    if int(document.get("schema_version", 0)) != 1:
+    if int(document.get("schema_version", 0)) != 2:
         _geometry_error = "Unsupported map geometry schema version"
         return false
     var size_data: Array = document.get("map_size", [])

@@ -599,12 +599,12 @@ func _select_army_in_selector(army_id: String) -> void:
 
 func _refresh_province_summary() -> void:
     var total_population := 0
-    var soldier_population := 0
+    var recruitable_population := 0
     for province: Dictionary in bridge.get_province_summaries():
         total_population += int(province["population"])
-        soldier_population += int(province["soldier_population"])
-    $RightPanel/Center/ProvinceSummary.text = "总人口 %d · 士兵人口 %d" % [
-        total_population, soldier_population
+        recruitable_population += int(province["recruitable_population"])
+    $RightPanel/Center/ProvinceSummary.text = "总人口 %d · 可招募士兵 %d" % [
+        total_population, recruitable_population
     ]
 
 
@@ -689,22 +689,22 @@ func _show_province_details(province_id: String) -> void:
         if army["province_id"] == province_id:
             stationed_manpower += int(army["manpower"])
             stationed_armies += 1
-    $RightPanel/Center/SelectionStatus.text = "%s · %s · 人口%d · 士兵%d · 经济%d" % [
+    $RightPanel/Center/SelectionStatus.text = "%s · %s · 人口%d · 可招募士兵%d · 经济%d" % [
         province["name"],
         province.get("terrain", "plains"),
         province["population"],
-        province["soldier_population"],
+        province["recruitable_population"],
         province["economy"],
     ]
     if stationed_manpower > 0:
         $RightPanel/Center/SelectionStatus.text += " · 驻军%d" % stationed_manpower
-    region_details.text = "Region: %s\nOwner: %s | Legal: %s | Terrain: %s\nPopulation: %d | Soldiers: %d | Economy: %d\nArmies: %d | Manpower: %d | Neighbors: %d%s" % [
+    region_details.text = "Region: %s\nOwner: %s | Legal: %s | Terrain: %s\nPopulation: %d | 可招募士兵: %d | Economy: %d\nArmies: %d | Manpower: %d | Neighbors: %d%s" % [
         province["name"],
         province["owner_id"],
         province.get("legal_owner_id", province["owner_id"]),
         province.get("terrain", "plains"),
         province["population"],
-        province["soldier_population"],
+        province["recruitable_population"],
         province["economy"],
         stationed_armies,
         stationed_manpower,

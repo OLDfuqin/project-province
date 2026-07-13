@@ -16,6 +16,10 @@ func _initialize() -> void:
         return
     bridge.set_ai_enabled(false, "auroria")
 
+    var northreach_before: Dictionary = {}
+    for province: Dictionary in bridge.get_province_summaries():
+        if province["id"] == "northreach":
+            northreach_before = province
     var result: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
     if not result.get("accepted", false) or result.get("cost", 0) != 1000:
         push_error("Bridge recruitment failed: %s" % result.get("error", "unknown"))
@@ -39,12 +43,39 @@ func _initialize() -> void:
         quit(1)
         return
     if armies.size() != 1 or armies[0]["manpower"] != 1000 or \
+            northreach.get("population", -1) != \
+            northreach_before.get("population", -1) - 1000 or \
             northreach.get("recruitable_population", -1) != 1000 or \
+            northreach.get("recruitable_population", -1) != \
+            northreach_before.get("recruitable_population", -1) - 1000 or \
             auroria.get("treasury", -1) != 9000:
         push_error("Recruitment was not reflected in bridge snapshots")
         bridge.free()
         quit(1)
         return
+
+    var growth_bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    if growth_bridge == null or \
+            not growth_bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Recruitable population growth scenario could not be loaded")
+        bridge.free()
+        quit(1)
+        return
+    growth_bridge.set_ai_enabled(false, "auroria")
+    var growth_result: Dictionary = growth_bridge.advance_turn(1)
+    var northreach_after_growth: Dictionary = {}
+    for province: Dictionary in growth_bridge.get_province_summaries():
+        if province["id"] == "northreach":
+            northreach_after_growth = province
+    if not growth_result.get("accepted", false) or \
+            northreach_after_growth.get("population", -1) != 120120 or \
+            northreach_after_growth.get("recruitable_population", -1) != 2600:
+        push_error("Monthly recruitable population growth was not reflected")
+        growth_bridge.free()
+        bridge.free()
+        quit(1)
+        return
+    growth_bridge.free()
 
     var road_result: Dictionary = bridge.build_road(
         "auroria", "northreach", "westmark"

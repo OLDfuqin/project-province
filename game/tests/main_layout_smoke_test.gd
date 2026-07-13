@@ -34,6 +34,15 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var province_summary := main_scene.get_node_or_null(
+        "RightPanel/Center/ProvinceSummary"
+    ) as Label
+    if province_summary == null or not province_summary.text.contains("可招募士兵"):
+        push_error("Main UI did not label the recruitable population")
+        main_scene.free()
+        quit(1)
+        return
+
     var map_rect := map_panel.get_global_rect()
     var turn_rect := turn_bar.get_global_rect()
     var right_rect := right_panel.get_global_rect()

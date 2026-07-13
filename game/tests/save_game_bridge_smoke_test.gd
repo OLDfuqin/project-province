@@ -25,6 +25,11 @@ func _initialize() -> void:
     bridge.set_army_advance_enabled(army["army_id"], false)
     bridge.set_army_advance_strategy(army["army_id"], "stop_before_enemy")
 
+    var northreach_before_save: Dictionary = {}
+    for province: Dictionary in bridge.get_province_summaries():
+        if province["id"] == "northreach":
+            northreach_before_save = province
+
     var save_path := ProjectSettings.globalize_path(
         "res://../build/godot_save_roundtrip_test.json"
     )
@@ -34,9 +39,12 @@ func _initialize() -> void:
     var load_result: Dictionary = bridge.load_game(save_path)
     var loaded_date: Dictionary = bridge.get_current_date()
     var redpass: Dictionary = {}
+    var northreach_after_load: Dictionary = {}
     for province: Dictionary in bridge.get_province_summaries():
         if province["id"] == "redpass":
             redpass = province
+        if province["id"] == "northreach":
+            northreach_after_load = province
     var failed_load: Dictionary = bridge.load_game(save_path + ".missing")
     var date_after_failed_load: Dictionary = bridge.get_current_date()
     var loaded_army: Dictionary = {}
@@ -55,7 +63,11 @@ func _initialize() -> void:
             bridge.get_road_summaries().size() != 1 or \
             bridge.get_diplomatic_relations().size() != 1 or \
             redpass.get("owner_id", "") != "auroria" or \
-            not redpass.get("occupied", false):
+            not redpass.get("occupied", false) or \
+            northreach_after_load.get("population", -1) != \
+            northreach_before_save.get("population", -1) or \
+            northreach_after_load.get("recruitable_population", -1) != \
+            northreach_before_save.get("recruitable_population", -1):
         push_error("Save/load round trip failed through the bridge")
         DirAccess.remove_absolute(save_path)
         bridge.free()
