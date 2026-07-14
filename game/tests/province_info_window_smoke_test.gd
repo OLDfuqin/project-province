@@ -24,6 +24,7 @@ func _initialize() -> void:
 
     province_map.province_clicked.emit("northreach")
     var province_name := info_window.get_node("ProvinceName") as Label
+    var terrain := info_window.get_node("Terrain") as Label
     var ownership := info_window.get_node("Ownership") as Label
     var population := info_window.get_node("Population") as Label
     var economy := info_window.get_node("Economy") as Label
@@ -31,7 +32,8 @@ func _initialize() -> void:
     var roads := info_window.get_node("Roads") as Label
     if main_scene.workspace_mode_name() != "province_info" or \
             not info_window.visible or province_name.text != "北境" or \
-            not ownership.text.contains("auroria") or \
+            not terrain.text.contains("平原") or \
+            not ownership.text.contains("奥罗里亚") or \
             not population.text.contains("120000") or \
             not population.text.contains("2000") or \
             not economy.text.contains("80") or \

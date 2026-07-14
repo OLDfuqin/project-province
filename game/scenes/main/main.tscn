@@ -61,20 +61,20 @@ theme_override_constants/separation = 16
 [node name="Title" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
-text = "PROJECT PROVINCE"
+text = "省域计划"
 horizontal_alignment = 1
 
 [node name="Status" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
 theme_override_font_sizes/font_size = 18
-text = "Connecting to simulation core..."
+text = "正在连接模拟核心……"
 horizontal_alignment = 1
 
 [node name="GameStatus" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.82, 0.55, 1)
-text = "Scenario status pending"
+text = "场景状态待初始化"
 horizontal_alignment = 1
 
 [node name="SaveControls" type="HBoxContainer" parent="RightPanel/Center"]
@@ -84,11 +84,11 @@ theme_override_constants/separation = 8
 
 [node name="Save" type="Button" parent="RightPanel/Center/SaveControls"]
 layout_mode = 2
-text = "Quick Save"
+text = "快速保存"
 
 [node name="Load" type="Button" parent="RightPanel/Center/SaveControls"]
 layout_mode = 2
-text = "Quick Load"
+text = "快速读取"
 
 [node name="RoadConstructionEntry" type="Button" parent="RightPanel/Center"]
 layout_mode = 2
@@ -108,14 +108,14 @@ layout_mode = 2
 
 [node name="DeclareWar" type="Button" parent="RightPanel/Center/DiplomacyControls"]
 layout_mode = 2
-text = "Declare War"
+text = "宣战"
 
 [node name="PeacePolicy" type="OptionButton" parent="RightPanel/Center/DiplomacyControls"]
 layout_mode = 2
 
 [node name="MakePeace" type="Button" parent="RightPanel/Center/DiplomacyControls"]
 layout_mode = 2
-text = "Make Peace"
+text = "议和"
 
 [node name="ProvinceSummary" type="Label" parent="RightPanel/Center"]
 layout_mode = 2
@@ -127,13 +127,17 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 96)
 layout_mode = 2
 bbcode_enabled = false
-text = "Country details"
+text = "国家详情"
+fit_content = true
+scroll_active = false
 
 [node name="WarOverview" type="RichTextLabel" parent="RightPanel/Center"]
 custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
 bbcode_enabled = false
-text = "No active wars"
+text = "当前无战争"
+fit_content = true
+scroll_active = false
 
 [node name="RoadControls" type="VBoxContainer" parent="RightPanel/Center"]
 visible = false

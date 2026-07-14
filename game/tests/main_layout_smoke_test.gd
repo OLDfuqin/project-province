@@ -81,6 +81,41 @@ func _initialize() -> void:
             quit(1)
             return
 
+    var chinese_labels := {
+        "RightPanel/Center/Title": "省域计划",
+        "RightPanel/Center/SaveControls/Save": "快速保存",
+        "RightPanel/Center/SaveControls/Load": "快速读取",
+        "RightPanel/Center/DiplomacyControls/DeclareWar": "宣战",
+        "RightPanel/Center/DiplomacyControls/MakePeace": "议和",
+    }
+    for control_path: String in chinese_labels:
+        var control := main_scene.get_node(control_path) as Control
+        if control.get("text") != chinese_labels[control_path]:
+            push_error("Main control was not translated: %s" % control_path)
+            main_scene.free()
+            quit(1)
+            return
+
+    var peace_policy := main_scene.get_node(
+        "RightPanel/Center/DiplomacyControls/PeacePolicy"
+    ) as OptionButton
+    var country_list := main_scene.get_node("RightPanel/Center/CountryList")
+    var country_details := main_scene.get_node(
+        "RightPanel/Center/CountryDetails"
+    ) as RichTextLabel
+    var war_overview := main_scene.get_node(
+        "RightPanel/Center/WarOverview"
+    ) as RichTextLabel
+    if peace_policy.get_item_text(0) != "恢复战前边界" or \
+            peace_policy.get_item_text(1) != "吞并占领地区" or \
+            not (country_list.get_child(0) as Label).text.contains("国库") or \
+            not country_details.text.contains("控制地区") or \
+            war_overview.text != "当前无战争":
+        push_error("Runtime main-page summaries were not fully translated")
+        main_scene.free()
+        quit(1)
+        return
+
     var removed_controls := [
         "RightPanel/Center/RegionDetails",
         "RightPanel/Center/TechnologyControls",

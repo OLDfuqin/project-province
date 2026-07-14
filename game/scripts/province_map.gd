@@ -368,7 +368,7 @@ func _draw() -> void:
         draw_circle(center, radius, Color("202938"))
         draw_arc(center, radius, 0.0, TAU, 24, Color("f7f1d0"), 3.0 / _zoom, true)
         var army_data: Dictionary = armies_by_province[province_id]
-        var manpower_text := "%d · %dMP" % [
+        var manpower_text := "%d · 移%d" % [
             army_data["manpower"], army_data["movement_points"]
         ]
         var text_size := ThemeDB.fallback_font.get_string_size(
