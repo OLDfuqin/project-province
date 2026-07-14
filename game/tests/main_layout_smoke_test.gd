@@ -71,12 +71,39 @@ func _initialize() -> void:
     var preserved_controls := [
         "RightPanel/Center/SaveControls/Save",
         "RightPanel/Center/DiplomacyControls/DeclareWar",
-        "RightPanel/Center/TechnologyControls/Buttons/Economy",
-        "RightPanel/Center/ArmyControls/RecruitArmy",
+        "RightPanel/Center/RoadConstructionEntry",
+        "RightPanel/Center/ProvinceSummary",
     ]
     for control_path: String in preserved_controls:
         if main_scene.get_node_or_null(control_path) == null:
             push_error("Existing main control was removed: %s" % control_path)
+            main_scene.free()
+            quit(1)
+            return
+
+    var removed_controls := [
+        "RightPanel/Center/RegionDetails",
+        "RightPanel/Center/TechnologyControls",
+        "RightPanel/Center/SelectionStatus",
+        "RightPanel/Center/ArmyControls",
+    ]
+    for control_path: String in removed_controls:
+        if main_scene.get_node_or_null(control_path) != null:
+            push_error("Duplicate main control still exists: %s" % control_path)
+            main_scene.free()
+            quit(1)
+            return
+
+    var management_controls := [
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Technology/Buttons/Economy",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/RecruitArmy",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/ArmyActions/MoveArmy",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/AdvanceActions/AdvanceNow",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/AdvancePlans",
+    ]
+    for control_path: String in management_controls:
+        if main_scene.get_node_or_null(control_path) == null:
+            push_error("Province management control is missing: %s" % control_path)
             main_scene.free()
             quit(1)
             return
