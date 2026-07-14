@@ -1,0 +1,78 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/province_management_window.gd" id="1_management"]
+
+[node name="ProvinceManagementWindow" type="VBoxContainer"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+script = ExtResource("1_management")
+
+[node name="ProvinceName" type="Label" parent="."]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+horizontal_alignment = 1
+
+[node name="ProvinceSummary" type="Label" parent="."]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="RecruitArmy" type="Button" parent="."]
+layout_mode = 2
+text = "招募 1000 人陆军"
+
+[node name="ArmyTitle" type="Label" parent="."]
+layout_mode = 2
+text = "地区驻军"
+
+[node name="ArmySelector" type="OptionButton" parent="."]
+layout_mode = 2
+
+[node name="ArmyDetails" type="Label" parent="."]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="Destination" type="Label" parent="."]
+layout_mode = 2
+text = "目的地：尚未选择"
+horizontal_alignment = 1
+
+[node name="ArmyActions" type="HBoxContainer" parent="."]
+layout_mode = 2
+alignment = 1
+
+[node name="SelectDestination" type="Button" parent="ArmyActions"]
+layout_mode = 2
+disabled = true
+text = "在地图选择目的地"
+
+[node name="MoveArmy" type="Button" parent="ArmyActions"]
+layout_mode = 2
+disabled = true
+text = "确认调动"
+
+[node name="Status" type="Label" parent="."]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Placeholders" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="EconomyInvestment" type="Button" parent="Placeholders"]
+layout_mode = 2
+disabled = true
+text = "经济投资（后续开放）"
+
+[node name="CivilInvestment" type="Button" parent="Placeholders"]
+layout_mode = 2
+disabled = true
+text = "民生投资（后续开放）"
+
+[node name="BuildingManagement" type="Button" parent="Placeholders"]
+layout_mode = 2
+disabled = true
+text = "建筑管理（后续开放）"
