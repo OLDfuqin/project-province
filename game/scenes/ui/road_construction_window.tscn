@@ -1,0 +1,65 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/road_construction_window.gd" id="1_road"]
+
+[node name="RoadConstructionWindow" type="VBoxContainer"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+script = ExtResource("1_road")
+
+[node name="Instructions" type="Label" parent="."]
+layout_mode = 2
+text = "依次选择两个相邻且由你控制的地区"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="StartProvince" type="Label" parent="."]
+layout_mode = 2
+text = "起点：尚未选择"
+horizontal_alignment = 1
+
+[node name="EndProvince" type="Label" parent="."]
+layout_mode = 2
+text = "终点：尚未选择"
+horizontal_alignment = 1
+
+[node name="EstimatedCost" type="Label" parent="."]
+layout_mode = 2
+text = "预计费用：500"
+horizontal_alignment = 1
+
+[node name="EndpointButtons" type="HBoxContainer" parent="."]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="SelectStart" type="Button" parent="EndpointButtons"]
+layout_mode = 2
+text = "选择起点"
+
+[node name="SelectEnd" type="Button" parent="EndpointButtons"]
+layout_mode = 2
+disabled = true
+text = "选择终点"
+
+[node name="ActionButtons" type="HBoxContainer" parent="."]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="BuildRoad" type="Button" parent="ActionButtons"]
+layout_mode = 2
+disabled = true
+text = "确认修建"
+
+[node name="Reset" type="Button" parent="ActionButtons"]
+layout_mode = 2
+text = "重置选择"
+
+[node name="Status" type="Label" parent="."]
+layout_mode = 2
+text = "请选择道路起点"
+horizontal_alignment = 1
+autowrap_mode = 2

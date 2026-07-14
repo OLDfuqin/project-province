@@ -2,6 +2,8 @@ extends Control
 
 const PLAYER_COUNTRY_ID := "auroria"
 const QUICK_SAVE_PATH := "user://quick_save.json"
+const BASE_ROAD_BUILD_COST := 500
+const ROAD_TECH_COST_DISCOUNT := 100
 
 enum WorkspaceMode {
     CLOSED,
@@ -41,6 +43,7 @@ enum MapInputMode {
 @onready var workspace_content: Label = $WorkspacePanel/Workspace/Content
 @onready var province_info_window := $WorkspacePanel/Workspace/ProvinceInfoWindow
 @onready var province_management_window := $WorkspacePanel/Workspace/ProvinceManagementWindow
+@onready var road_construction_window := $WorkspacePanel/Workspace/RoadConstructionWindow
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
@@ -87,6 +90,14 @@ func _ready() -> void:
     province_management_window.move_requested.connect(
         _on_management_move_requested
     )
+    road_construction_window.select_start_requested.connect(
+        _on_road_start_selection_requested
+    )
+    road_construction_window.select_end_requested.connect(
+        _on_road_end_selection_requested
+    )
+    road_construction_window.build_requested.connect(_on_build_road_pressed)
+    road_construction_window.reset_requested.connect(_on_road_reset_requested)
     recruit_button.pressed.connect(_on_recruit_army_pressed)
     move_army_button.pressed.connect(_on_move_army_pressed)
     auto_advance_button.pressed.connect(_on_auto_advance_pressed)
@@ -173,6 +184,7 @@ func _open_workspace(mode: WorkspaceMode, title: String, content: String) -> voi
     workspace_content.visible = true
     province_info_window.clear()
     province_management_window.clear()
+    road_construction_window.clear()
     workspace_close.disabled = false
 
 
@@ -185,6 +197,10 @@ func _close_workspace() -> void:
     workspace_content.visible = true
     province_info_window.clear()
     province_management_window.clear()
+    road_construction_window.clear()
+    road_start_id = ""
+    road_end_id = ""
+    _refresh_road_selection()
     workspace_close.disabled = true
 
 
@@ -379,11 +395,120 @@ func _on_management_move_requested(army_id: String, destination_id: String) -> v
 
 
 func _on_road_construction_entry_pressed() -> void:
+    _clear_road_selection()
+    map_input_mode = MapInputMode.NORMAL
     _open_workspace(
         WorkspaceMode.ROAD_CONSTRUCTION,
         "道路建设",
-        "道路建设页面将在后续任务中启用"
+        ""
     )
+    workspace_content.visible = false
+    road_construction_window.open_window(_estimated_road_build_cost())
+
+
+func _estimated_road_build_cost() -> int:
+    for technology: Dictionary in bridge.get_technology_summaries():
+        if technology.get("country_id", "") == PLAYER_COUNTRY_ID:
+            return maxi(
+                0,
+                BASE_ROAD_BUILD_COST - ROAD_TECH_COST_DISCOUNT * int(
+                    technology.get("roads_level", 0)
+                )
+            )
+    return BASE_ROAD_BUILD_COST
+
+
+func _on_road_start_selection_requested() -> void:
+    if workspace_mode != WorkspaceMode.ROAD_CONSTRUCTION:
+        return
+    _clear_road_selection()
+    map_input_mode = MapInputMode.ROAD_START
+    road_construction_window.reset_selection(
+        _estimated_road_build_cost(),
+        "请在地图上选择由你控制的道路起点"
+    )
+
+
+func _on_road_end_selection_requested() -> void:
+    if workspace_mode != WorkspaceMode.ROAD_CONSTRUCTION:
+        return
+    if road_start_id.is_empty():
+        road_construction_window.set_status("请先选择道路起点")
+        return
+    road_end_id = ""
+    map_input_mode = MapInputMode.ROAD_END
+    _refresh_road_selection()
+    road_construction_window.set_start(
+        province_by_id.get(road_start_id, {"name": road_start_id}).get(
+            "name", road_start_id
+        ),
+        _estimated_road_build_cost()
+    )
+    road_construction_window.set_status("请在地图上选择相邻的道路终点")
+
+
+func _on_road_reset_requested() -> void:
+    if workspace_mode != WorkspaceMode.ROAD_CONSTRUCTION:
+        return
+    _clear_road_selection()
+    map_input_mode = MapInputMode.NORMAL
+    road_construction_window.reset_selection(
+        _estimated_road_build_cost(),
+        "道路选择已重置"
+    )
+
+
+func _select_road_endpoint(province_id: String) -> void:
+    if workspace_mode != WorkspaceMode.ROAD_CONSTRUCTION:
+        map_input_mode = MapInputMode.NORMAL
+        return
+    var province: Dictionary = province_by_id.get(province_id, {})
+    if province.is_empty():
+        road_construction_window.set_status("请选择一个有效地区")
+        return
+    if province.get("owner_id", "") != PLAYER_COUNTRY_ID:
+        road_construction_window.set_status("道路端点必须由玩家实际控制")
+        return
+
+    if map_input_mode == MapInputMode.ROAD_START:
+        road_start_id = province_id
+        road_end_id = ""
+        map_input_mode = MapInputMode.NORMAL
+        _refresh_road_selection()
+        road_construction_window.set_start(
+            province.get("name", province_id),
+            _estimated_road_build_cost()
+        )
+        return
+
+    if map_input_mode != MapInputMode.ROAD_END:
+        return
+    if road_start_id.is_empty():
+        road_construction_window.set_status("请先选择道路起点")
+        return
+    if province_id == road_start_id:
+        road_construction_window.set_status("道路终点不能与起点相同")
+        return
+    if not _are_provinces_adjacent(road_start_id, province_id):
+        road_construction_window.set_status("道路终点必须与起点相邻")
+        return
+    if _road_connection_exists(road_start_id, province_id):
+        road_construction_window.set_status("这两个地区之间已经存在公路")
+        return
+    road_end_id = province_id
+    map_input_mode = MapInputMode.NORMAL
+    _refresh_road_selection()
+    road_construction_window.set_end_province(province.get("name", province_id))
+
+
+func _road_connection_exists(province_a: String, province_b: String) -> bool:
+    for road: Dictionary in bridge.get_road_summaries():
+        var first: String = road.get("province_a", "")
+        var second: String = road.get("province_b", "")
+        if (first == province_a and second == province_b) or \
+                (first == province_b and second == province_a):
+            return true
+    return false
 
 
 func _record_event(message: String) -> void:
@@ -956,6 +1081,9 @@ func _on_province_selected(province_id: String) -> void:
     if map_input_mode == MapInputMode.ARMY_DESTINATION:
         _select_management_destination(province_id)
         return
+    if map_input_mode in [MapInputMode.ROAD_START, MapInputMode.ROAD_END]:
+        _select_road_endpoint(province_id)
+        return
     if province_id.is_empty():
         $RightPanel/Center/SelectionStatus.text = "请选择一个地区"
         region_details.text = "Select a province for details"
@@ -967,15 +1095,6 @@ func _on_province_selected(province_id: String) -> void:
     $RightPanel/Center/ArmyControls/ArmyHint.text = (
         "可从此地区招募" if not recruit_button.disabled else "只能从奥罗里亚地区招募"
     )
-    if road_start_id.is_empty():
-        road_start_id = province_id
-        road_end_id = ""
-    elif road_end_id.is_empty() and province_id != road_start_id:
-        road_end_id = province_id
-    else:
-        road_start_id = province_id
-        road_end_id = ""
-    _refresh_road_selection()
     _update_movement_from_province(province_id)
 
 
@@ -1019,6 +1138,8 @@ func _on_province_hovered(province_id: String) -> void:
 
 func _on_build_road_pressed() -> void:
     if road_start_id.is_empty() or road_end_id.is_empty():
+        if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+            road_construction_window.set_status("请先选择道路起点和终点")
         return
     var result: Dictionary = bridge.build_road(
         PLAYER_COUNTRY_ID,
@@ -1027,6 +1148,8 @@ func _on_build_road_pressed() -> void:
     )
     if not result.get("accepted", false):
         event_log.text = "修路失败：%s" % result.get("error", "未知错误")
+        if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+            road_construction_window.set_status(event_log.text)
         return
 
     event_log.text = "事件 #%d：公路建成，支出%d" % [
@@ -1037,6 +1160,12 @@ func _on_build_road_pressed() -> void:
     _refresh_country_details()
     _refresh_map_data()
     _clear_road_selection()
+    map_input_mode = MapInputMode.NORMAL
+    if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+        road_construction_window.reset_selection(
+            _estimated_road_build_cost(),
+            "公路已建成，选择已自动重置"
+        )
 
 
 func _on_recruit_army_pressed() -> void:
@@ -1273,6 +1402,8 @@ func _refresh_movement_selection() -> void:
 func _clear_road_selection() -> void:
     road_start_id = ""
     road_end_id = ""
+    if map_input_mode in [MapInputMode.ROAD_START, MapInputMode.ROAD_END]:
+        map_input_mode = MapInputMode.NORMAL
     _refresh_road_selection()
 
 

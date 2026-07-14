@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/province_map.gd" id="2_map"]
 [ext_resource type="PackedScene" path="res://scenes/ui/province_info_window.tscn" id="3_info"]
 [ext_resource type="PackedScene" path="res://scenes/ui/province_management_window.tscn" id="4_management"]
+[ext_resource type="PackedScene" path="res://scenes/ui/road_construction_window.tscn" id="5_road"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -295,6 +296,8 @@ autowrap_mode = 2
 [node name="ProvinceInfoWindow" parent="WorkspacePanel/Workspace" instance=ExtResource("3_info")]
 
 [node name="ProvinceManagementWindow" parent="WorkspacePanel/Workspace" instance=ExtResource("4_management")]
+
+[node name="RoadConstructionWindow" parent="WorkspacePanel/Workspace" instance=ExtResource("5_road")]
 
 [node name="TurnBar" type="PanelContainer" parent="."]
 layout_mode = 1
