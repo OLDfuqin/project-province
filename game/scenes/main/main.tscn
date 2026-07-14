@@ -285,7 +285,20 @@ layout_mode = 2
 disabled = true
 text = "关闭"
 
-[node name="Content" type="Label" parent="WorkspacePanel/Workspace"]
+[node name="WindowViewport" type="ScrollContainer" parent="WorkspacePanel/Workspace"]
+clip_contents = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+follow_focus = true
+
+[node name="WindowContent" type="VBoxContainer" parent="WorkspacePanel/Workspace/WindowViewport"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Content" type="Label" parent="WorkspacePanel/Workspace/WindowViewport/WindowContent"]
 layout_mode = 2
 size_flags_vertical = 3
 text = "请选择地区或打开功能"
@@ -293,11 +306,11 @@ horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
 
-[node name="ProvinceInfoWindow" parent="WorkspacePanel/Workspace" instance=ExtResource("3_info")]
+[node name="ProvinceInfoWindow" parent="WorkspacePanel/Workspace/WindowViewport/WindowContent" instance=ExtResource("3_info")]
 
-[node name="ProvinceManagementWindow" parent="WorkspacePanel/Workspace" instance=ExtResource("4_management")]
+[node name="ProvinceManagementWindow" parent="WorkspacePanel/Workspace/WindowViewport/WindowContent" instance=ExtResource("4_management")]
 
-[node name="RoadConstructionWindow" parent="WorkspacePanel/Workspace" instance=ExtResource("5_road")]
+[node name="RoadConstructionWindow" parent="WorkspacePanel/Workspace/WindowViewport/WindowContent" instance=ExtResource("5_road")]
 
 [node name="TurnBar" type="PanelContainer" parent="."]
 layout_mode = 1

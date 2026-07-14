@@ -17,7 +17,7 @@ func _initialize() -> void:
     ) as Button
     var province_map := main_scene.get_node("MapPanel/ProvinceMap")
     var road_window := main_scene.get_node_or_null(
-        "WorkspacePanel/Workspace/RoadConstructionWindow"
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/RoadConstructionWindow"
     ) as Control
     if road_window == null:
         push_error("Road construction window was not embedded in the workspace")

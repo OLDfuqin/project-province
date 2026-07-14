@@ -14,7 +14,7 @@ func _initialize() -> void:
 
     var province_map := main_scene.get_node("MapPanel/ProvinceMap")
     var management := main_scene.get_node_or_null(
-        "WorkspacePanel/Workspace/ProvinceManagementWindow"
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow"
     ) as Control
     if management == null:
         push_error("Province management window was not embedded in the workspace")

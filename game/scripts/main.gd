@@ -40,10 +40,11 @@ enum MapInputMode {
 @onready var road_construction_entry: Button = $RightPanel/Center/RoadConstructionEntry
 @onready var workspace_title: Label = $WorkspacePanel/Workspace/TitleBar/Title
 @onready var workspace_close: Button = $WorkspacePanel/Workspace/TitleBar/Close
-@onready var workspace_content: Label = $WorkspacePanel/Workspace/Content
-@onready var province_info_window := $WorkspacePanel/Workspace/ProvinceInfoWindow
-@onready var province_management_window := $WorkspacePanel/Workspace/ProvinceManagementWindow
-@onready var road_construction_window := $WorkspacePanel/Workspace/RoadConstructionWindow
+@onready var workspace_scroll: ScrollContainer = $WorkspacePanel/Workspace/WindowViewport
+@onready var workspace_content: Label = $WorkspacePanel/Workspace/WindowViewport/WindowContent/Content
+@onready var province_info_window := $WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceInfoWindow
+@onready var province_management_window := $WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow
+@onready var road_construction_window := $WorkspacePanel/Workspace/WindowViewport/WindowContent/RoadConstructionWindow
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
@@ -185,6 +186,7 @@ func _open_workspace(mode: WorkspaceMode, title: String, content: String) -> voi
     province_info_window.clear()
     province_management_window.clear()
     road_construction_window.clear()
+    workspace_scroll.scroll_vertical = 0
     workspace_close.disabled = false
 
 
@@ -198,6 +200,7 @@ func _close_workspace() -> void:
     province_info_window.clear()
     province_management_window.clear()
     road_construction_window.clear()
+    workspace_scroll.scroll_vertical = 0
     road_start_id = ""
     road_end_id = ""
     _refresh_road_selection()

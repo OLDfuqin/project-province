@@ -50,6 +50,24 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var workspace_scroll := main_scene.get_node_or_null(
+        "WorkspacePanel/Workspace/WindowViewport"
+    ) as ScrollContainer
+    if workspace_scroll == null:
+        push_error("Scrollable workspace viewport is missing")
+        main_scene.free()
+        quit(1)
+        return
+
+    var panel_rect := workspace_panel.get_global_rect()
+    var viewport_rect := workspace_scroll.get_global_rect()
+    if not panel_rect.encloses(viewport_rect) or \
+            workspace_scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+        push_error("Workspace viewport is outside the panel or allows horizontal overflow")
+        main_scene.free()
+        quit(1)
+        return
+
     var preserved_controls := [
         "RightPanel/Center/SaveControls/Save",
         "RightPanel/Center/DiplomacyControls/DeclareWar",
@@ -108,6 +126,23 @@ func _initialize() -> void:
     workspace_close.pressed.emit()
     if main_scene.workspace_mode_name() != "closed":
         push_error("Workspace close button did not restore the closed state")
+        main_scene.free()
+        quit(1)
+        return
+
+    var province_map := main_scene.get_node("MapPanel/ProvinceMap")
+    province_map.province_double_clicked.emit("northreach")
+    await process_frame
+    var vertical_bar := workspace_scroll.get_v_scroll_bar()
+    if vertical_bar.max_value <= vertical_bar.page:
+        push_error("Province management content did not produce vertical scrolling")
+        main_scene.free()
+        quit(1)
+        return
+    workspace_scroll.scroll_vertical = int(vertical_bar.max_value)
+    await process_frame
+    if workspace_scroll.scroll_vertical <= 0:
+        push_error("Workspace could not scroll to its lower content")
         main_scene.free()
         quit(1)
         return
