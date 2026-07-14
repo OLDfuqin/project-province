@@ -39,6 +39,7 @@ enum MapInputMode {
 @onready var workspace_title: Label = $WorkspacePanel/Workspace/TitleBar/Title
 @onready var workspace_close: Button = $WorkspacePanel/Workspace/TitleBar/Close
 @onready var workspace_content: Label = $WorkspacePanel/Workspace/Content
+@onready var province_info_window := $WorkspacePanel/Workspace/ProvinceInfoWindow
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
@@ -64,6 +65,8 @@ func _ready() -> void:
 
     _refresh_map_data()
     province_map.province_selected.connect(_on_province_selected)
+    province_map.province_clicked.connect(_on_province_clicked)
+    province_map.map_blank_clicked.connect(_on_map_blank_clicked)
     province_map.province_hovered.connect(_on_province_hovered)
     $RightPanel/Center/RoadControls/Buttons/BuildRoad.pressed.connect(_on_build_road_pressed)
     $RightPanel/Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
@@ -150,6 +153,8 @@ func _open_workspace(mode: WorkspaceMode, title: String, content: String) -> voi
     workspace_mode = mode
     workspace_title.text = title
     workspace_content.text = content
+    workspace_content.visible = true
+    province_info_window.clear()
     workspace_close.disabled = false
 
 
@@ -158,7 +163,39 @@ func _close_workspace() -> void:
     map_input_mode = MapInputMode.NORMAL
     workspace_title.text = "功能窗口"
     workspace_content.text = "请选择地区或打开功能"
+    workspace_content.visible = true
+    province_info_window.clear()
     workspace_close.disabled = true
+
+
+func _close_transient_workspace() -> void:
+    if workspace_mode in [
+        WorkspaceMode.PROVINCE_INFO,
+        WorkspaceMode.PROVINCE_MANAGEMENT,
+    ]:
+        _close_workspace()
+
+
+func _on_province_clicked(province_id: String) -> void:
+    if map_input_mode != MapInputMode.NORMAL or \
+            workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+        return
+    var province: Dictionary = province_by_id.get(province_id, {})
+    if province.is_empty():
+        return
+    _open_workspace(WorkspaceMode.PROVINCE_INFO, "地区信息", "")
+    workspace_content.visible = false
+    province_info_window.display_province(
+        province,
+        bridge.get_army_summaries(),
+        bridge.get_road_summaries(),
+        province_by_id
+    )
+
+
+func _on_map_blank_clicked() -> void:
+    if map_input_mode == MapInputMode.NORMAL:
+        _close_transient_workspace()
 
 
 func _on_road_construction_entry_pressed() -> void:
@@ -352,6 +389,7 @@ func _populate_war_targets() -> void:
 
 
 func _on_declare_war_pressed() -> void:
+    _close_transient_workspace()
     if war_target.item_count == 0:
         return
     var defender_id: String = war_target.get_selected_metadata()
@@ -366,6 +404,7 @@ func _on_declare_war_pressed() -> void:
 
 
 func _on_make_peace_pressed() -> void:
+    _close_transient_workspace()
     if war_target.item_count == 0:
         return
     var other_country_id: String = war_target.get_selected_metadata()
@@ -391,6 +430,7 @@ func _on_make_peace_pressed() -> void:
 
 
 func _on_research_technology(track: String) -> void:
+    _close_transient_workspace()
     var result: Dictionary = bridge.research_technology(PLAYER_COUNTRY_ID, track)
     if not result.get("accepted", false):
         event_log.text = "Research failed: %s" % result.get("error", "unknown error")
@@ -417,6 +457,7 @@ func _refresh_technology_status() -> void:
 
 
 func _on_quick_save_pressed() -> void:
+    _close_transient_workspace()
     var path := ProjectSettings.globalize_path(QUICK_SAVE_PATH)
     var result: Dictionary = bridge.save_game(path)
     if not result.get("accepted", false):
@@ -427,6 +468,7 @@ func _on_quick_save_pressed() -> void:
 
 
 func _on_quick_load_pressed() -> void:
+    _close_transient_workspace()
     var path := ProjectSettings.globalize_path(QUICK_SAVE_PATH)
     var result: Dictionary = bridge.load_game(path)
     if not result.get("accepted", false):
@@ -491,6 +533,7 @@ func _refresh_army_selector() -> void:
 
 
 func _on_army_selected(index: int) -> void:
+    _close_transient_workspace()
     if index < 0 or index >= army_selector.item_count:
         return
     _select_army(String(army_selector.get_item_metadata(index)))
@@ -605,6 +648,7 @@ func _refresh_advance_plans() -> void:
 
 
 func _on_advance_plan_clicked(meta: Variant) -> void:
+    _close_transient_workspace()
     var command := String(meta)
     if command.is_empty():
         return
@@ -678,12 +722,14 @@ func _refresh_province_summary() -> void:
 
 
 func _on_turn_length_selected(_index: int) -> void:
+    _close_transient_workspace()
     _refresh_turn_controls()
     _refresh_advance_plans()
     _refresh_movement_selection()
 
 
 func _on_advance_turn_pressed() -> void:
+    _close_transient_workspace()
     var months: int = turn_length.get_selected_metadata()
     var result: Dictionary = bridge.advance_turn(months)
     if not result.get("accepted", false):
@@ -811,6 +857,7 @@ func _on_build_road_pressed() -> void:
 
 
 func _on_recruit_army_pressed() -> void:
+    _close_transient_workspace()
     var province_id: String = province_map.selected_province_id()
     if province_id.is_empty():
         return
@@ -844,6 +891,7 @@ func _on_recruit_army_pressed() -> void:
 
 
 func _on_move_army_pressed() -> void:
+    _close_transient_workspace()
     if moving_army_id.is_empty() or movement_destination_id.is_empty():
         return
     var result: Dictionary = bridge.move_army(moving_army_id, movement_destination_id)
@@ -878,6 +926,7 @@ func _on_move_army_pressed() -> void:
 
 
 func _on_auto_advance_pressed() -> void:
+    _close_transient_workspace()
     if moving_army_id.is_empty():
         return
     var result: Dictionary = {}
