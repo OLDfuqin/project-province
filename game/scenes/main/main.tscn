@@ -43,7 +43,7 @@ anchors_preset = 0
 anchor_left = 0.64
 anchor_top = 0.10
 anchor_right = 0.985
-anchor_bottom = 0.975
+anchor_bottom = 0.52
 grow_horizontal = 2
 grow_vertical = 2
 horizontal_scroll_mode = 0
@@ -86,6 +86,10 @@ text = "Quick Save"
 [node name="Load" type="Button" parent="RightPanel/Center/SaveControls"]
 layout_mode = 2
 text = "Quick Load"
+
+[node name="RoadConstructionEntry" type="Button" parent="RightPanel/Center"]
+layout_mode = 2
+text = "修建道路"
 
 [node name="CountryList" type="VBoxContainer" parent="RightPanel/Center"]
 layout_mode = 2
@@ -224,6 +228,7 @@ fit_content = true
 scroll_active = false
 
 [node name="RoadControls" type="VBoxContainer" parent="RightPanel/Center"]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
@@ -246,6 +251,44 @@ text = "建设公路（500）"
 [node name="ClearRoad" type="Button" parent="RightPanel/Center/RoadControls/Buttons"]
 layout_mode = 2
 text = "清除选择"
+
+[node name="WorkspacePanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.64
+anchor_top = 0.55
+anchor_right = 0.985
+anchor_bottom = 0.975
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Workspace" type="VBoxContainer" parent="WorkspacePanel"]
+custom_minimum_size = Vector2(340, 0)
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleBar" type="HBoxContainer" parent="WorkspacePanel/Workspace"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="WorkspacePanel/Workspace/TitleBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+text = "功能窗口"
+
+[node name="Close" type="Button" parent="WorkspacePanel/Workspace/TitleBar"]
+layout_mode = 2
+disabled = true
+text = "关闭"
+
+[node name="Content" type="Label" parent="WorkspacePanel/Workspace"]
+layout_mode = 2
+size_flags_vertical = 3
+text = "请选择地区或打开功能"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
 
 [node name="TurnBar" type="PanelContainer" parent="."]
 layout_mode = 1

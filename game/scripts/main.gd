@@ -3,6 +3,20 @@ extends Control
 const PLAYER_COUNTRY_ID := "auroria"
 const QUICK_SAVE_PATH := "user://quick_save.json"
 
+enum WorkspaceMode {
+    CLOSED,
+    PROVINCE_INFO,
+    PROVINCE_MANAGEMENT,
+    ROAD_CONSTRUCTION,
+}
+
+enum MapInputMode {
+    NORMAL,
+    ARMY_DESTINATION,
+    ROAD_START,
+    ROAD_END,
+}
+
 @onready var bridge := $SimulationBridge
 @onready var date_label: Label = $TurnBar/TurnControls/DateLabel
 @onready var turn_length: OptionButton = $TurnBar/TurnControls/TurnLength
@@ -21,6 +35,10 @@ const QUICK_SAVE_PATH := "user://quick_save.json"
 @onready var advance_plans: RichTextLabel = $RightPanel/Center/ArmyControls/AdvancePlans
 @onready var war_target: OptionButton = $RightPanel/Center/DiplomacyControls/WarTarget
 @onready var peace_policy: OptionButton = $RightPanel/Center/DiplomacyControls/PeacePolicy
+@onready var road_construction_entry: Button = $RightPanel/Center/RoadConstructionEntry
+@onready var workspace_title: Label = $WorkspacePanel/Workspace/TitleBar/Title
+@onready var workspace_close: Button = $WorkspacePanel/Workspace/TitleBar/Close
+@onready var workspace_content: Label = $WorkspacePanel/Workspace/Content
 
 var province_by_id: Dictionary = {}
 var road_start_id := ""
@@ -30,6 +48,8 @@ var movement_origin_id := ""
 var movement_destination_id := ""
 var auto_advance_target_id := ""
 var event_history_lines: Array[String] = []
+var workspace_mode := WorkspaceMode.CLOSED
+var map_input_mode := MapInputMode.NORMAL
 
 func _ready() -> void:
     if not province_map.load_map_geometry("res://data/map_geometry.json"):
@@ -47,6 +67,8 @@ func _ready() -> void:
     province_map.province_hovered.connect(_on_province_hovered)
     $RightPanel/Center/RoadControls/Buttons/BuildRoad.pressed.connect(_on_build_road_pressed)
     $RightPanel/Center/RoadControls/Buttons/ClearRoad.pressed.connect(_clear_road_selection)
+    road_construction_entry.pressed.connect(_on_road_construction_entry_pressed)
+    workspace_close.pressed.connect(_close_workspace)
     recruit_button.pressed.connect(_on_recruit_army_pressed)
     move_army_button.pressed.connect(_on_move_army_pressed)
     auto_advance_button.pressed.connect(_on_auto_advance_pressed)
@@ -98,6 +120,53 @@ func _ready() -> void:
 
     print($RightPanel/Center/Status.text)
     _record_event("Scenario loaded: %d provinces" % provinces.size())
+
+
+func workspace_mode_name() -> String:
+    match workspace_mode:
+        WorkspaceMode.PROVINCE_INFO:
+            return "province_info"
+        WorkspaceMode.PROVINCE_MANAGEMENT:
+            return "province_management"
+        WorkspaceMode.ROAD_CONSTRUCTION:
+            return "road_construction"
+        _:
+            return "closed"
+
+
+func map_input_mode_name() -> String:
+    match map_input_mode:
+        MapInputMode.ARMY_DESTINATION:
+            return "army_destination"
+        MapInputMode.ROAD_START:
+            return "road_start"
+        MapInputMode.ROAD_END:
+            return "road_end"
+        _:
+            return "normal"
+
+
+func _open_workspace(mode: WorkspaceMode, title: String, content: String) -> void:
+    workspace_mode = mode
+    workspace_title.text = title
+    workspace_content.text = content
+    workspace_close.disabled = false
+
+
+func _close_workspace() -> void:
+    workspace_mode = WorkspaceMode.CLOSED
+    map_input_mode = MapInputMode.NORMAL
+    workspace_title.text = "功能窗口"
+    workspace_content.text = "请选择地区或打开功能"
+    workspace_close.disabled = true
+
+
+func _on_road_construction_entry_pressed() -> void:
+    _open_workspace(
+        WorkspaceMode.ROAD_CONSTRUCTION,
+        "道路建设",
+        "道路建设页面将在后续任务中启用"
+    )
 
 
 func _record_event(message: String) -> void:

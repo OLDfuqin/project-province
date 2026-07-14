@@ -34,6 +34,35 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var workspace_panel := main_scene.get_node_or_null(
+        "WorkspacePanel"
+    ) as PanelContainer
+    var road_entry := main_scene.get_node_or_null(
+        "RightPanel/Center/RoadConstructionEntry"
+    ) as Button
+    var legacy_road_controls := main_scene.get_node_or_null(
+        "RightPanel/Center/RoadControls"
+    ) as Control
+    if workspace_panel == null or road_entry == null or \
+            legacy_road_controls == null or legacy_road_controls.visible:
+        push_error("Main UI did not reserve a workspace and isolate road controls")
+        main_scene.free()
+        quit(1)
+        return
+
+    var preserved_controls := [
+        "RightPanel/Center/SaveControls/Save",
+        "RightPanel/Center/DiplomacyControls/DeclareWar",
+        "RightPanel/Center/TechnologyControls/Buttons/Economy",
+        "RightPanel/Center/ArmyControls/RecruitArmy",
+    ]
+    for control_path: String in preserved_controls:
+        if main_scene.get_node_or_null(control_path) == null:
+            push_error("Existing main control was removed: %s" % control_path)
+            main_scene.free()
+            quit(1)
+            return
+
     var province_summary := main_scene.get_node_or_null(
         "RightPanel/Center/ProvinceSummary"
     ) as Label
@@ -46,8 +75,39 @@ func _initialize() -> void:
     var map_rect := map_panel.get_global_rect()
     var turn_rect := turn_bar.get_global_rect()
     var right_rect := right_panel.get_global_rect()
-    if turn_rect.intersects(map_rect) or right_rect.intersects(map_rect):
-        push_error("Top=%s Right=%s Map=%s" % [turn_rect, right_rect, map_rect])
+    var workspace_rect := workspace_panel.get_global_rect()
+    if turn_rect.intersects(map_rect) or right_rect.intersects(map_rect) or \
+            workspace_rect.intersects(map_rect) or \
+            workspace_rect.intersects(right_rect) or \
+            workspace_rect.intersects(turn_rect):
+        push_error("Top=%s Right=%s Workspace=%s Map=%s" % [
+            turn_rect, right_rect, workspace_rect, map_rect
+        ])
+        main_scene.free()
+        quit(1)
+        return
+
+    if main_scene.workspace_mode_name() != "closed":
+        push_error("Workspace did not start in the closed state")
+        main_scene.free()
+        quit(1)
+        return
+    road_entry.pressed.emit()
+    var workspace_title := main_scene.get_node(
+        "WorkspacePanel/Workspace/TitleBar/Title"
+    ) as Label
+    if main_scene.workspace_mode_name() != "road_construction" or \
+            workspace_title.text != "道路建设":
+        push_error("Road entry did not open the reserved workspace")
+        main_scene.free()
+        quit(1)
+        return
+    var workspace_close := main_scene.get_node(
+        "WorkspacePanel/Workspace/TitleBar/Close"
+    ) as Button
+    workspace_close.pressed.emit()
+    if main_scene.workspace_mode_name() != "closed":
+        push_error("Workspace close button did not restore the closed state")
         main_scene.free()
         quit(1)
         return
