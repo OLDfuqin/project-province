@@ -70,7 +70,7 @@ func _initialize() -> void:
     province_map.province_clicked.emit("westmark")
     province_map.province_selected.emit("westmark")
     if main_scene.map_input_mode_name() != "normal" or move_army.disabled or \
-            not management.get_node("Destination").text.contains("西境"):
+            not management.get_node("DirectDestination").text.contains("西境"):
         push_error("The management window did not accept an adjacent destination")
         main_scene.free()
         quit(1)

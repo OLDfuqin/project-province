@@ -23,6 +23,35 @@ autowrap_mode = 2
 layout_mode = 2
 text = "招募 1000 人陆军"
 
+[node name="Technology" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="Technology"]
+layout_mode = 2
+text = "国家科技"
+
+[node name="Status" type="Label" parent="Technology"]
+layout_mode = 2
+text = "经济 0 | 军事 0 | 道路 0"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="Technology"]
+layout_mode = 2
+alignment = 1
+
+[node name="Economy" type="Button" parent="Technology/Buttons"]
+layout_mode = 2
+text = "研究经济"
+
+[node name="Military" type="Button" parent="Technology/Buttons"]
+layout_mode = 2
+text = "研究军事"
+
+[node name="Roads" type="Button" parent="Technology/Buttons"]
+layout_mode = 2
+text = "研究道路"
+
 [node name="ArmyTitle" type="Label" parent="."]
 layout_mode = 2
 text = "地区驻军"
@@ -34,9 +63,9 @@ layout_mode = 2
 layout_mode = 2
 horizontal_alignment = 1
 
-[node name="Destination" type="Label" parent="."]
+[node name="DirectDestination" type="Label" parent="."]
 layout_mode = 2
-text = "目的地：尚未选择"
+text = "直接调动目的地：尚未选择"
 horizontal_alignment = 1
 
 [node name="ArmyActions" type="HBoxContainer" parent="."]
@@ -52,6 +81,40 @@ text = "在地图选择目的地"
 layout_mode = 2
 disabled = true
 text = "确认调动"
+
+[node name="AdvanceTarget" type="Label" parent="."]
+layout_mode = 2
+text = "推进目标：尚未选择"
+horizontal_alignment = 1
+
+[node name="AdvanceActions" type="HBoxContainer" parent="."]
+layout_mode = 2
+alignment = 1
+
+[node name="SelectAdvanceTarget" type="Button" parent="AdvanceActions"]
+layout_mode = 2
+disabled = true
+text = "在地图选择推进目标"
+
+[node name="AdvanceNow" type="Button" parent="AdvanceActions"]
+layout_mode = 2
+disabled = true
+text = "立即自动推进"
+
+[node name="ClearMovement" type="Button" parent="AdvanceActions"]
+layout_mode = 2
+disabled = true
+text = "清除选择"
+
+[node name="AdvancePlansTitle" type="Label" parent="."]
+layout_mode = 2
+text = "国家推进计划"
+
+[node name="AdvancePlans" type="RichTextLabel" parent="."]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+bbcode_enabled = true
+text = "暂无推进计划"
 
 [node name="Status" type="Label" parent="."]
 layout_mode = 2
