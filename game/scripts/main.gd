@@ -15,6 +15,7 @@ enum WorkspaceMode {
 enum MapInputMode {
     NORMAL,
     ARMY_DESTINATION,
+    AUTO_ADVANCE_DESTINATION,
     ROAD_START,
     ROAD_END,
 }
@@ -94,6 +95,18 @@ func _ready() -> void:
     province_management_window.move_requested.connect(
         _on_management_move_requested
     )
+    province_management_window.advance_destination_selection_requested.connect(
+        _on_management_advance_destination_requested
+    )
+    province_management_window.auto_advance_requested.connect(
+        _on_management_auto_advance_requested
+    )
+    province_management_window.movement_clear_requested.connect(
+        _on_management_movement_clear_requested
+    )
+    province_management_window.advance_plan_action_requested.connect(
+        _on_advance_plan_clicked
+    )
     road_construction_window.select_start_requested.connect(
         _on_road_start_selection_requested
     )
@@ -171,6 +184,8 @@ func map_input_mode_name() -> String:
     match map_input_mode:
         MapInputMode.ARMY_DESTINATION:
             return "army_destination"
+        MapInputMode.AUTO_ADVANCE_DESTINATION:
+            return "auto_advance_destination"
         MapInputMode.ROAD_START:
             return "road_start"
         MapInputMode.ROAD_END:
@@ -245,11 +260,7 @@ func _on_province_double_clicked(province_id: String) -> void:
     managed_province_id = province_id
     _open_workspace(WorkspaceMode.PROVINCE_MANAGEMENT, "地区管理", "")
     workspace_content.visible = false
-    province_management_window.display_province(
-        province,
-        bridge.get_army_summaries(),
-        PLAYER_COUNTRY_ID
-    )
+    _refresh_management_window()
 
 
 func _on_map_blank_clicked() -> void:
@@ -275,6 +286,17 @@ func _refresh_management_window(
         preferred_army_id
     )
     province_management_window.set_technology(_player_technology())
+    var selected_army_id := preferred_army_id
+    if selected_army_id.is_empty():
+        for army: Dictionary in bridge.get_army_summaries():
+            if army.get("owner_id", "") == PLAYER_COUNTRY_ID and \
+                    army.get("province_id", "") == managed_province_id:
+                selected_army_id = String(army.get("id", ""))
+                break
+    if not selected_army_id.is_empty():
+        _select_army(selected_army_id)
+    _refresh_advance_plans()
+    _refresh_management_action_state()
     if not status_message.is_empty():
         province_management_window.set_status(status_message)
 
@@ -332,6 +354,17 @@ func _on_management_destination_requested(army_id: String) -> void:
     province_management_window.set_status("请在地图上点击一个相邻地区")
 
 
+func _on_management_advance_destination_requested(army_id: String) -> void:
+    if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT:
+        return
+    _select_army(army_id)
+    if moving_army_id != army_id:
+        province_management_window.set_status("无法选择该军队")
+        return
+    map_input_mode = MapInputMode.AUTO_ADVANCE_DESTINATION
+    province_management_window.set_status("请在地图上点击推进目标")
+
+
 func _select_management_destination(province_id: String) -> void:
     if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or \
             moving_army_id.is_empty():
@@ -357,6 +390,33 @@ func _select_management_destination(province_id: String) -> void:
         )
     )
     _refresh_movement_selection()
+    _refresh_management_action_state()
+
+
+func _select_management_advance_target(province_id: String) -> void:
+    if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or \
+            moving_army_id.is_empty():
+        map_input_mode = MapInputMode.NORMAL
+        return
+    if province_id.is_empty() or province_id == movement_origin_id:
+        province_management_window.set_status("推进目标必须是其他地区")
+        return
+    var result: Dictionary = bridge.set_army_advance_target(
+        moving_army_id,
+        province_id
+    )
+    if not result.get("accepted", false):
+        province_management_window.set_status(
+            "设置推进目标失败：%s" % result.get("error", "未知错误")
+        )
+        return
+    auto_advance_target_id = province_id
+    movement_destination_id = ""
+    map_input_mode = MapInputMode.NORMAL
+    _refresh_movement_selection()
+    _refresh_advance_plans()
+    _refresh_management_action_state()
+    province_management_window.set_status("推进目标已设置")
 
 
 func _on_management_move_requested(army_id: String, destination_id: String) -> void:
@@ -370,17 +430,7 @@ func _on_management_move_requested(army_id: String, destination_id: String) -> v
         province_management_window.set_status(error_message)
         return
 
-    event_log.text = "事件 #%d：%s → %s，消耗%d移动点，剩余%d" % [
-        result["event_sequence"],
-        result["origin"],
-        result["destination"],
-        result["movement_cost"],
-        result["remaining_points"],
-    ]
-    var battle_report := _battle_report(result)
-    if not battle_report.is_empty():
-        event_log.text = battle_report
-    _record_event(event_log.text)
+    _record_movement_result(result)
     bridge.clear_army_advance_target(army_id)
     movement_destination_id = ""
     auto_advance_target_id = ""
@@ -399,6 +449,65 @@ func _on_management_move_requested(army_id: String, destination_id: String) -> v
     if province_by_id.has(managed_province_id):
         _show_province_details(managed_province_id)
     _refresh_management_window("", event_log.text)
+
+
+func _record_movement_result(result: Dictionary) -> void:
+    event_log.text = "事件 #%d：%s → %s，消耗%d移动点，剩余%d" % [
+        result.get("event_sequence", 0),
+        result.get("origin", ""),
+        result.get("destination", ""),
+        result.get("movement_cost", 0),
+        result.get("remaining_points", 0),
+    ]
+    var battle_report := _battle_report(result)
+    if not battle_report.is_empty():
+        event_log.text = battle_report
+    _record_event(event_log.text)
+
+
+func _on_management_auto_advance_requested(
+    army_id: String,
+    target_id: String
+) -> void:
+    if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or \
+            army_id != moving_army_id or target_id.is_empty():
+        return
+    var result: Dictionary = bridge.auto_advance_army_to(army_id, target_id)
+    if not result.get("accepted", false):
+        event_log.text = "自动推进失败：%s" % result.get("error", "未知错误")
+        province_management_window.set_status(event_log.text)
+        return
+    _record_movement_result(result)
+    if result.get("army_destroyed", false):
+        _clear_movement_selection()
+        _refresh_map_data()
+        _close_workspace()
+        return
+    var new_province_id: String = result.get(
+        "army_province_id",
+        result.get("destination", "")
+    )
+    movement_origin_id = new_province_id
+    movement_destination_id = ""
+    auto_advance_target_id = String(
+        _find_army_by_id(army_id).get("advance_target_id", "")
+    )
+    map_input_mode = MapInputMode.NORMAL
+    _refresh_map_data()
+    _refresh_country_details()
+    _refresh_game_status()
+    _open_management_for_army(army_id, new_province_id, event_log.text)
+
+
+func _on_management_movement_clear_requested(army_id: String) -> void:
+    if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or \
+            army_id != moving_army_id:
+        return
+    movement_destination_id = ""
+    map_input_mode = MapInputMode.NORMAL
+    province_management_window.set_destination("", "")
+    province_management_window.set_status("已清除临时移动选择")
+    _refresh_management_action_state()
 
 
 func _on_road_construction_entry_pressed() -> void:
@@ -861,21 +970,48 @@ func _on_army_selected(index: int) -> void:
 
 
 func _select_army(army_id: String) -> void:
-    for army: Dictionary in bridge.get_army_summaries():
-        if army["id"] != army_id:
-            continue
-        moving_army_id = army_id
-        movement_origin_id = army["province_id"]
-        movement_destination_id = ""
-        auto_advance_target_id = army.get("advance_target_id", "")
-        var province_name: String = province_by_id.get(movement_origin_id, {}).get(
-            "name", movement_origin_id
-        )
-        army_details.text = "%s\n位置：%s · 兵力：%d · 移动力：%d" % [
-            army_id, province_name, army["manpower"], army["movement_points"]
-        ]
-        _refresh_movement_selection()
+    var army := _find_army_by_id(army_id)
+    if army.is_empty():
         return
+    moving_army_id = army_id
+    movement_origin_id = army["province_id"]
+    movement_destination_id = ""
+    auto_advance_target_id = army.get("advance_target_id", "")
+    var province_name: String = province_by_id.get(movement_origin_id, {}).get(
+        "name", movement_origin_id
+    )
+    army_details.text = "%s\n位置：%s · 兵力：%d · 移动力：%d" % [
+        army_id, province_name, army["manpower"], army["movement_points"]
+    ]
+    _refresh_movement_selection()
+    _refresh_management_action_state()
+
+
+func _find_army_by_id(army_id: String) -> Dictionary:
+    for army: Dictionary in bridge.get_army_summaries():
+        if army.get("id", "") == army_id:
+            return army
+    return {}
+
+
+func _open_management_for_army(
+    army_id: String,
+    province_id := "",
+    status_message := ""
+) -> void:
+    var army := _find_army_by_id(army_id)
+    if army.is_empty():
+        return
+    managed_province_id = (
+        province_id if not province_id.is_empty() else String(army["province_id"])
+    )
+    moving_army_id = army_id
+    movement_origin_id = managed_province_id
+    movement_destination_id = ""
+    auto_advance_target_id = army.get("advance_target_id", "")
+    _open_workspace(WorkspaceMode.PROVINCE_MANAGEMENT, "地区管理", "")
+    workspace_content.visible = false
+    _refresh_management_window(army_id, status_message)
 
 
 func _advance_stop_reason_text(reason: String) -> String:
@@ -962,14 +1098,17 @@ func _refresh_advance_plans() -> void:
             toggle_label,
             army["id"],
         ])
+    var management_plan_text := ""
     if lines.is_empty():
         advance_plans.text = "No advance plans"
     else:
-        advance_plans.text = "[b]Advance plans[/b]\n%s" % "\n".join(lines)
+        management_plan_text = "[b]推进计划[/b]\n%s" % "\n".join(lines)
+        advance_plans.text = management_plan_text
+    if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
+        province_management_window.set_advance_plans(management_plan_text)
 
 
 func _on_advance_plan_clicked(meta: Variant) -> void:
-    _close_transient_workspace()
     var command := String(meta)
     if command.is_empty():
         return
@@ -985,7 +1124,10 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
             _refresh_movement_selection()
         _refresh_map_data()
         _refresh_advance_plans()
-        _record_event("Cleared advance plan: %s" % army_id)
+        var message := "Cleared advance plan: %s" % army_id
+        _record_event(message)
+        _refresh_management_action_state()
+        _refresh_management_window(moving_army_id, message)
         return
     if command.begins_with("pause:") or command.begins_with("resume:"):
         var enabled := command.begins_with("resume:")
@@ -998,10 +1140,13 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
         _refresh_map_data()
         _refresh_advance_plans()
         _refresh_movement_selection()
-        _record_event("%s advance plan: %s" % [
+        var message := "%s advance plan: %s" % [
             "Resumed" if enabled else "Paused",
             army_id,
-        ])
+        ]
+        _record_event(message)
+        _refresh_management_action_state()
+        _refresh_management_window(moving_army_id, message)
         return
     if command.begins_with("strategy:"):
         var parts := command.split(":")
@@ -1016,10 +1161,13 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
         _refresh_map_data()
         _refresh_advance_plans()
         _refresh_movement_selection()
-        _record_event("Set advance strategy: %s -> %s" % [army_id, strategy])
+        var message := "Set advance strategy: %s -> %s" % [army_id, strategy]
+        _record_event(message)
+        _refresh_management_action_state()
+        _refresh_management_window(moving_army_id, message)
         return
     var army_id := command.trim_prefix("select:")
-    _select_army_in_selector(army_id)
+    _open_management_for_army(army_id)
     _record_event("Selected advance plan: %s" % army_id)
 
 
@@ -1096,6 +1244,9 @@ func _refresh_date() -> void:
 func _on_province_selected(province_id: String) -> void:
     if map_input_mode == MapInputMode.ARMY_DESTINATION:
         _select_management_destination(province_id)
+        return
+    if map_input_mode == MapInputMode.AUTO_ADVANCE_DESTINATION:
+        _select_management_advance_target(province_id)
         return
     if map_input_mode in [MapInputMode.ROAD_START, MapInputMode.ROAD_END]:
         _select_road_endpoint(province_id)
@@ -1413,6 +1564,25 @@ func _refresh_movement_selection() -> void:
             province_by_id[movement_destination_id]["name"],
             movement_points,
         ]
+
+
+func _refresh_management_action_state() -> void:
+    if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT:
+        return
+    province_management_window.set_action_state(
+        not moving_army_id.is_empty() and not movement_destination_id.is_empty(),
+        not moving_army_id.is_empty() and not auto_advance_target_id.is_empty()
+    )
+    var target_name := ""
+    if not auto_advance_target_id.is_empty():
+        target_name = province_by_id.get(
+            auto_advance_target_id,
+            {"name": auto_advance_target_id}
+        ).get("name", auto_advance_target_id)
+    province_management_window.set_advance_target(
+        auto_advance_target_id,
+        target_name
+    )
 
 
 func _clear_road_selection() -> void:
