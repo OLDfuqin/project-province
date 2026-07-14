@@ -102,10 +102,10 @@ func _initialize() -> void:
     var country_list := main_scene.get_node("RightPanel/Center/CountryList")
     var country_details := main_scene.get_node(
         "RightPanel/Center/CountryDetails"
-    ) as RichTextLabel
+    ) as Label
     var war_overview := main_scene.get_node(
         "RightPanel/Center/WarOverview"
-    ) as RichTextLabel
+    ) as Label
     if peace_policy.get_item_text(0) != "恢复战前边界" or \
             peace_policy.get_item_text(1) != "吞并占领地区" or \
             not (country_list.get_child(0) as Label).text.contains("国库") or \
@@ -152,9 +152,30 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var initial_right_rect := right_panel.get_global_rect()
+    var advance_turn := main_scene.get_node(
+        "TurnBar/TurnControls/AdvanceTurn"
+    ) as Button
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
+    var updated_right_rect := right_panel.get_global_rect()
+    if not initial_right_rect.position.is_equal_approx(updated_right_rect.position) or \
+            not initial_right_rect.size.is_equal_approx(updated_right_rect.size) or \
+            country_details.size.x > right_panel.size.x + 1.0:
+        push_error("Right panel expanded after advancing the turn: before=%s after=%s details_width=%s panel_width=%s" % [
+            initial_right_rect,
+            updated_right_rect,
+            country_details.size.x,
+            right_panel.size.x,
+        ])
+        main_scene.free()
+        quit(1)
+        return
+
     var map_rect := map_panel.get_global_rect()
     var turn_rect := turn_bar.get_global_rect()
-    var right_rect := right_panel.get_global_rect()
+    var right_rect := updated_right_rect
     var workspace_rect := workspace_panel.get_global_rect()
     if turn_rect.intersects(map_rect) or right_rect.intersects(map_rect) or \
             workspace_rect.intersects(map_rect) or \

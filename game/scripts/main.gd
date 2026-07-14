@@ -26,8 +26,8 @@ enum MapInputMode {
 @onready var advance_turn_button: Button = $TurnBar/TurnControls/AdvanceTurn
 @onready var event_log: Label = $RightPanel/Center/EventLog
 @onready var event_history: RichTextLabel = $RightPanel/Center/EventHistory
-@onready var country_details: RichTextLabel = $RightPanel/Center/CountryDetails
-@onready var war_overview: RichTextLabel = $RightPanel/Center/WarOverview
+@onready var country_details: Label = $RightPanel/Center/CountryDetails
+@onready var war_overview: Label = $RightPanel/Center/WarOverview
 @onready var province_map := $MapPanel/ProvinceMap
 @onready var war_target: OptionButton = $RightPanel/Center/DiplomacyControls/WarTarget
 @onready var peace_policy: OptionButton = $RightPanel/Center/DiplomacyControls/PeacePolicy

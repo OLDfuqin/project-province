@@ -123,21 +123,17 @@ theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 
-[node name="CountryDetails" type="RichTextLabel" parent="RightPanel/Center"]
-custom_minimum_size = Vector2(0, 96)
+[node name="CountryDetails" type="Label" parent="RightPanel/Center"]
+custom_minimum_size = Vector2(0, 180)
 layout_mode = 2
-bbcode_enabled = false
 text = "国家详情"
-fit_content = true
-scroll_active = false
+autowrap_mode = 1
 
-[node name="WarOverview" type="RichTextLabel" parent="RightPanel/Center"]
-custom_minimum_size = Vector2(0, 72)
+[node name="WarOverview" type="Label" parent="RightPanel/Center"]
+custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
-bbcode_enabled = false
 text = "当前无战争"
-fit_content = true
-scroll_active = false
+autowrap_mode = 1
 
 [node name="RoadControls" type="VBoxContainer" parent="RightPanel/Center"]
 visible = false
@@ -253,10 +249,12 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.82, 0.9, 1)
 text = "等待玩家操作"
 horizontal_alignment = 1
+autowrap_mode = 1
 
 [node name="EventHistory" type="RichTextLabel" parent="RightPanel/Center"]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 bbcode_enabled = false
+autowrap_mode = 1
 scroll_following = true
 text = "事件历史已初始化"
