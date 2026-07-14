@@ -39,6 +39,23 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var technology_status := management.get_node("Technology/Status") as Label
+    var economy_research := management.get_node(
+        "Technology/Buttons/Economy"
+    ) as Button
+    if not technology_status.text.contains("经济 0"):
+        push_error("Management page did not display technology")
+        main_scene.free()
+        quit(1)
+        return
+    economy_research.pressed.emit()
+    await process_frame
+    if not technology_status.text.contains("经济 1"):
+        push_error("Technology research did not refresh management page")
+        main_scene.free()
+        quit(1)
+        return
+
     recruit.pressed.emit()
     if main_scene.workspace_mode_name() != "province_management" or \
             army_selector.item_count != 1 or \

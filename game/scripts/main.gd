@@ -82,6 +82,9 @@ func _ready() -> void:
     province_management_window.recruit_requested.connect(
         _on_management_recruit_requested
     )
+    province_management_window.technology_research_requested.connect(
+        _on_research_technology
+    )
     province_management_window.army_selected.connect(
         _on_management_army_selected
     )
@@ -271,6 +274,7 @@ func _refresh_management_window(
         PLAYER_COUNTRY_ID,
         preferred_army_id
     )
+    province_management_window.set_technology(_player_technology())
     if not status_message.is_empty():
         province_management_window.set_status(status_message)
 
@@ -738,10 +742,11 @@ func _on_make_peace_pressed() -> void:
 
 
 func _on_research_technology(track: String) -> void:
-    _close_transient_workspace()
     var result: Dictionary = bridge.research_technology(PLAYER_COUNTRY_ID, track)
     if not result.get("accepted", false):
         event_log.text = "Research failed: %s" % result.get("error", "unknown error")
+        if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
+            province_management_window.set_status(event_log.text)
         return
     event_log.text = "Technology advanced to level %d; cost %d" % [
         result["current_level"], result["cost"]
@@ -750,18 +755,26 @@ func _on_research_technology(track: String) -> void:
     _refresh_country_list()
     _refresh_country_details()
     _refresh_technology_status()
+    _refresh_management_window(moving_army_id, event_log.text)
+
+
+func _player_technology() -> Dictionary:
+    for technology: Dictionary in bridge.get_technology_summaries():
+        if technology.get("country_id", "") == PLAYER_COUNTRY_ID:
+            return technology
+    return {}
 
 
 func _refresh_technology_status() -> void:
-    for technology: Dictionary in bridge.get_technology_summaries():
-        if technology["country_id"] != PLAYER_COUNTRY_ID:
-            continue
+    var technology := _player_technology()
+    if not technology.is_empty():
         $RightPanel/Center/TechnologyControls/Status.text = "Economy %d | Military %d | Roads %d" % [
             technology["economy_level"],
             technology["military_level"],
             technology["roads_level"],
         ]
-        return
+    if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
+        province_management_window.set_technology(technology)
 
 
 func _on_quick_save_pressed() -> void:
