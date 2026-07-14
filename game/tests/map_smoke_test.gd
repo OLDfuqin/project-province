@@ -71,6 +71,51 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var clicked_ids: Array[String] = []
+    var double_clicked_ids: Array[String] = []
+    var selected_ids: Array[String] = []
+    var blank_clicks: Array[bool] = []
+    province_map.province_clicked.connect(
+        func(province_id: String) -> void: clicked_ids.append(province_id)
+    )
+    province_map.province_double_clicked.connect(
+        func(province_id: String) -> void: double_clicked_ids.append(province_id)
+    )
+    province_map.province_selected.connect(
+        func(province_id: String) -> void: selected_ids.append(province_id)
+    )
+    province_map.map_blank_clicked.connect(
+        func() -> void: blank_clicks.append(true)
+    )
+
+    var single_click := InputEventMouseButton.new()
+    single_click.button_index = MOUSE_BUTTON_LEFT
+    single_click.pressed = true
+    single_click.position = Vector2(50, 50)
+    province_map._gui_input(single_click)
+    province_map._gui_input(single_click)
+
+    var double_click := InputEventMouseButton.new()
+    double_click.button_index = MOUSE_BUTTON_LEFT
+    double_click.pressed = true
+    double_click.double_click = true
+    double_click.position = Vector2(150, 50)
+    province_map._gui_input(double_click)
+
+    var blank_click := InputEventMouseButton.new()
+    blank_click.button_index = MOUSE_BUTTON_LEFT
+    blank_click.pressed = true
+    blank_click.position = Vector2(900, 600)
+    province_map._gui_input(blank_click)
+
+    if clicked_ids != ["northreach", "northreach"] or \
+            double_clicked_ids != ["westmark"] or \
+            blank_clicks.size() != 1 or \
+            selected_ids != ["northreach", "northreach", "westmark", ""]:
+        push_error("Map click signals did not distinguish repeated, double and blank clicks")
+        quit(1)
+        return
+
     print("Province map hit-test smoke test passed")
     bridge.free()
     province_map.free()

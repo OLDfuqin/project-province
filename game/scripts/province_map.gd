@@ -3,6 +3,9 @@ extends Control
 
 signal province_hovered(province_id: String)
 signal province_selected(province_id: String)
+signal province_clicked(province_id: String)
+signal province_double_clicked(province_id: String)
+signal map_blank_clicked
 
 const MIN_ZOOM := 0.35
 const MAX_ZOOM := 3.0
@@ -408,8 +411,14 @@ func _gui_input(event: InputEvent) -> void:
             var hit := _hit_test(button.position)
             if hit != _selected_id:
                 _selected_id = hit
-                province_selected.emit(hit)
                 queue_redraw()
+            if hit.is_empty():
+                map_blank_clicked.emit()
+            elif button.double_click:
+                province_double_clicked.emit(hit)
+            else:
+                province_clicked.emit(hit)
+            province_selected.emit(hit)
             accept_event()
         elif button.pressed and button.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
             var old_zoom := _zoom
