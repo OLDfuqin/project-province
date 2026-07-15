@@ -14,6 +14,7 @@ third_party/godot-cpp/gen/
 .godot/
 game/.godot/
 game/export/
+*.gd.uid
 
 # IDE and OS
 .vs/
@@ -27,3 +28,5 @@ Desktop.ini
 tmp/
 logs/
 .worktrees/
+.layout-stage/
+.verify-*.log
