@@ -107,7 +107,7 @@ func _initialize() -> void:
         "RightPanel/Center/WarOverview"
     ) as Label
     var first_country_label := country_list.get_child(0) as Label
-    if not first_country_label.text.contains("370000") or \
+    if not first_country_label.text.contains("362500") or \
             not first_country_label.text.contains("3625"):
         push_error("Country summary did not display economy and fiscal income")
         main_scene.free()

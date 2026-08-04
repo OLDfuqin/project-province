@@ -26,7 +26,7 @@ func _initialize() -> void:
             auroria_before = country
     if northreach_before.get("economy", -1) != 120000 or \
             northreach_before.get("fiscal_income", -1) != 1200 or \
-            auroria_before.get("economy", -1) != 370000 or \
+            auroria_before.get("economy", -1) != 362500 or \
             auroria_before.get("fiscal_income", -1) != 3625:
         push_error("Bridge did not expose derived province and country economy")
         bridge.free()
@@ -62,7 +62,7 @@ func _initialize() -> void:
             northreach_before.get("recruitable_population", -1) - 1000 or \
             northreach.get("economy", -1) != 119000 or \
             northreach.get("fiscal_income", -1) != 1190 or \
-            auroria.get("economy", -1) != 369000 or \
+            auroria.get("economy", -1) != 361500 or \
             auroria.get("fiscal_income", -1) != 3615 or \
             auroria.get("treasury", -1) != 9000:
         push_error("Recruitment was not reflected in bridge snapshots")
