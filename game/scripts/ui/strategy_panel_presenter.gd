@@ -1,6 +1,8 @@
 class_name StrategyPanelPresenter
 extends RefCounted
 
+const GameText := preload("res://scripts/ui/game_text_formatter.gd")
+
 
 static func country_details(
     countries: Array,
@@ -74,8 +76,8 @@ static func advance_plans(
         var is_enabled := bool(army.get("advance_enabled", true))
         var strategy: String = army.get("advance_strategy", "max")
         var origin_id: String = army["province_id"]
-        var origin_name := GameTextFormatter.province_name(province_by_id, origin_id)
-        var target_name := GameTextFormatter.province_name(province_by_id, target_id)
+        var origin_name: String = GameText.province_name(province_by_id, origin_id)
+        var target_name: String = GameText.province_name(province_by_id, target_id)
         var path_preview: Dictionary = bridge.get_auto_advance_path_for_months(
             army["id"],
             target_id,
@@ -102,7 +104,7 @@ static func advance_plans(
         lines.append("[url=select:%s]%s[/url]：%s → %s | %s | 策略：%s [url=strategy:%s:%s][切换为%s][/url] [url=%s:%s][%s][/url] [url=clear:%s][清除][/url]" % [
             army["id"],
             army["id"], origin_name, target_name, status,
-            GameTextFormatter.advance_strategy(strategy),
+            GameText.advance_strategy(strategy),
             army["id"],
             next_strategy,
             strategy_label,
@@ -139,10 +141,10 @@ static func _advance_status(
         army.get("movement_points", 0),
         path_preview.get("preview_movement_granted", 0),
         preview_months,
-        GameTextFormatter.province_name(province_by_id, preview_destination_id),
+        GameText.province_name(province_by_id, preview_destination_id),
         path_preview.get("preview_step_count", 0),
         path_preview.get("preview_movement_cost", 0),
-        GameTextFormatter.advance_stop_reason(
+        GameText.advance_stop_reason(
             path_preview.get("preview_stop_reason", "unknown")
         ),
     ]
