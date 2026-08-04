@@ -27,7 +27,7 @@ std::int64_t scaled_floor(
     return whole_result + fractional_result;
 }
 
-std::int64_t terrain_fiscal_numerator(const TerrainType terrain) noexcept {
+std::int64_t terrain_economy_numerator(const TerrainType terrain) noexcept {
     switch (terrain) {
     case TerrainType::plains:
         return 100;
@@ -55,10 +55,13 @@ std::int64_t EconomySystem::province_economy(
     if (technology == nullptr) {
         throw std::logic_error{"cannot calculate economy without controller technology"};
     }
+    const std::int64_t combined_numerator =
+        (100 + 10 * technology->economy_level) *
+        terrain_economy_numerator(province->terrain);
     return scaled_floor(
         province->population,
-        100 + 10 * technology->economy_level,
-        100
+        combined_numerator,
+        10'000
     );
 }
 
@@ -66,15 +69,7 @@ std::int64_t EconomySystem::province_fiscal_income(
     const GameState& state,
     const ProvinceId& province_id
 ) {
-    const Province* province = state.find_province(province_id);
-    if (province == nullptr) {
-        throw std::invalid_argument{"cannot calculate fiscal income for unknown province"};
-    }
-    return scaled_floor(
-        province_economy(state, province_id),
-        terrain_fiscal_numerator(province->terrain),
-        10'000
-    );
+    return province_economy(state, province_id) / 100;
 }
 
 MonthlyFiscalReport EconomySystem::resolve_month(GameState& state) const {

@@ -147,19 +147,57 @@ int main() {
             loaded_state,
             ProvinceId{"northreach"}
         ) != 1'200 ||
+        EconomySystem::province_economy(
+            loaded_state,
+            ProvinceId{"z_gv_1"}
+        ) != 27'000 ||
         EconomySystem::province_fiscal_income(
             loaded_state,
             ProvinceId{"z_gv_1"}
         ) != 270 ||
+        EconomySystem::province_economy(
+            loaded_state,
+            ProvinceId{"z_wm_2"}
+        ) != 22'500 ||
         EconomySystem::province_fiscal_income(
             loaded_state,
             ProvinceId{"z_wm_2"}
         ) != 225 ||
+        EconomySystem::province_economy(
+            loaded_state,
+            ProvinceId{"z_nr_2"}
+        ) != 20'000 ||
         EconomySystem::province_fiscal_income(
             loaded_state,
             ProvinceId{"z_nr_2"}
         ) != 200) {
-        std::cerr << "Population and terrain fiscal formulas are incorrect\n";
+        std::cerr << "Population and terrain economy formulas are incorrect\n";
+        return 1;
+    }
+    GameState rounding_state{GameClock{1000, 1}};
+    rounding_state.add_country(Country{
+        CountryId{"rounding"}, "Rounding", 0xFFFFFF, 0
+    });
+    rounding_state.add_province(Province{
+        ProvinceId{"rounding_hills"},
+        "Rounding Hills",
+        CountryId{"rounding"},
+        10'029,
+        0,
+        {},
+        0,
+        province::core::TerrainType::hills,
+    });
+    rounding_state.find_technology(CountryId{"rounding"})->economy_level = 1;
+    if (EconomySystem::province_economy(
+            rounding_state,
+            ProvinceId{"rounding_hills"}
+        ) != 9'928 ||
+        EconomySystem::province_fiscal_income(
+            rounding_state,
+            ProvinceId{"rounding_hills"}
+        ) != 99) {
+        std::cerr << "Economy multipliers were rounded in separate stages\n";
         return 1;
     }
     if (loaded_state.find_country(CountryId{"auroria"}) == nullptr ||
