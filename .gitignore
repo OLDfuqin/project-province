@@ -14,6 +14,7 @@ third_party/godot-cpp/gen/
 .godot/
 game/.godot/
 game/export/
+game/bin/~*.TMP
 *.gd.uid
 
 # IDE and OS
