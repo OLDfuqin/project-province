@@ -14,13 +14,10 @@
 #include "province/core/save_game.hpp"
 #include "province/core/stable_id.hpp"
 #include "province/core/version.hpp"
-
-#include <nlohmann/json.hpp>
+#include "smoke_test_groups.hpp"
 
 #include <iostream>
 #include <array>
-#include <filesystem>
-#include <fstream>
 #include <stdexcept>
 
 int main() {
@@ -879,149 +876,9 @@ int main() {
         return 1;
     }
 
-    GameState ai_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
-    CommandProcessor ai_processor;
-    ai_processor.enable_ai(CountryId{"auroria"});
-    const CommandResult first_ai_month = ai_processor.execute(
-        ai_state,
-        AdvanceTurnCommand{1}
-    );
-    const CommandResult second_ai_month = ai_processor.execute(
-        ai_state,
-        AdvanceTurnCommand{1}
-    );
-    const CommandResult third_ai_month = ai_processor.execute(
-        ai_state,
-        AdvanceTurnCommand{1}
-    );
-    const CommandResult fourth_ai_month = ai_processor.execute(
-        ai_state,
-        AdvanceTurnCommand{1}
-    );
-    std::int64_t player_armies = 0;
-    for (const auto& [army_id, army] : ai_state.armies()) {
-        static_cast<void>(army_id);
-        if (army.owner_id == CountryId{"auroria"}) {
-            ++player_armies;
-        }
-    }
-    if (!first_ai_month.accepted || !second_ai_month.accepted ||
-        !third_ai_month.accepted || !fourth_ai_month.accepted ||
-        ai_state.army_count() != 9 ||
-        player_armies != 0 || ai_state.relations().empty() ||
-        ai_state.occupations().empty() || first_ai_month.events.size() != 7) {
-        std::cerr << "AI did not recruit, declare war and advance deterministically\n";
+    if (!run_ai_smoke_tests() || !run_save_game_smoke_tests()) {
         return 1;
     }
-
-    GameState ai_path_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
-    CommandProcessor ai_path_processor;
-    const CommandResult rear_army_result = ai_path_processor.execute(
-        ai_path_state,
-        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"goldcoast"}, 500}
-    );
-    const ArmyId rear_army_id =
-        std::get<ArmyRecruitedEvent>(rear_army_result.events.front().payload).army_id;
-    [[maybe_unused]] const CommandResult ai_path_war = ai_path_processor.execute(
-        ai_path_state,
-        DeclareWarCommand{CountryId{"solmere"}, CountryId{"auroria"}}
-    );
-    ai_path_processor.enable_ai(CountryId{"auroria"});
-    [[maybe_unused]] const CommandResult ai_path_month = ai_path_processor.execute(
-        ai_path_state,
-        AdvanceTurnCommand{1}
-    );
-    if (ai_path_state.find_army(rear_army_id)->province_id != ProvinceId{"redpass"}) {
-        std::cerr << "AI pathfinding did not move a rear army toward the front\n";
-        return 1;
-    }
-
-    const std::filesystem::path save_path = "build/save_game_roundtrip_test.json";
-    GameState save_state = ScenarioLoader::load("game/data", GameClock{1200, 6});
-    CommandProcessor save_processor;
-    [[maybe_unused]] const CommandResult save_technology = save_processor.execute(
-        save_state,
-        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::roads}
-    );
-    const CommandResult save_recruitment = save_processor.execute(
-        save_state,
-        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 500}
-    );
-    const ArmyId saved_army_id =
-        std::get<ArmyRecruitedEvent>(save_recruitment.events.front().payload).army_id;
-    [[maybe_unused]] const CommandResult save_road = save_processor.execute(
-        save_state,
-        BuildRoadCommand{
-            CountryId{"auroria"}, ProvinceId{"northreach"}, ProvinceId{"westmark"}
-        }
-    );
-    [[maybe_unused]] const CommandResult save_war = save_processor.execute(
-        save_state,
-        DeclareWarCommand{CountryId{"auroria"}, CountryId{"solmere"}}
-    );
-    [[maybe_unused]] const CommandResult save_month = save_processor.execute(
-        save_state,
-        AdvanceTurnCommand{1}
-    );
-    [[maybe_unused]] const CommandResult save_occupation = save_processor.execute(
-        save_state,
-        MoveArmyCommand{saved_army_id, ProvinceId{"redpass"}}
-    );
-    save_processor.enable_ai(CountryId{"auroria"});
-    province::core::SaveGameSerializer::save(
-        save_path,
-        save_state,
-        save_processor.next_event_sequence(),
-        save_processor.human_country_id()
-    );
-    {
-        std::ifstream saved_stream{save_path};
-        const nlohmann::json saved_document = nlohmann::json::parse(saved_stream);
-        bool saved_fixed_economy = false;
-        for (const auto& province_document : saved_document.at("provinces")) {
-            saved_fixed_economy = saved_fixed_economy ||
-                province_document.contains("economy");
-        }
-        if (saved_document.at("schema_version").get<std::int32_t>() != 3 ||
-            saved_fixed_economy) {
-            std::cerr << "Save game retained the fixed economy schema\n";
-            return 1;
-        }
-    }
-    province::core::LoadedGame loaded_game =
-        province::core::SaveGameSerializer::load(save_path);
-    if (loaded_game.state.clock().year() != save_state.clock().year() ||
-        loaded_game.state.clock().month() != save_state.clock().month() ||
-        loaded_game.state.army_count() != save_state.army_count() ||
-        loaded_game.state.road_level(ProvinceId{"northreach"}, ProvinceId{"westmark"}) !=
-            RoadLevel::paved ||
-        !loaded_game.state.are_at_war(CountryId{"auroria"}, CountryId{"solmere"}) ||
-        loaded_game.state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"} ||
-        loaded_game.state.find_technology(CountryId{"auroria"})->roads_level != 1 ||
-        loaded_game.state.find_army(saved_army_id) == nullptr ||
-        loaded_game.state.find_army(saved_army_id)->movement_points !=
-            save_state.find_army(saved_army_id)->movement_points ||
-        loaded_game.next_event_sequence != save_processor.next_event_sequence() ||
-        !loaded_game.human_country_id.has_value() ||
-        *loaded_game.human_country_id != CountryId{"auroria"}) {
-        std::cerr << "Save game round trip did not preserve simulation state\n";
-        return 1;
-    }
-    CommandProcessor restored_processor;
-    restored_processor.set_next_event_sequence(loaded_game.next_event_sequence);
-    restored_processor.enable_ai(*loaded_game.human_country_id);
-    const CommandResult post_load_recruitment = restored_processor.execute(
-        loaded_game.state,
-        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"westmark"}, 100}
-    );
-    const auto& post_load_event =
-        std::get<ArmyRecruitedEvent>(post_load_recruitment.events.front().payload);
-    if (!post_load_recruitment.accepted || post_load_event.army_id != ArmyId{"army_2"} ||
-        post_load_recruitment.events.front().sequence != save_processor.next_event_sequence()) {
-        std::cerr << "Save game did not preserve entity and event sequences\n";
-        return 1;
-    }
-    std::filesystem::remove(save_path);
 
     const CommandResult rejected = processor.execute(turn_state, AdvanceTurnCommand{2});
     if (rejected.accepted || rejected.error.empty() ||
@@ -1034,5 +891,3 @@ int main() {
               << " smoke test passed\n";
     return 0;
 }
-#include "province/core/army.hpp"
-#include "province/core/army_system.hpp"

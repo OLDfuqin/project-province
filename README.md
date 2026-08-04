@@ -20,6 +20,8 @@ docs/       架构和设计文档
 scripts/    开发与构建辅助脚本
 ```
 
+详细入口、目录职责和常见修改位置见 [`docs/project-structure.md`](docs/project-structure.md)。
+
 ## 构建模拟核心
 
 在仓库根目录运行：

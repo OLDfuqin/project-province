@@ -4,6 +4,8 @@ const PLAYER_COUNTRY_ID := "auroria"
 const QUICK_SAVE_PATH := "user://quick_save.json"
 const BASE_ROAD_BUILD_COST := 500
 const ROAD_TECH_COST_DISCOUNT := 100
+const GameText := preload("res://scripts/ui/game_text_formatter.gd")
+const StrategyPresenter := preload("res://scripts/ui/strategy_panel_presenter.gd")
 
 enum WorkspaceMode {
     CLOSED,
@@ -679,104 +681,37 @@ func _refresh_country_list() -> void:
 
 
 func _battle_report(result: Dictionary) -> String:
-    if not result.get("battle_occurred", false) and not result.get("province_occupied", false):
-        return ""
-    if not result.get("battle_occurred", false):
-        return "地区在无抵抗情况下被占领"
-    var total_casualties := 0
-    var details: Array[String] = []
-    for outcome: Dictionary in result.get("battle_outcomes", []):
-        var casualties := int(outcome.get("casualties", 0))
-        total_casualties += casualties
-        var suffix := ""
-        if outcome.get("destroyed", false):
-            suffix = "，部队被消灭"
-        elif String(outcome.get("retreat_province", "")) != "":
-            suffix = "，撤退至%s" % _province_name(outcome["retreat_province"])
-        details.append("%s 损失%d%s" % [outcome.get("army_id", "?"), casualties, suffix])
-    return "战斗：%s；总伤亡%d%s | %s" % [
-        "进攻方胜利" if result.get("attacker_won", false) else "防守方胜利",
-        total_casualties,
-        "；地区被占领" if result.get("province_occupied", false) else "",
-        "，".join(details),
-    ]
+    return GameText.battle_report(result, province_by_id)
 
 
 func _battle_action_report(action: Dictionary) -> String:
-    if not action.get("battle_occurred", false):
-        return "回合行动：无抵抗占领%s" % _province_name(
-            action.get("province_id", "?")
-        )
-    var details: Array[String] = []
-    for outcome: Dictionary in action.get("battle_outcomes", []):
-        var suffix := ""
-        if outcome.get("destroyed", false):
-            suffix = "，部队被消灭"
-        elif String(outcome.get("retreat_province", "")) != "":
-            suffix = "，撤退至%s" % _province_name(outcome["retreat_province"])
-        details.append("%s 损失%d，剩余%d%s" % [
-            outcome.get("army_id", "?"),
-            outcome.get("casualties", 0),
-            outcome.get("remaining_manpower", 0),
-            suffix,
-        ])
-    return "回合战斗：%s，%s，总伤亡%d%s | %s" % [
-        _province_name(action.get("province_id", "?")),
-        "进攻方胜利" if action.get("attacker_won", false) else "防守方胜利",
-        action.get("casualties", 0),
-        "，地区被占领" if action.get("province_occupied", false) else "",
-        "，".join(details),
-    ]
+    return GameText.battle_action_report(action, province_by_id)
 
 
 func _refresh_country_details() -> void:
+    var countries: Array = bridge.get_country_summaries()
+    var country_names: Dictionary = {}
+    for country: Dictionary in countries:
+        country_names[country["id"]] = country["name"]
     var status: Dictionary = bridge.get_game_status(PLAYER_COUNTRY_ID)
-    var technology_by_country: Dictionary = {}
-    for technology: Dictionary in bridge.get_technology_summaries():
-        technology_by_country[technology["country_id"]] = technology
-    var status_by_country: Dictionary = {}
-    for country_status: Dictionary in status.get("countries", []):
-        status_by_country[country_status["country_id"]] = country_status
-    var war_pairs: Array[String] = []
-    for relation: Dictionary in bridge.get_diplomatic_relations():
-        if relation.get("status", "") == "war":
-            war_pairs.append("%s-%s" % [
-                _country_name(relation["country_a"]),
-                _country_name(relation["country_b"]),
-            ])
-    var lines: Array[String] = []
-    for country: Dictionary in bridge.get_country_summaries():
-        var tech: Dictionary = technology_by_country.get(country["id"], {})
-        var state: Dictionary = status_by_country.get(country["id"], {})
-        lines.append("%s | 国库 %d | 控制地区 %d | 科技 经济%d 军事%d 道路%d%s" % [
-            country["name"],
-            country["treasury"],
-            state.get("controlled_provinces", country["province_count"]),
-            tech.get("economy_level", 0),
-            tech.get("military_level", 0),
-            tech.get("roads_level", 0),
-            " | 已灭亡" if state.get("eliminated", false) else "",
-        ])
-    if not war_pairs.is_empty():
-        lines.append("战争：%s" % "，".join(war_pairs))
-    country_details.text = "\n".join(lines)
+    country_details.text = StrategyPresenter.country_details(
+        countries,
+        bridge.get_technology_summaries(),
+        status,
+        bridge.get_diplomatic_relations(),
+        country_names
+    )
     _refresh_war_overview()
 
 
 func _refresh_war_overview() -> void:
-    var wars: Array = bridge.get_war_summaries()
-    if wars.is_empty():
-        war_overview.text = "当前无战争"
-        return
-    var lines: Array[String] = []
-    for war: Dictionary in wars:
-        lines.append("%s 对 %s | 兵力 %d:%d | 占领地区 %d:%d | 战线 %d" % [
-            _country_name(war["country_a"]), _country_name(war["country_b"]),
-            war["country_a_manpower"], war["country_b_manpower"],
-            war["country_a_occupied_provinces"], war["country_b_occupied_provinces"],
-            war["front_edges"],
-        ])
-    war_overview.text = "\n".join(lines)
+    var country_names: Dictionary = {}
+    for country: Dictionary in bridge.get_country_summaries():
+        country_names[country["id"]] = country["name"]
+    war_overview.text = StrategyPresenter.war_overview(
+        bridge.get_war_summaries(),
+        country_names
+    )
 
 
 func _refresh_game_status() -> void:
@@ -964,105 +899,20 @@ func _open_management_for_army(
     _refresh_management_window(army_id, status_message)
 
 
-func _advance_stop_reason_text(reason: String) -> String:
-    match reason:
-        "target_reached":
-            return "已到达目标"
-        "enemy_border":
-            return "将在敌方边境前停止"
-        "insufficient_movement":
-            return "移动点不足"
-        "strategy_limit":
-            return "单步推进策略限制"
-        _:
-            return reason
-
-
-func _advance_strategy_text(strategy: String) -> String:
-    match strategy:
-        "one_step":
-            return "单步推进"
-        "stop_before_enemy":
-            return "敌境前停止"
-        _:
-            return "最大推进"
-
-
 func _refresh_advance_plans() -> void:
-    var lines: Array[String] = []
     var preview_months := 1
     if turn_length.item_count > 0:
         preview_months = int(turn_length.get_selected_metadata())
-    for army: Dictionary in bridge.get_army_summaries():
-        if army["owner_id"] != PLAYER_COUNTRY_ID:
-            continue
-        var target_id: String = army.get("advance_target_id", "")
-        if target_id.is_empty():
-            continue
-        var is_enabled := bool(army.get("advance_enabled", true))
-        var strategy: String = army.get("advance_strategy", "max")
-        var origin_id: String = army["province_id"]
-        var origin_name: String = province_by_id.get(origin_id, {"name": origin_id})["name"]
-        var target_name: String = province_by_id.get(target_id, {"name": target_id})["name"]
-        var path_preview: Dictionary = bridge.get_auto_advance_path_for_months(
-            army["id"],
-            target_id,
-            preview_months
-        )
-        var status := "受阻"
-        if not is_enabled:
-            status = "已暂停"
-        elif path_preview.get("accepted", false):
-            var first_cost := int(path_preview.get("first_step_cost", 0))
-            var preview_destination_id: String = path_preview.get(
-                "preview_destination_id",
-                origin_id
-            )
-            var preview_destination_name: String = province_by_id.get(
-                preview_destination_id,
-                {"name": preview_destination_id}
-            )["name"]
-            status = "%d步，首步%d移动点，总计%d移动点；当前%d，本回合增加%d；%d个月后到达%s（%d步，消耗%d移动点，%s）" % [
-                path_preview.get("step_count", 0),
-                first_cost,
-                path_preview.get("total_movement_cost", 0),
-                army.get("movement_points", 0),
-                path_preview.get("preview_movement_granted", 0),
-                preview_months,
-                preview_destination_name,
-                path_preview.get("preview_step_count", 0),
-                path_preview.get("preview_movement_cost", 0),
-                _advance_stop_reason_text(path_preview.get("preview_stop_reason", "unknown")),
-            ]
-        else:
-            status = "受阻：%s" % path_preview.get("error", "未知错误")
-        var toggle_command := "pause" if is_enabled else "resume"
-        var toggle_label := "暂停" if is_enabled else "继续"
-        var next_strategy := "one_step"
-        var strategy_label := "单步推进"
-        if strategy == "one_step":
-            next_strategy = "stop_before_enemy"
-            strategy_label = "敌境前停止"
-        elif strategy == "stop_before_enemy":
-            next_strategy = "max"
-            strategy_label = "最大推进"
-        lines.append("[url=select:%s]%s[/url]：%s → %s | %s | 策略：%s [url=strategy:%s:%s][切换为%s][/url] [url=%s:%s][%s][/url] [url=clear:%s][清除][/url]" % [
-            army["id"],
-            army["id"], origin_name, target_name, status,
-            _advance_strategy_text(strategy),
-            army["id"],
-            next_strategy,
-            strategy_label,
-            toggle_command,
-            army["id"],
-            toggle_label,
-            army["id"],
-        ])
-    var management_plan_text := ""
-    if not lines.is_empty():
-        management_plan_text = "[b]推进计划[/b]\n%s" % "\n".join(lines)
     if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
-        province_management_window.set_advance_plans(management_plan_text)
+        province_management_window.set_advance_plans(
+            StrategyPresenter.advance_plans(
+                bridge,
+                bridge.get_army_summaries(),
+                province_by_id,
+                PLAYER_COUNTRY_ID,
+                preview_months
+            )
+        )
 
 
 func _on_advance_plan_clicked(meta: Variant) -> void:
@@ -1117,7 +967,7 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
         _refresh_advance_plans()
         var message := "已设置推进策略：%s → %s" % [
             army_id,
-            _advance_strategy_text(strategy),
+            GameText.advance_strategy(strategy),
         ]
         _record_event(message)
         _refresh_management_action_state()
