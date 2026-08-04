@@ -29,7 +29,10 @@ func display_province(
         province.get("population", 0),
         province.get("recruitable_population", 0),
     ]
-    $Economy.text = "经济：%d" % province.get("economy", 0)
+    $Economy.text = "经济：%d | 财政收入：%d" % [
+        province.get("economy", 0),
+        province.get("fiscal_income", 0),
+    ]
 
     var stationed_armies := 0
     var stationed_manpower := 0

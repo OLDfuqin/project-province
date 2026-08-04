@@ -35,6 +35,20 @@ func _initialize() -> void:
     )
     var save_result: Dictionary = bridge.save_game(save_path)
     var saved_date: Dictionary = bridge.get_current_date()
+    var saved_file := FileAccess.open(save_path, FileAccess.READ)
+    var saved_document: Dictionary = JSON.parse_string(saved_file.get_as_text())
+    saved_file.close()
+    var retained_fixed_economy := false
+    for province_document: Dictionary in saved_document.get("provinces", []):
+        retained_fixed_economy = retained_fixed_economy or \
+            province_document.has("economy")
+    var legacy_path := save_path + ".v2"
+    var legacy_document := saved_document.duplicate(true)
+    legacy_document["schema_version"] = 2
+    var legacy_file := FileAccess.open(legacy_path, FileAccess.WRITE)
+    legacy_file.store_string(JSON.stringify(legacy_document))
+    legacy_file.close()
+    var legacy_load: Dictionary = bridge.load_game(legacy_path)
     bridge.advance_turn(3)
     var load_result: Dictionary = bridge.load_game(save_path)
     var loaded_date: Dictionary = bridge.get_current_date()
@@ -53,6 +67,9 @@ func _initialize() -> void:
             loaded_army = summary
 
     if not save_result.get("accepted", false) or \
+            saved_document.get("schema_version", 0) != 3 or \
+            retained_fixed_economy or \
+            legacy_load.get("accepted", false) or \
             not load_result.get("accepted", false) or \
             failed_load.get("accepted", false) or \
             loaded_date != saved_date or date_after_failed_load != loaded_date or \
@@ -67,14 +84,20 @@ func _initialize() -> void:
             northreach_after_load.get("population", -1) != \
             northreach_before_save.get("population", -1) or \
             northreach_after_load.get("recruitable_population", -1) != \
-            northreach_before_save.get("recruitable_population", -1):
+            northreach_before_save.get("recruitable_population", -1) or \
+            northreach_after_load.get("economy", -1) != \
+            northreach_before_save.get("economy", -1) or \
+            northreach_after_load.get("fiscal_income", -1) != \
+            northreach_before_save.get("fiscal_income", -1):
         push_error("Save/load round trip failed through the bridge")
         DirAccess.remove_absolute(save_path)
+        DirAccess.remove_absolute(legacy_path)
         bridge.free()
         quit(1)
         return
 
     DirAccess.remove_absolute(save_path)
+    DirAccess.remove_absolute(legacy_path)
     print("ProvinceBridge save game smoke test passed")
     bridge.free()
     quit(0)

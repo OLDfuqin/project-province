@@ -278,11 +278,11 @@ CommandResult CommandProcessor::execute_advance_turn(
     std::map<ArmyId, ArmyMovementGrant> movement_grants;
     std::vector<GameEvent> ai_events;
 
-    // Intentionally tick one month at a time. Economy, population and AI
-    // systems will be inserted inside this loop without changing commands.
+    // Intentionally tick one month at a time so every month observes state
+    // changes produced by all preceding monthly systems.
     for (std::int32_t month = 0; month < command.months; ++month) {
-        const MonthlyEconomyReport monthly_report = economy_system_.resolve_month(working_state);
-        for (const CountryIncome& income : monthly_report.incomes) {
+        const MonthlyFiscalReport monthly_report = economy_system_.resolve_month(working_state);
+        for (const CountryFiscalIncome& income : monthly_report.fiscal_incomes) {
             total_income[income.country_id] += income.amount;
         }
         const MonthlyPopulationReport population_report =
@@ -387,10 +387,10 @@ CommandResult CommandProcessor::execute_advance_turn(
         working_state.clock().advance_months(1);
     }
 
-    std::vector<CountryIncome> incomes;
-    incomes.reserve(total_income.size());
+    std::vector<CountryFiscalIncome> fiscal_incomes;
+    fiscal_incomes.reserve(total_income.size());
     for (const auto& [country_id, amount] : total_income) {
-        incomes.push_back(CountryIncome{country_id, amount});
+        fiscal_incomes.push_back(CountryFiscalIncome{country_id, amount});
     }
     std::vector<ProvincePopulationChange> changes;
     changes.reserve(population_changes.size());
@@ -405,10 +405,10 @@ CommandResult CommandProcessor::execute_advance_turn(
         grants.push_back(grant);
     }
 
-    GameEvent economy_event{
+    GameEvent fiscal_income_event{
         next_event_sequence_++,
-        GameEventType::economy_resolved,
-        EconomyResolvedEvent{command.months, std::move(incomes)},
+        GameEventType::fiscal_income_resolved,
+        FiscalIncomeResolvedEvent{command.months, std::move(fiscal_incomes)},
     };
     GameEvent population_event{
         next_event_sequence_++,
@@ -432,7 +432,7 @@ CommandResult CommandProcessor::execute_advance_turn(
         },
     };
 
-    ai_events.push_back(std::move(economy_event));
+    ai_events.push_back(std::move(fiscal_income_event));
     ai_events.push_back(std::move(population_event));
     ai_events.push_back(std::move(date_event));
     ai_events.push_back(std::move(turn_event));

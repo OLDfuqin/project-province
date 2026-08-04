@@ -1,6 +1,7 @@
 #include "province_bridge.hpp"
 
 #include "province/core/ai_system.hpp"
+#include "province/core/economy_system.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_status.hpp"
 #include "province/core/movement_system.hpp"
@@ -74,10 +75,18 @@ godot::Array ProvinceBridge::get_country_summaries() const {
 
     for (const auto& [country_id, country] : state_->countries()) {
         std::int64_t province_count = 0;
+        std::int64_t economy = 0;
+        std::int64_t fiscal_income = 0;
         for (const auto& [province_id, province] : state_->provinces()) {
             static_cast<void>(province);
             if (state_->controller_of(province_id) == country_id) {
                 ++province_count;
+                economy += province::core::EconomySystem::province_economy(
+                    *state_, province_id
+                );
+                fiscal_income += province::core::EconomySystem::province_fiscal_income(
+                    *state_, province_id
+                );
             }
         }
 
@@ -87,6 +96,8 @@ godot::Array ProvinceBridge::get_country_summaries() const {
         summary["color_rgb"] = static_cast<std::int64_t>(country.color_rgb);
         summary["treasury"] = country.treasury;
         summary["province_count"] = province_count;
+        summary["economy"] = economy;
+        summary["fiscal_income"] = fiscal_income;
         summaries.push_back(summary);
     }
     return summaries;
@@ -108,7 +119,11 @@ godot::Array ProvinceBridge::get_province_summaries() const {
         summary["occupied"] = controller != province.owner_id;
         summary["population"] = province.population;
         summary["recruitable_population"] = province.recruitable_population;
-        summary["economy"] = province.economy;
+        summary["economy"] = province::core::EconomySystem::province_economy(
+            *state_, province_id
+        );
+        summary["fiscal_income"] =
+            province::core::EconomySystem::province_fiscal_income(*state_, province_id);
         summary["terrain"] = province::core::terrain_name(province.terrain);
         summary["neighbor_count"] = static_cast<std::int64_t>(province.neighbors.size());
         godot::Array neighbors;
@@ -148,20 +163,23 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
     response["year"] = state_->clock().year();
     response["month"] = state_->clock().month();
 
-    godot::Array incomes;
+    godot::Array fiscal_incomes;
     godot::Array population_changes;
     godot::Array turn_actions;
     for (const province::core::GameEvent& event : result.events) {
-        if (event.type == province::core::GameEventType::economy_resolved) {
-            const auto& economy = std::get<province::core::EconomyResolvedEvent>(event.payload);
-            for (const province::core::CountryIncome& income : economy.incomes) {
+        if (event.type == province::core::GameEventType::fiscal_income_resolved) {
+            const auto& fiscal =
+                std::get<province::core::FiscalIncomeResolvedEvent>(event.payload);
+            for (const province::core::CountryFiscalIncome& income :
+                 fiscal.fiscal_incomes) {
                 godot::Dictionary income_summary;
                 income_summary["country_id"] =
                     godot::String::utf8(income.country_id.value().c_str());
                 income_summary["amount"] = income.amount;
-                incomes.push_back(income_summary);
+                fiscal_incomes.push_back(income_summary);
             }
-            response["economy_event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            response["fiscal_income_event_sequence"] =
+                static_cast<std::int64_t>(event.sequence);
         } else if (event.type == province::core::GameEventType::population_resolved) {
             const auto& population =
                 std::get<province::core::PopulationResolvedEvent>(event.payload);
@@ -244,7 +262,7 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
             turn_actions.push_back(action);
         }
     }
-    response["incomes"] = incomes;
+    response["fiscal_incomes"] = fiscal_incomes;
     response["population_changes"] = population_changes;
     response["turn_actions"] = turn_actions;
     response["ai_actions"] = turn_actions;

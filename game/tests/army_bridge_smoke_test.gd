@@ -17,9 +17,21 @@ func _initialize() -> void:
     bridge.set_ai_enabled(false, "auroria")
 
     var northreach_before: Dictionary = {}
+    var auroria_before: Dictionary = {}
     for province: Dictionary in bridge.get_province_summaries():
         if province["id"] == "northreach":
             northreach_before = province
+    for country: Dictionary in bridge.get_country_summaries():
+        if country["id"] == "auroria":
+            auroria_before = country
+    if northreach_before.get("economy", -1) != 120000 or \
+            northreach_before.get("fiscal_income", -1) != 1200 or \
+            auroria_before.get("economy", -1) != 370000 or \
+            auroria_before.get("fiscal_income", -1) != 3625:
+        push_error("Bridge did not expose derived province and country economy")
+        bridge.free()
+        quit(1)
+        return
     var result: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
     if not result.get("accepted", false) or result.get("cost", 0) != 1000:
         push_error("Bridge recruitment failed: %s" % result.get("error", "unknown"))
@@ -48,6 +60,10 @@ func _initialize() -> void:
             northreach.get("recruitable_population", -1) != 1000 or \
             northreach.get("recruitable_population", -1) != \
             northreach_before.get("recruitable_population", -1) - 1000 or \
+            northreach.get("economy", -1) != 119000 or \
+            northreach.get("fiscal_income", -1) != 1190 or \
+            auroria.get("economy", -1) != 369000 or \
+            auroria.get("fiscal_income", -1) != 3615 or \
             auroria.get("treasury", -1) != 9000:
         push_error("Recruitment was not reflected in bridge snapshots")
         bridge.free()
@@ -87,6 +103,9 @@ func _initialize() -> void:
     armies = bridge.get_army_summaries()
     if not road_result.get("accepted", false) or \
             not turn_result.get("accepted", false) or \
+            not turn_result.has("fiscal_incomes") or \
+            turn_result.has("incomes") or \
+            not turn_result.has("fiscal_income_event_sequence") or \
             not move_result.get("accepted", false) or \
             move_result.get("movement_cost", 0) != 1 or \
             armies[0]["province_id"] != "westmark" or \

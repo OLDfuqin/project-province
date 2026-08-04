@@ -106,6 +106,13 @@ func _initialize() -> void:
     var war_overview := main_scene.get_node(
         "RightPanel/Center/WarOverview"
     ) as Label
+    var first_country_label := country_list.get_child(0) as Label
+    if not first_country_label.text.contains("370000") or \
+            not first_country_label.text.contains("3625"):
+        push_error("Country summary did not display economy and fiscal income")
+        main_scene.free()
+        quit(1)
+        return
     if peace_policy.get_item_text(0) != "恢复战前边界" or \
             peace_policy.get_item_text(1) != "吞并占领地区" or \
             not (country_list.get_child(0) as Label).text.contains("国库") or \
@@ -159,6 +166,12 @@ func _initialize() -> void:
     advance_turn.pressed.emit()
     await process_frame
     await process_frame
+    var event_log := main_scene.get_node("RightPanel/Center/EventLog") as Label
+    if not event_log.text.contains("14590"):
+        push_error("Turn report did not display total fiscal income")
+        main_scene.free()
+        quit(1)
+        return
     var updated_right_rect := right_panel.get_global_rect()
     if not initial_right_rect.position.is_equal_approx(updated_right_rect.position) or \
             not initial_right_rect.size.is_equal_approx(updated_right_rect.size) or \

@@ -8,19 +8,26 @@
 
 namespace province::core {
 
-struct CountryIncome final {
+struct CountryFiscalIncome final {
     CountryId country_id;
     std::int64_t amount{};
 };
 
-struct MonthlyEconomyReport final {
-    std::vector<CountryIncome> incomes;
+struct MonthlyFiscalReport final {
+    std::vector<CountryFiscalIncome> fiscal_incomes;
 };
 
 class EconomySystem final {
 public:
-    [[nodiscard]] MonthlyEconomyReport resolve_month(GameState& state) const;
+    [[nodiscard]] static std::int64_t province_economy(
+        const GameState& state,
+        const ProvinceId& province_id
+    );
+    [[nodiscard]] static std::int64_t province_fiscal_income(
+        const GameState& state,
+        const ProvinceId& province_id
+    );
+    [[nodiscard]] MonthlyFiscalReport resolve_month(GameState& state) const;
 };
 
 } // namespace province::core
-

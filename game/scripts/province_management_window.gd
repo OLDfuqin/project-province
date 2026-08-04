@@ -48,10 +48,11 @@ func display_province(
     _province_id = province.get("id", "")
     _destination_id = ""
     $ProvinceName.text = province.get("name", _province_id)
-    $ProvinceSummary.text = "总人口：%d | 可招募士兵：%d | 经济：%d" % [
+    $ProvinceSummary.text = "总人口：%d | 可招募士兵：%d | 经济：%d | 财政收入：%d" % [
         province.get("population", 0),
         province.get("recruitable_population", 0),
         province.get("economy", 0),
+        province.get("fiscal_income", 0),
     ]
     var can_manage: bool = String(province.get("owner_id", "")) == player_country_id
     $RecruitArmy.disabled = (

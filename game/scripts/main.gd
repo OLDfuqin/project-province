@@ -661,10 +661,15 @@ func _refresh_country_list() -> void:
     for country: Dictionary in bridge.get_country_summaries():
         var label := Label.new()
         var rgb: int = country["color_rgb"]
-        label.text = "%s  ·  国库 %d  ·  地区 %d" % [
-            country["name"], country["treasury"], country["province_count"]
+        label.text = "%s · 国库 %d · 地区 %d · 经济 %d · 财政收入 %d" % [
+            country["name"],
+            country["treasury"],
+            country["province_count"],
+            country.get("economy", 0),
+            country.get("fiscal_income", 0),
         ]
         label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+        label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
         label.add_theme_font_size_override("font_size", 20)
         label.add_theme_color_override(
             "font_color",
@@ -1155,12 +1160,12 @@ func _on_advance_turn_pressed() -> void:
     _refresh_game_status()
     _refresh_province_summary()
     var total_income := 0
-    for income: Dictionary in result["incomes"]:
+    for income: Dictionary in result["fiscal_incomes"]:
         total_income += int(income["amount"])
     var total_growth := 0
     for change: Dictionary in result["population_changes"]:
         total_growth += int(change["growth"])
-    event_log.text = "事件 #%d：推进%d个月，收入%d，人口+%d（原日期 %d-%02d）" % [
+    event_log.text = "事件 #%d：推进%d个月，财政收入%d，人口增长%d（原日期 %d-%02d）" % [
         result["event_sequence"],
         result["elapsed_months"],
         total_income,

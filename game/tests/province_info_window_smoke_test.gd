@@ -36,7 +36,8 @@ func _initialize() -> void:
             not ownership.text.contains("奥罗里亚") or \
             not population.text.contains("120000") or \
             not population.text.contains("2000") or \
-            not economy.text.contains("80") or \
+            not economy.text.contains("120000") or \
+            not economy.text.ends_with("1200") or \
             not military.text.contains("0 支") or \
             not roads.text.contains("暂无道路"):
         push_error("Province information window did not show the Northreach snapshot")

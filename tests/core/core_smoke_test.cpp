@@ -15,9 +15,12 @@
 #include "province/core/stable_id.hpp"
 #include "province/core/version.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <iostream>
 #include <array>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 
 int main() {
@@ -33,7 +36,8 @@ int main() {
     using province::core::CommandProcessor;
     using province::core::CommandResult;
     using province::core::TurnAdvancedEvent;
-    using province::core::EconomyResolvedEvent;
+    using province::core::FiscalIncomeResolvedEvent;
+    using province::core::EconomySystem;
     using province::core::PopulationResolvedEvent;
     using province::core::MovementPointsGrantedEvent;
     using province::core::BuildRoadCommand;
@@ -90,7 +94,6 @@ int main() {
         CountryId{"auroria"},
         120'000,
         2'000,
-        80,
         {ProvinceId{"southpass"}},
     });
     state.add_province(Province{
@@ -99,7 +102,6 @@ int main() {
         CountryId{"verdantia"},
         90'000,
         1'500,
-        60,
         {ProvinceId{"northplain"}},
     });
 
@@ -111,6 +113,15 @@ int main() {
         std::cerr << "Valid GameState failed validation\n";
         return 1;
     }
+    state.find_technology(CountryId{"auroria"})->economy_level = 1;
+    state.set_occupation(ProvinceId{"southpass"}, CountryId{"auroria"});
+    if (EconomySystem::province_economy(state, ProvinceId{"southpass"}) != 99'000 ||
+        EconomySystem::province_fiscal_income(state, ProvinceId{"southpass"}) != 990) {
+        std::cerr << "Occupied province did not use controller economy technology\n";
+        return 1;
+    }
+    state.clear_occupation(ProvinceId{"southpass"});
+    state.find_technology(CountryId{"auroria"})->economy_level = 0;
 
     bool rejected_duplicate_country = false;
     try {
@@ -126,6 +137,29 @@ int main() {
     const GameState loaded_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
     if (loaded_state.country_count() != 4 || loaded_state.province_count() != 32) {
         std::cerr << "ScenarioLoader returned incorrect entity counts\n";
+        return 1;
+    }
+    if (EconomySystem::province_economy(
+            loaded_state,
+            ProvinceId{"northreach"}
+        ) != 120'000 ||
+        EconomySystem::province_fiscal_income(
+            loaded_state,
+            ProvinceId{"northreach"}
+        ) != 1'200 ||
+        EconomySystem::province_fiscal_income(
+            loaded_state,
+            ProvinceId{"z_gv_1"}
+        ) != 270 ||
+        EconomySystem::province_fiscal_income(
+            loaded_state,
+            ProvinceId{"z_wm_2"}
+        ) != 225 ||
+        EconomySystem::province_fiscal_income(
+            loaded_state,
+            ProvinceId{"z_nr_2"}
+        ) != 200) {
+        std::cerr << "Population and terrain fiscal formulas are incorrect\n";
         return 1;
     }
     if (loaded_state.find_country(CountryId{"auroria"}) == nullptr ||
@@ -198,6 +232,17 @@ int main() {
         recruiting_province->population != 119'000 ||
         recruiting_province->recruitable_population != 1'000) {
         std::cerr << "RecruitArmyCommand did not transfer funds and soldiers correctly\n";
+        return 1;
+    }
+    if (EconomySystem::province_economy(
+            recruitment_state,
+            ProvinceId{"northreach"}
+        ) != 119'000 ||
+        EconomySystem::province_fiscal_income(
+            recruitment_state,
+            ProvinceId{"northreach"}
+        ) != 1'190) {
+        std::cerr << "Recruitment population loss did not reduce economy and fiscal income\n";
         return 1;
     }
     const auto& recruited_event =
@@ -572,7 +617,8 @@ int main() {
         std::cerr << "AdvanceTurnCommand did not advance the state correctly\n";
         return 1;
     }
-    const auto& economy_event = std::get<EconomyResolvedEvent>(accepted.events[0].payload);
+    const auto& fiscal_income_event =
+        std::get<FiscalIncomeResolvedEvent>(accepted.events[0].payload);
     const auto& population_event =
         std::get<PopulationResolvedEvent>(accepted.events[1].payload);
     const auto& movement_event =
@@ -580,25 +626,25 @@ int main() {
     const auto& turn_event = std::get<TurnAdvancedEvent>(accepted.events[3].payload);
     if (accepted.events[0].sequence != 1 || accepted.events[1].sequence != 2 ||
         accepted.events[2].sequence != 3 || accepted.events[3].sequence != 4 ||
-        economy_event.elapsed_months != 3 || turn_event.elapsed_months != 3 ||
+        fiscal_income_event.elapsed_months != 3 || turn_event.elapsed_months != 3 ||
         movement_event.elapsed_months != 3 ||
         turn_event.previous_year != 1000 || turn_event.previous_month != 11) {
         std::cerr << "TurnAdvancedEvent contained incorrect data\n";
         return 1;
     }
     const Country* auroria_after_turn = turn_state.find_country(CountryId{"auroria"});
-    if (auroria_after_turn == nullptr || auroria_after_turn->treasury != 10'900) {
-        std::cerr << "EconomySystem did not add proportional monthly income\n";
+    if (auroria_after_turn == nullptr || auroria_after_turn->treasury != 20'881) {
+        std::cerr << "EconomySystem did not add population-derived fiscal income\n";
         return 1;
     }
     bool found_auroria_income = false;
-    for (const auto& income : economy_event.incomes) {
+    for (const auto& income : fiscal_income_event.fiscal_incomes) {
         if (income.country_id == CountryId{"auroria"}) {
-            found_auroria_income = income.amount == 900;
+            found_auroria_income = income.amount == 10'881;
         }
     }
     if (!found_auroria_income) {
-        std::cerr << "EconomyResolvedEvent did not report Auroria income\n";
+        std::cerr << "FiscalIncomeResolvedEvent did not report Auroria fiscal income\n";
         return 1;
     }
     const Province* northreach_after_turn =
@@ -641,7 +687,15 @@ int main() {
         return 1;
     }
 
-    for (const std::int32_t months : std::array{1, 3, 6, 12}) {
+    constexpr std::array turn_lengths{1, 3, 6, 12};
+    constexpr std::array<std::int64_t, 4> expected_auroria_treasuries{
+        13'625,
+        20'881,
+        31'789,
+        53'708,
+    };
+    for (std::size_t index = 0; index < turn_lengths.size(); ++index) {
+        const std::int32_t months = turn_lengths[index];
         GameState proportional_state =
             ScenarioLoader::load("game/data", GameClock{1000, 1});
         CommandProcessor proportional_processor;
@@ -652,8 +706,8 @@ int main() {
         const Country* proportional_country =
             proportional_state.find_country(CountryId{"auroria"});
         if (!proportional_result.accepted || proportional_country == nullptr ||
-            proportional_country->treasury != 10'000 + 300 * months) {
-            std::cerr << "Economy income is not proportional for turn length "
+            proportional_country->treasury != expected_auroria_treasuries[index]) {
+            std::cerr << "Fiscal income is incorrect for turn length "
                       << months << "\n";
             return 1;
         }
@@ -678,6 +732,8 @@ int main() {
     const Province* monthly_province =
         monthly_turn_state.find_province(ProvinceId{"northreach"});
     if (annual_province == nullptr || monthly_province == nullptr ||
+        single_turn_state.find_country(CountryId{"auroria"})->treasury !=
+            monthly_turn_state.find_country(CountryId{"auroria"})->treasury ||
         annual_province->population != monthly_province->population ||
         annual_province->recruitable_population !=
             monthly_province->recruitable_population ||
@@ -699,8 +755,8 @@ int main() {
     );
     if (!economy_research.accepted || economy_tech_state.find_technology(
             CountryId{"auroria"})->economy_level != 1 ||
-        economy_tech_state.find_country(CountryId{"auroria"})->treasury != 9'329) {
-        std::cerr << "Economy technology did not increase monthly income by ten percent\n";
+        economy_tech_state.find_country(CountryId{"auroria"})->treasury != 12'987) {
+        std::cerr << "Economy technology did not increase population-derived economy\n";
         return 1;
     }
     [[maybe_unused]] const CommandResult economy_level_two = economy_tech_processor.execute(
@@ -880,6 +936,20 @@ int main() {
         save_processor.next_event_sequence(),
         save_processor.human_country_id()
     );
+    {
+        std::ifstream saved_stream{save_path};
+        const nlohmann::json saved_document = nlohmann::json::parse(saved_stream);
+        bool saved_fixed_economy = false;
+        for (const auto& province_document : saved_document.at("provinces")) {
+            saved_fixed_economy = saved_fixed_economy ||
+                province_document.contains("economy");
+        }
+        if (saved_document.at("schema_version").get<std::int32_t>() != 3 ||
+            saved_fixed_economy) {
+            std::cerr << "Save game retained the fixed economy schema\n";
+            return 1;
+        }
+    }
     province::core::LoadedGame loaded_game =
         province::core::SaveGameSerializer::load(save_path);
     if (loaded_game.state.clock().year() != save_state.clock().year() ||

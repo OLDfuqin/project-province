@@ -15,7 +15,7 @@
 namespace province::core {
 
 enum class GameEventType : std::uint8_t {
-    economy_resolved,
+    fiscal_income_resolved,
     population_resolved,
     army_recruited,
     army_moved,
@@ -41,9 +41,9 @@ struct TurnAdvancedEvent final {
     std::int32_t elapsed_months{};
 };
 
-struct EconomyResolvedEvent final {
+struct FiscalIncomeResolvedEvent final {
     std::int32_t elapsed_months{};
-    std::vector<CountryIncome> incomes;
+    std::vector<CountryFiscalIncome> fiscal_incomes;
 };
 
 struct PopulationResolvedEvent final {
@@ -82,7 +82,7 @@ struct MovementPointsGrantedEvent final {
 
 using GameEventPayload =
     std::variant<
-        EconomyResolvedEvent,
+        FiscalIncomeResolvedEvent,
         PopulationResolvedEvent,
         ArmyRecruitedEvent,
         ArmyMovedEvent,

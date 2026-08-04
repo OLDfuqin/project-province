@@ -52,7 +52,8 @@ func _initialize() -> void:
             "owner_id": "auroria",
             "population": 120000,
             "recruitable_population": 1000,
-            "economy": 80,
+            "economy": 120000,
+            "fiscal_income": 1200,
         },
         [{
             "id": "army_1",
@@ -87,9 +88,12 @@ func _initialize() -> void:
 
     var technology_status := window.get_node("Technology/Status") as Label
     var advance_target := window.get_node("AdvanceTarget") as Label
+    var province_summary := window.get_node("ProvinceSummary") as Label
     if observed["research_track"] != "economy" or \
             observed["advance_army"] != "army_1" or \
             observed["plan_command"] != "pause:army_1" or \
+            not province_summary.text.contains("120000") or \
+            not province_summary.text.ends_with("1200") or \
             not technology_status.text.contains("道路 3") or \
             not advance_target.text.contains("河间"):
         _fail(window, "Province management component contract is incomplete")

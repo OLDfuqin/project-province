@@ -35,9 +35,6 @@ void GameState::add_province(Province province) {
     if (province.recruitable_population > province.population) {
         throw std::invalid_argument{"recruitable population cannot exceed total population"};
     }
-    if (province.economy < 0) {
-        throw std::invalid_argument{"province economy cannot be negative"};
-    }
     if (province.population_growth_remainder < 0 ||
         province.population_growth_remainder >= 10'000) {
         throw std::invalid_argument{"population growth remainder must be in [0, 10000)"};

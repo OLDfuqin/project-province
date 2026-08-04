@@ -22,7 +22,7 @@ struct LoadedGame final {
 
 class SaveGameSerializer final {
 public:
-    static constexpr std::int32_t schema_version = 2;
+    static constexpr std::int32_t schema_version = 3;
 
     static void save(
         const std::filesystem::path& path,
