@@ -1,6 +1,8 @@
 extends VBoxContainer
 
-signal recruit_requested(province_id: String)
+signal recruit_requested(province_id: String, manpower: int)
+signal rename_requested(army_id: String, formation_number: int)
+signal merge_requested(primary_army_id: String, merged_army_ids: Array)
 signal technology_research_requested(track: String)
 signal army_selected(army_id: String)
 signal destination_selection_requested(army_id: String)
@@ -15,10 +17,17 @@ var _selected_army_id := ""
 var _destination_id := ""
 var _advance_target_id := ""
 var _army_by_id: Dictionary = {}
+var _recruitable_population := 0
+var _player_treasury := 0
 
 
 func _ready() -> void:
-    $RecruitArmy.pressed.connect(_on_recruit_pressed)
+    $Recruitment/Open.pressed.connect(_on_recruit_open_pressed)
+    $Recruitment/Buttons/Confirm.pressed.connect(_on_recruit_confirm_pressed)
+    $Recruitment/Buttons/Cancel.pressed.connect(_close_recruitment)
+    $Rename/Confirm.pressed.connect(_on_rename_pressed)
+    $Merge/Candidates.multi_selected.connect(_on_merge_selection_changed)
+    $Merge/Confirm.pressed.connect(_on_merge_pressed)
     $Technology/Buttons/Economy.pressed.connect(
         func() -> void: technology_research_requested.emit("economy")
     )
@@ -43,7 +52,8 @@ func display_province(
     province: Dictionary,
     armies: Array,
     player_country_id: String,
-    preferred_army_id := ""
+    preferred_army_id := "",
+    player_treasury := 0
 ) -> void:
     _province_id = province.get("id", "")
     _destination_id = ""
@@ -55,9 +65,10 @@ func display_province(
         province.get("fiscal_income", 0),
     ]
     var can_manage: bool = String(province.get("owner_id", "")) == player_country_id
-    $RecruitArmy.disabled = (
-        not can_manage or int(province.get("recruitable_population", 0)) < 1000
-    )
+    _recruitable_population = int(province.get("recruitable_population", 0))
+    _player_treasury = int(player_treasury)
+    $Recruitment/Open.disabled = not can_manage or _maximum_recruitment() <= 0
+    _close_recruitment()
     _populate_armies(armies, player_country_id, preferred_army_id)
     _clear_destination()
     set_advance_target("", "")
@@ -115,6 +126,7 @@ func clear() -> void:
     _destination_id = ""
     _advance_target_id = ""
     _army_by_id.clear()
+    _close_recruitment()
     _clear_destination()
     set_advance_target("", "")
 
@@ -133,7 +145,9 @@ func _populate_armies(
             continue
         var army_id: String = army.get("id", "")
         _army_by_id[army_id] = army
-        $ArmySelector.add_item("%s（%d 人）" % [army_id, army.get("manpower", 0)])
+        $ArmySelector.add_item("%s（%d 人）" % [
+            army.get("display_name", army_id), army.get("manpower", 0)
+        ])
         $ArmySelector.set_item_metadata($ArmySelector.item_count - 1, army_id)
         if army_id == preferred_army_id:
             selected_index = $ArmySelector.item_count - 1
@@ -148,6 +162,7 @@ func _populate_armies(
         $AdvanceActions/AdvanceNow.disabled = true
         $AdvanceActions/ClearMovement.disabled = true
         set_advance_target("", "")
+        _refresh_rename_and_merge()
         return
 
     $ArmySelector.disabled = false
@@ -160,14 +175,19 @@ func _populate_armies(
     $ArmyActions/MoveArmy.disabled = true
     $AdvanceActions/SelectAdvanceTarget.disabled = false
     $AdvanceActions/ClearMovement.disabled = false
+    _refresh_rename_and_merge()
 
 
 func _refresh_army_details() -> void:
     var army: Dictionary = _army_by_id.get(_selected_army_id, {})
-    $ArmyDetails.text = "兵力：%d | 移动点：%d" % [
+    $ArmyDetails.text = "%s | 内部ID：%s | 兵力：%d | 移动点：%d" % [
+        army.get("display_name", _selected_army_id),
+        _selected_army_id,
         army.get("manpower", 0),
         army.get("movement_points", 0),
     ]
+    $Rename/FormationNumber.value = int(army.get("formation_number", 1))
+    _refresh_rename_and_merge()
 
 
 func _clear_destination() -> void:
@@ -176,9 +196,99 @@ func _clear_destination() -> void:
     $ArmyActions/MoveArmy.disabled = true
 
 
-func _on_recruit_pressed() -> void:
-    if not _province_id.is_empty():
-        recruit_requested.emit(_province_id)
+func _maximum_recruitment() -> int:
+    return min(_recruitable_population, _player_treasury)
+
+
+func _on_recruit_open_pressed() -> void:
+    var maximum := _maximum_recruitment()
+    $Recruitment/Details.text = "可招募士兵：%d | 国库：%d | 最大：%d" % [
+        _recruitable_population, _player_treasury, maximum
+    ]
+    $Recruitment/Amount.max_value = max(1, maximum)
+    $Recruitment/Amount.value = min(1000, max(1, maximum))
+    $Recruitment/Details.visible = true
+    $Recruitment/Amount.visible = true
+    $Recruitment/Buttons.visible = true
+
+
+func _close_recruitment() -> void:
+    $Recruitment/Details.visible = false
+    $Recruitment/Amount.visible = false
+    $Recruitment/Buttons.visible = false
+
+
+func _on_recruit_confirm_pressed() -> void:
+    var manpower := int($Recruitment/Amount.value)
+    if not _province_id.is_empty() and manpower > 0:
+        recruit_requested.emit(_province_id, manpower)
+
+
+func _on_rename_pressed() -> void:
+    if not _selected_army_id.is_empty():
+        rename_requested.emit(
+            _selected_army_id, int($Rename/FormationNumber.value)
+        )
+
+
+func _refresh_rename_and_merge() -> void:
+    $Rename/Confirm.disabled = _selected_army_id.is_empty()
+    $Merge/Candidates.clear()
+    if _selected_army_id.is_empty():
+        $Merge/Preview.text = "当前没有可管理的军队"
+        $Merge/Confirm.disabled = true
+        return
+    var primary: Dictionary = _army_by_id.get(_selected_army_id, {})
+    for army_id: String in _army_by_id:
+        if army_id == _selected_army_id:
+            continue
+        var army: Dictionary = _army_by_id[army_id]
+        $Merge/Candidates.add_item("%s（%d 人）" % [
+            army.get("display_name", army_id), army.get("manpower", 0)
+        ])
+        $Merge/Candidates.set_item_metadata(
+            $Merge/Candidates.item_count - 1, army_id
+        )
+    if $Merge/Candidates.item_count == 0:
+        $Merge/Preview.text = "该地区没有其他可合并军队"
+    else:
+        $Merge/Preview.text = "%s：请选择并入军队" % primary.get(
+            "display_name", _selected_army_id
+        )
+    $Merge/Confirm.disabled = true
+
+
+func _selected_merge_ids() -> Array:
+    var ids: Array = []
+    for index: int in $Merge/Candidates.get_selected_items():
+        ids.append(String($Merge/Candidates.get_item_metadata(index)))
+    return ids
+
+
+func _on_merge_selection_changed(_index: int, _selected: bool) -> void:
+    var ids := _selected_merge_ids()
+    $Merge/Confirm.disabled = ids.is_empty()
+    if ids.is_empty():
+        $Merge/Preview.text = "请选择需要并入主军的军队"
+        return
+    var primary: Dictionary = _army_by_id.get(_selected_army_id, {})
+    var total_manpower := int(primary.get("manpower", 0))
+    var movement_points := int(primary.get("movement_points", 0))
+    for army_id: String in ids:
+        var army: Dictionary = _army_by_id.get(army_id, {})
+        total_manpower += int(army.get("manpower", 0))
+        movement_points = min(movement_points, int(army.get("movement_points", 0)))
+    $Merge/Preview.text = "合并后：%s | 兵力%d | 移动点%d" % [
+        primary.get("display_name", _selected_army_id),
+        total_manpower,
+        movement_points,
+    ]
+
+
+func _on_merge_pressed() -> void:
+    var ids := _selected_merge_ids()
+    if not _selected_army_id.is_empty() and not ids.is_empty():
+        merge_requested.emit(_selected_army_id, ids)
 
 
 func _on_army_selected(index: int) -> void:

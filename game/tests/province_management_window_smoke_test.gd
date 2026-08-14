@@ -23,7 +23,7 @@ func _initialize() -> void:
         return
 
     province_map.province_double_clicked.emit("northreach")
-    var recruit := management.get_node("RecruitArmy") as Button
+    var recruit := management.get_node("Recruitment/Open") as Button
     var army_selector := management.get_node("ArmySelector") as OptionButton
     var select_destination := management.get_node("ArmyActions/SelectDestination") as Button
     var move_army := management.get_node("ArmyActions/MoveArmy") as Button
@@ -57,10 +57,35 @@ func _initialize() -> void:
         return
 
     recruit.pressed.emit()
+    management.get_node("Recruitment/Amount").value = 1000
+    management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
     if main_scene.workspace_mode_name() != "province_management" or \
             army_selector.item_count != 1 or \
             not management.get_node("ProvinceSummary").text.contains("可招募士兵：1000"):
         push_error("Recruitment did not refresh the open management window")
+        main_scene.free()
+        quit(1)
+        return
+
+    recruit.pressed.emit()
+    management.get_node("Recruitment/Amount").value = 500
+    management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
+    await process_frame
+    management.get_node("Rename/FormationNumber").value = 5
+    management.get_node("Rename/Confirm").pressed.emit()
+    await process_frame
+    var merge_candidates := management.get_node("Merge/Candidates") as ItemList
+    merge_candidates.select(0, false)
+    merge_candidates.multi_selected.emit(0, true)
+    management.get_node("Merge/Confirm").pressed.emit()
+    await process_frame
+    var merged_summary: Dictionary = {}
+    for summary: Dictionary in main_scene.get_node("SimulationBridge").get_army_summaries():
+        merged_summary = summary
+    if army_selector.item_count != 1 or \
+            merged_summary.get("manpower", 0) != 1500 or \
+            merged_summary.get("display_name", "") != "奥·第5军":
+        push_error("Rename and merge did not refresh the management window")
         main_scene.free()
         quit(1)
         return

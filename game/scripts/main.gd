@@ -78,6 +78,12 @@ func _ready() -> void:
     province_management_window.recruit_requested.connect(
         _on_management_recruit_requested
     )
+    province_management_window.rename_requested.connect(
+        _on_management_rename_requested
+    )
+    province_management_window.merge_requested.connect(
+        _on_management_merge_requested
+    )
     province_management_window.technology_research_requested.connect(
         _on_research_technology
     )
@@ -262,7 +268,8 @@ func _refresh_management_window(
         province,
         bridge.get_army_summaries(),
         PLAYER_COUNTRY_ID,
-        preferred_army_id
+        preferred_army_id,
+        _player_treasury()
     )
     province_management_window.set_technology(_player_technology())
     var selected_army_id := preferred_army_id
@@ -280,14 +287,21 @@ func _refresh_management_window(
         province_management_window.set_status(status_message)
 
 
-func _on_management_recruit_requested(province_id: String) -> void:
+func _player_treasury() -> int:
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == PLAYER_COUNTRY_ID:
+            return int(country.get("treasury", 0))
+    return 0
+
+
+func _on_management_recruit_requested(province_id: String, manpower: int) -> void:
     if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or \
             province_id != managed_province_id:
         return
     var result: Dictionary = bridge.recruit_army(
         PLAYER_COUNTRY_ID,
         province_id,
-        1000
+        manpower
     )
     if not result.get("accepted", false):
         var error_message := "招募失败：%s" % result.get("error", "未知错误")
@@ -297,7 +311,7 @@ func _on_management_recruit_requested(province_id: String) -> void:
 
     event_log.text = "事件 #%d：%s 招募%d人，支出%d" % [
         result["event_sequence"],
-        result["army_id"],
+        result.get("display_name", result["army_id"]),
         result["manpower"],
         result["cost"],
     ]
@@ -311,6 +325,52 @@ func _on_management_recruit_requested(province_id: String) -> void:
     _refresh_map_data()
     _refresh_province_summary()
     _refresh_management_window(result["army_id"], event_log.text)
+
+
+func _on_management_rename_requested(
+    army_id: String,
+    formation_number: int
+) -> void:
+    if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT:
+        return
+    var result: Dictionary = bridge.rename_army(army_id, formation_number)
+    if not result.get("accepted", false):
+        province_management_window.set_status(
+            "更名失败：%s" % result.get("error", "未知错误")
+        )
+        return
+    var message := "军队已更名为%s" % result.get("display_name", army_id)
+    _record_event(message)
+    _refresh_map_data()
+    _refresh_advance_plans()
+    _refresh_management_window(army_id, message)
+
+
+func _on_management_merge_requested(
+    primary_army_id: String,
+    merged_army_ids: Array
+) -> void:
+    if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT:
+        return
+    var result: Dictionary = bridge.merge_armies(
+        primary_army_id, merged_army_ids
+    )
+    if not result.get("accepted", false):
+        province_management_window.set_status(
+            "合并失败：%s" % result.get("error", "未知错误")
+        )
+        return
+    var primary := _find_army_by_id(primary_army_id)
+    var message := "%s完成合并，现有兵力%d" % [
+        primary.get("display_name", primary_army_id),
+        result.get("current_manpower", 0),
+    ]
+    _record_event(message)
+    moving_army_id = primary_army_id
+    _refresh_map_data()
+    _refresh_province_summary()
+    _refresh_advance_plans()
+    _refresh_management_window(primary_army_id, message)
 
 
 func _on_management_army_selected(army_id: String) -> void:

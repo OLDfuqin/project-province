@@ -19,9 +19,40 @@ layout_mode = 2
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="RecruitArmy" type="Button" parent="."]
+[node name="Recruitment" type="VBoxContainer" parent="."]
 layout_mode = 2
-text = "招募 1000 人陆军"
+
+[node name="Open" type="Button" parent="Recruitment"]
+layout_mode = 2
+text = "招募军队"
+
+[node name="Details" type="Label" parent="Recruitment"]
+visible = false
+layout_mode = 2
+text = "可招募士兵：0 | 国库：0 | 最大：0"
+horizontal_alignment = 1
+
+[node name="Amount" type="SpinBox" parent="Recruitment"]
+visible = false
+layout_mode = 2
+min_value = 1.0
+max_value = 1e+09
+step = 1.0
+value = 1.0
+allow_greater = true
+
+[node name="Buttons" type="HBoxContainer" parent="Recruitment"]
+visible = false
+layout_mode = 2
+alignment = 1
+
+[node name="Confirm" type="Button" parent="Recruitment/Buttons"]
+layout_mode = 2
+text = "确认招募"
+
+[node name="Cancel" type="Button" parent="Recruitment/Buttons"]
+layout_mode = 2
+text = "取消"
 
 [node name="Technology" type="VBoxContainer" parent="."]
 layout_mode = 2
@@ -62,6 +93,49 @@ layout_mode = 2
 [node name="ArmyDetails" type="Label" parent="."]
 layout_mode = 2
 horizontal_alignment = 1
+
+[node name="Rename" type="HBoxContainer" parent="."]
+layout_mode = 2
+alignment = 1
+
+[node name="Label" type="Label" parent="Rename"]
+layout_mode = 2
+text = "新军队编号"
+
+[node name="FormationNumber" type="SpinBox" parent="Rename"]
+layout_mode = 2
+min_value = 1.0
+max_value = 1e+09
+step = 1.0
+value = 1.0
+allow_greater = true
+
+[node name="Confirm" type="Button" parent="Rename"]
+layout_mode = 2
+disabled = true
+text = "更名"
+
+[node name="Merge" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Merge"]
+layout_mode = 2
+text = "合并同地区军队（可多选）"
+
+[node name="Candidates" type="ItemList" parent="Merge"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+select_mode = 1
+
+[node name="Preview" type="Label" parent="Merge"]
+layout_mode = 2
+text = "请选择需要并入主军的军队"
+horizontal_alignment = 1
+
+[node name="Confirm" type="Button" parent="Merge"]
+layout_mode = 2
+disabled = true
+text = "确认合并"
 
 [node name="DirectDestination" type="Label" parent="."]
 layout_mode = 2

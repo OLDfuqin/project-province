@@ -30,7 +30,9 @@ func _initialize() -> void:
     ) as Button
 
     province_map.province_double_clicked.emit("northreach")
-    management.get_node("RecruitArmy").pressed.emit()
+    management.get_node("Recruitment/Open").pressed.emit()
+    management.get_node("Recruitment/Amount").value = 1000
+    management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
     await process_frame
     var selector := management.get_node("ArmySelector") as OptionButton
     var army_id := String(selector.get_item_metadata(0))

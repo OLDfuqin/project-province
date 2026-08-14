@@ -103,7 +103,7 @@ static func advance_plans(
             strategy_label = "最大推进"
         lines.append("[url=select:%s]%s[/url]：%s → %s | %s | 策略：%s [url=strategy:%s:%s][切换为%s][/url] [url=%s:%s][%s][/url] [url=clear:%s][清除][/url]" % [
             army["id"],
-            army["id"], origin_name, target_name, status,
+            army.get("display_name", army["id"]), origin_name, target_name, status,
             GameText.advance_strategy(strategy),
             army["id"],
             next_strategy,

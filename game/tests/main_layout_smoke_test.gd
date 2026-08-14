@@ -138,7 +138,7 @@ func _initialize() -> void:
 
     var management_controls := [
         "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Technology/Buttons/Economy",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/RecruitArmy",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Recruitment/Open",
         "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/ArmyActions/MoveArmy",
         "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/AdvanceActions/AdvanceNow",
         "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/AdvancePlans",

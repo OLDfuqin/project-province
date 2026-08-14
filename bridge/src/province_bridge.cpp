@@ -609,6 +609,13 @@ godot::Dictionary ProvinceBridge::recruit_army(
             response["army_id"] = godot::String::utf8(recruited.army_id.value().c_str());
             response["cost"] = recruited.cost;
             response["manpower"] = recruited.manpower;
+            const province::core::Army* army = state_->find_army(recruited.army_id);
+            if (army != nullptr) {
+                response["formation_number"] = army->formation_number;
+                const std::string display_name =
+                    state_->army_display_name(recruited.army_id);
+                response["display_name"] = godot::String::utf8(display_name.c_str());
+            }
         }
     } catch (const std::exception& error) {
         response["accepted"] = false;
