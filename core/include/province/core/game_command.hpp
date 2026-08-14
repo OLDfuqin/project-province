@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <variant>
+#include <vector>
 
 namespace province::core {
 
@@ -23,6 +24,16 @@ struct RecruitArmyCommand final {
     CountryId country_id;
     ProvinceId province_id;
     std::int64_t manpower{};
+};
+
+struct RenameArmyCommand final {
+    ArmyId army_id;
+    std::int64_t formation_number{};
+};
+
+struct MergeArmiesCommand final {
+    ArmyId primary_army_id;
+    std::vector<ArmyId> merged_army_ids;
 };
 
 struct MoveArmyCommand final {
@@ -51,6 +62,8 @@ using GameCommand =
         AdvanceTurnCommand,
         BuildRoadCommand,
         RecruitArmyCommand,
+        RenameArmyCommand,
+        MergeArmiesCommand,
         MoveArmyCommand,
         DeclareWarCommand,
         MakePeaceCommand,

@@ -18,6 +18,8 @@ enum class GameEventType : std::uint8_t {
     fiscal_income_resolved,
     population_resolved,
     army_recruited,
+    army_renamed,
+    armies_merged,
     army_moved,
     battle_resolved,
     movement_points_granted,
@@ -67,6 +69,21 @@ struct ArmyRecruitedEvent final {
     std::int64_t cost{};
 };
 
+struct ArmyRenamedEvent final {
+    ArmyId army_id;
+    CountryId country_id;
+    std::int64_t previous_formation_number{};
+    std::int64_t current_formation_number{};
+};
+
+struct ArmiesMergedEvent final {
+    ArmyId primary_army_id;
+    std::vector<ArmyId> merged_army_ids;
+    std::int64_t previous_manpower{};
+    std::int64_t current_manpower{};
+    std::int32_t current_movement_points{};
+};
+
 struct ArmyMovedEvent final {
     ArmyId army_id;
     ProvinceId origin;
@@ -85,6 +102,8 @@ using GameEventPayload =
         FiscalIncomeResolvedEvent,
         PopulationResolvedEvent,
         ArmyRecruitedEvent,
+        ArmyRenamedEvent,
+        ArmiesMergedEvent,
         ArmyMovedEvent,
         BattleResolution,
         MovementPointsGrantedEvent,

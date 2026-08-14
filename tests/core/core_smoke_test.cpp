@@ -39,6 +39,8 @@ int main() {
     using province::core::MovementPointsGrantedEvent;
     using province::core::BuildRoadCommand;
     using province::core::RecruitArmyCommand;
+    using province::core::RenameArmyCommand;
+    using province::core::MergeArmiesCommand;
     using province::core::MoveArmyCommand;
     using province::core::DeclareWarCommand;
     using province::core::MakePeaceCommand;
@@ -268,6 +270,79 @@ int main() {
             }
         )) {
         std::cerr << "Duplicate same-country formation number passed validation\n";
+        return 1;
+    }
+
+    const CommandResult renamed_army = army_identity_processor.execute(
+        army_identity_state,
+        RenameArmyCommand{replacement_aurorian_id, 5}
+    );
+    if (!renamed_army.accepted ||
+        army_identity_state.find_army(replacement_aurorian_id)->formation_number != 5) {
+        std::cerr << "Army rename was not applied\n";
+        return 1;
+    }
+    const CommandResult conflicting_rename = army_identity_processor.execute(
+        army_identity_state,
+        RenameArmyCommand{second_aurorian_id, 5}
+    );
+    if (conflicting_rename.accepted ||
+        army_identity_state.find_army(second_aurorian_id)->formation_number != 2) {
+        std::cerr << "Duplicate formation rename was not rejected atomically\n";
+        return 1;
+    }
+    const CommandResult cross_country_rename = army_identity_processor.execute(
+        army_identity_state,
+        RenameArmyCommand{first_caelan_id, 5}
+    );
+    if (!cross_country_rename.accepted) {
+        std::cerr << "Cross-country matching formation number was rejected\n";
+        return 1;
+    }
+
+    const CommandResult merge_candidate = army_identity_processor.execute(
+        army_identity_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 150}
+    );
+    const ArmyId merge_candidate_id = std::get<ArmyRecruitedEvent>(
+        merge_candidate.events.front().payload
+    ).army_id;
+    province::core::Army* primary_army =
+        army_identity_state.find_army(replacement_aurorian_id);
+    province::core::Army* absorbed_army =
+        army_identity_state.find_army(merge_candidate_id);
+    primary_army->movement_points = 4;
+    primary_army->advance_target = ProvinceId{"westmark"};
+    primary_army->advance_enabled = false;
+    primary_army->advance_strategy = "one_step";
+    absorbed_army->movement_points = 2;
+    const std::int64_t primary_number = primary_army->formation_number;
+    const CommandResult merged_armies = army_identity_processor.execute(
+        army_identity_state,
+        MergeArmiesCommand{replacement_aurorian_id, {merge_candidate_id}}
+    );
+    primary_army = army_identity_state.find_army(replacement_aurorian_id);
+    if (!merged_armies.accepted || primary_army == nullptr ||
+        primary_army->manpower != 250 || primary_army->movement_points != 2 ||
+        primary_army->formation_number != primary_number ||
+        primary_army->advance_target != ProvinceId{"westmark"} ||
+        primary_army->advance_enabled || primary_army->advance_strategy != "one_step" ||
+        army_identity_state.find_army(merge_candidate_id) != nullptr) {
+        std::cerr << "Army merge did not preserve primary state and combine forces\n";
+        return 1;
+    }
+    const std::size_t army_count_before_invalid_merge = army_identity_state.army_count();
+    const std::int64_t manpower_before_invalid_merge = primary_army->manpower;
+    const CommandResult invalid_merge = army_identity_processor.execute(
+        army_identity_state,
+        MergeArmiesCommand{replacement_aurorian_id, {first_caelan_id}}
+    );
+    if (invalid_merge.accepted ||
+        army_identity_state.army_count() != army_count_before_invalid_merge ||
+        army_identity_state.find_army(replacement_aurorian_id)->manpower !=
+            manpower_before_invalid_merge ||
+        army_identity_state.find_army(first_caelan_id) == nullptr) {
+        std::cerr << "Invalid cross-country merge was not rejected atomically\n";
         return 1;
     }
     army_identity_state.find_army(replacement_aurorian_id)->formation_number = 1;

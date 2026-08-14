@@ -45,6 +45,10 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
                 return execute_build_road(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, RecruitArmyCommand>) {
                 return execute_recruit_army(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, RenameArmyCommand>) {
+                return execute_rename_army(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, MergeArmiesCommand>) {
+                return execute_merge_armies(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, MoveArmyCommand>) {
                 return execute_move_army(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, DeclareWarCommand>) {
@@ -57,6 +61,61 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
         },
         command
     );
+}
+
+CommandResult CommandProcessor::execute_rename_army(
+    GameState& state,
+    const RenameArmyCommand& command
+) {
+    GameState working_state = state;
+    const ArmyRenameResult renamed = army_system_.rename(
+        working_state,
+        command.army_id,
+        command.formation_number
+    );
+    if (!renamed.accepted) {
+        return {false, renamed.error, {}};
+    }
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::army_renamed,
+        ArmyRenamedEvent{
+            command.army_id,
+            renamed.country_id,
+            renamed.previous_formation_number,
+            renamed.current_formation_number,
+        },
+    };
+    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
+}
+
+CommandResult CommandProcessor::execute_merge_armies(
+    GameState& state,
+    const MergeArmiesCommand& command
+) {
+    GameState working_state = state;
+    const ArmyMergeResult merged = army_system_.merge(
+        working_state,
+        command.primary_army_id,
+        command.merged_army_ids
+    );
+    if (!merged.accepted) {
+        return {false, merged.error, {}};
+    }
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::armies_merged,
+        ArmiesMergedEvent{
+            command.primary_army_id,
+            command.merged_army_ids,
+            merged.previous_manpower,
+            merged.current_manpower,
+            merged.current_movement_points,
+        },
+    };
+    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
 }
 
 CommandResult CommandProcessor::execute_research_technology(

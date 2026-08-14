@@ -50,6 +50,14 @@ private:
         GameState& state,
         const RecruitArmyCommand& command
     );
+    [[nodiscard]] CommandResult execute_rename_army(
+        GameState& state,
+        const RenameArmyCommand& command
+    );
+    [[nodiscard]] CommandResult execute_merge_armies(
+        GameState& state,
+        const MergeArmiesCommand& command
+    );
     [[nodiscard]] CommandResult execute_move_army(
         GameState& state,
         const MoveArmyCommand& command
