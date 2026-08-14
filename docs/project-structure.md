@@ -68,9 +68,9 @@ Godot/C++ 适配
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
 | `stable_id.hpp` | 仅头文件 | 定义国家、地区、军队的强类型稳定字符串 ID，避免不同 ID 混用。 |
-| `country.hpp` | 仅头文件 | 定义国家状态，例如名称、国库和控制信息所需的国家数据。 |
+| `country.hpp` | 仅头文件 | 定义国家状态，例如名称、单字代号、国库和控制信息所需的国家数据。 |
 | `province.hpp` | 仅头文件 | 定义地区状态，包括归属、控制、人口、可招募士兵、地形和经济等。 |
-| `army.hpp` | 仅头文件 | 定义军队状态，包括所有者、位置、兵力、移动点和自动推进计划。 |
+| `army.hpp` | 仅头文件 | 定义军队状态，包括所有者、本国编制编号、位置、兵力、移动点和自动推进计划。 |
 | `terrain.hpp` | 仅头文件 | 定义平原、森林、丘陵、山地四类地形。 |
 | `diplomacy.hpp` | 仅头文件 | 定义外交状态、和平结算策略和无序国家关系键。 |
 | `technology.hpp` | 仅头文件 | 定义经济、军事、道路科技分支及国家科技等级。 |
@@ -83,7 +83,7 @@ Godot/C++ 适配
 | --- | --- | --- |
 | `game_state.hpp` | `game_state.cpp` | 权威运行时状态容器；保存国家、地区、军队、道路、外交、科技和时钟，并提供查询、校验及受控修改入口。 |
 | `game_clock.hpp` | `game_clock.cpp` | 管理游戏年月和按 1、3、6、12 个月推进的日期计算。 |
-| `game_command.hpp` | 由命令处理器实现 | 定义推进回合、修路、征兵、移动、宣战、议和和研究科技等命令数据。 |
+| `game_command.hpp` | 由命令处理器实现 | 定义推进回合、修路、征兵、更名、合并、移动、宣战、议和和研究科技等命令数据。 |
 | `game_event.hpp` | 由各系统产生 | 定义操作和月度结算事件，用于结果反馈、回合行动摘要和战斗报告。 |
 | `command_processor.hpp` | `command_processor.cpp` | 所有外部状态变更的统一入口；校验并执行命令、编排各规则系统、返回事件和错误。 |
 | `game_status.hpp` | `game_status.cpp` | 汇总国家是否仍存续、胜负状态及整局游戏状态。 |
@@ -100,7 +100,7 @@ Godot/C++ 适配
 
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
-| `army_system.hpp` | `army_system.cpp` | 处理征兵、兵源与人口扣减、军队创建和驻军相关规则。 |
+| `army_system.hpp` | `army_system.cpp` | 处理征兵、兵源与人口扣减、编制编号、军队更名和同地军队合并规则。 |
 | `movement_system.hpp` | `movement_system.cpp` | 发放移动点、计算道路移动成本、寻路并执行军队移动。 |
 | `battle_system.hpp` | `battle_system.cpp` | 自动结算敌军接触后的战斗、损失、胜负、撤退和占领。 |
 | `road_system.hpp` | `road_system.cpp` | 校验相邻地区、所有权和费用，创建或升级道路连接。 |
@@ -168,7 +168,7 @@ Godot/C++ 适配
 | `main.gd` | 主界面协调器；连接节点信号，切换功能窗口和地图输入模式，调用桥接 API，刷新日期、国家、外交、科技、地图和行动报告。 |
 | `province_map.gd` | `ProvinceMap` 自绘地图控件；加载多边形、缩放拖动、命中测试，并绘制国家颜色、道路、军队、前线和推进路径。 |
 | `province_info_window.gd` | 把地区、国家、军队和道路查询结果格式化为单击地区的只读信息。 |
-| `province_management_window.gd` | 管理双击地区窗口的显示状态，发出征兵、选军、移动、自动推进、清除计划和科技操作信号。 |
+| `province_management_window.gd` | 管理双击地区窗口的显示状态，发出自定义数量征兵、军队更名、多选合并、移动、自动推进、清除计划和科技操作信号。 |
 | `road_construction_window.gd` | 管理修路窗口的起终点选择流程、预计费用、提示文字和重置状态。 |
 | `main.gd.uid` | Godot 为主脚本生成的资源 UID；当前已受版本控制，避免手工修改。 |
 
@@ -212,7 +212,7 @@ Godot/C++ 适配
 | `map_smoke_test.gd` | 验证地图几何加载、地区命中、地图数据和绘制所需状态。 |
 | `main_layout_smoke_test.gd` | 验证主页面关键控件、功能区边界和布局不重叠。 |
 | `game_status_bridge_smoke_test.gd` | 验证游戏状态和国家存续信息能通过桥接层正确读取。 |
-| `army_bridge_smoke_test.gd` | 验证征兵、移动、战斗和军队推进策略的桥接行为。 |
+| `army_bridge_smoke_test.gd` | 验证征兵、编制名称、更名、合并、移动、战斗和军队推进策略的桥接行为。 |
 | `road_bridge_smoke_test.gd` | 验证道路修建、费用、连接和移动效果的桥接行为。 |
 | `technology_bridge_smoke_test.gd` | 验证科技研究、费用和效果查询的桥接行为。 |
 | `ai_bridge_smoke_test.gd` | 验证 AI 回合行动通过桥接层执行并返回结果。 |
@@ -281,6 +281,7 @@ Godot 测试是独立脚本，通常使用控制台版 Godot 以 `--headless --s
 | --- | --- | --- |
 | 修改经济或财政收入 | `economy_system.*` | `current-game-rules.md`、核心测试、国家/地区摘要 |
 | 修改人口或可招募士兵 | `population_system.*`、必要时 `army_system.*` | 规则文档、征兵测试、存档 |
+| 修改军队编号、更名或合并 | `army_system.*`、`game_command.hpp` | 存档、桥接 API、地区管理窗口和军队测试 |
 | 修改战斗、占领或撤退 | `battle_system.*`、`command_processor.cpp` | 军队桥接测试、事件文本、和平逻辑 |
 | 修改移动点或道路效率 | `movement_system.*`、`road_system.*` | 地图路径预览、道路测试、科技效果 |
 | 修改宣战或和平 | `diplomacy.hpp`、`peace_system.*`、`command_processor.cpp` | 外交 UI、国家关系和军队遣返测试 |
