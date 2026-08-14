@@ -63,7 +63,10 @@ std::string legacy_country_code(const CountryId& country_id) {
     if (country_id == CountryId{"solmere"}) {
         return "\xE7\xB4\xA2";
     }
-    return country_id.value();
+    throw SaveGameError{
+        "schema 3 save contains a country without a known code: " +
+        country_id.value()
+    };
 }
 
 } // namespace
@@ -101,6 +104,7 @@ void SaveGameSerializer::save(
         document["countries"].push_back({
             {"id", country_id.value()},
             {"name", country.name},
+            {"code", country.code},
             {"color_rgb", country.color_rgb},
             {"treasury", country.treasury},
         });
@@ -135,6 +139,7 @@ void SaveGameSerializer::save(
             {"province_id", army.province_id.value()},
             {"manpower", army.manpower},
             {"movement_points", army.movement_points},
+            {"formation_number", army.formation_number},
         };
         if (army.advance_target.has_value()) {
             army_document["advance_target"] = army.advance_target->value();
@@ -206,10 +211,10 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
     try {
         const Json document = Json::parse(stream);
         const std::int32_t version = document.at("schema_version").get<std::int32_t>();
-        if (version != schema_version) {
+        if (version != 3 && version != schema_version) {
             throw SaveGameError{
                 "unsupported save schema version " + std::to_string(version) +
-                "; expected " + std::to_string(schema_version)
+                "; expected 3 or " + std::to_string(schema_version)
             };
         }
         const Json& clock = document.at("clock");
@@ -224,7 +229,9 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                 entry.at("name").get<std::string>(),
                 entry.at("color_rgb").get<std::uint32_t>(),
                 entry.at("treasury").get<std::int64_t>(),
-                legacy_country_code(country_id),
+                version == 3
+                    ? legacy_country_code(country_id)
+                    : entry.at("code").get<std::string>(),
             });
         }
         for (const Json& entry : document.at("provinces")) {
@@ -268,7 +275,9 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                     std::move(advance_target),
                     entry.value("advance_enabled", true),
                     entry.value("advance_strategy", std::string{"max"}),
-                    state.next_formation_number(owner_id),
+                    version == 3
+                        ? state.next_formation_number(owner_id)
+                        : entry.at("formation_number").get<std::int64_t>(),
                 }
             );
             static_cast<void>(iterator);

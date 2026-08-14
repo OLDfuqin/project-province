@@ -27,6 +27,7 @@ bool run_save_game_smoke_tests() {
     using province::core::MoveArmyCommand;
     using province::core::ProvinceId;
     using province::core::RecruitArmyCommand;
+    using province::core::RenameArmyCommand;
     using province::core::ResearchTechnologyCommand;
     using province::core::RoadLevel;
     using province::core::ScenarioLoader;
@@ -45,6 +46,10 @@ bool run_save_game_smoke_tests() {
     );
     const ArmyId saved_army_id =
         std::get<ArmyRecruitedEvent>(recruitment.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult renamed = processor.execute(
+        state,
+        RenameArmyCommand{saved_army_id, 5}
+    );
     [[maybe_unused]] const CommandResult road = processor.execute(
         state,
         BuildRoadCommand{
@@ -78,9 +83,13 @@ bool run_save_game_smoke_tests() {
             saved_fixed_economy = saved_fixed_economy ||
                 province_document.contains("economy");
         }
-        if (saved_document.at("schema_version").get<std::int32_t>() != 3 ||
-            saved_fixed_economy) {
-            std::cerr << "Save game retained the fixed economy schema\n";
+        const auto& saved_country = saved_document.at("countries").front();
+        const auto& saved_army = saved_document.at("armies").front();
+        if (saved_document.at("schema_version").get<std::int32_t>() != 4 ||
+            saved_fixed_economy || !saved_country.contains("code") ||
+            !saved_army.contains("formation_number") ||
+            saved_army.at("formation_number").get<std::int64_t>() != 5) {
+            std::cerr << "Save game did not write formation identity schema\n";
             return false;
         }
     }
@@ -96,10 +105,36 @@ bool run_save_game_smoke_tests() {
         loaded.state.find_army(saved_army_id) == nullptr ||
         loaded.state.find_army(saved_army_id)->movement_points !=
             state.find_army(saved_army_id)->movement_points ||
+        loaded.state.find_army(saved_army_id)->formation_number != 5 ||
+        loaded.state.find_country(CountryId{"auroria"})->code !=
+            state.find_country(CountryId{"auroria"})->code ||
         loaded.next_event_sequence != processor.next_event_sequence() ||
         !loaded.human_country_id.has_value() ||
         *loaded.human_country_id != CountryId{"auroria"}) {
         std::cerr << "Save game round trip did not preserve simulation state\n";
+        return false;
+    }
+
+    const std::filesystem::path legacy_path = "build/save_game_schema3_test.json";
+    {
+        std::ifstream saved_stream{save_path};
+        nlohmann::json legacy_document = nlohmann::json::parse(saved_stream);
+        legacy_document["schema_version"] = 3;
+        for (auto& country_document : legacy_document.at("countries")) {
+            country_document.erase("code");
+        }
+        for (auto& army_document : legacy_document.at("armies")) {
+            army_document.erase("formation_number");
+        }
+        std::ofstream legacy_stream{legacy_path};
+        legacy_stream << legacy_document.dump(2) << '\n';
+    }
+    const province::core::LoadedGame legacy_loaded =
+        province::core::SaveGameSerializer::load(legacy_path);
+    if (legacy_loaded.state.find_army(saved_army_id) == nullptr ||
+        legacy_loaded.state.find_army(saved_army_id)->formation_number != 1 ||
+        legacy_loaded.state.find_country(CountryId{"auroria"})->code.empty()) {
+        std::cerr << "Schema 3 formation identity migration failed\n";
         return false;
     }
     CommandProcessor restored_processor;
@@ -117,5 +152,6 @@ bool run_save_game_smoke_tests() {
         return false;
     }
     std::filesystem::remove(save_path);
+    std::filesystem::remove(legacy_path);
     return true;
 }
