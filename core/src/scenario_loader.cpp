@@ -18,7 +18,7 @@
 namespace province::core {
 namespace {
 
-constexpr std::int32_t supported_schema_version = 3;
+constexpr std::int32_t supported_schema_version = 4;
 
 using Json = nlohmann::json;
 
@@ -78,6 +78,7 @@ void load_countries(GameState& state, const std::filesystem::path& path) {
                 entry.at("name").get<std::string>(),
                 parse_color(entry.at("color").get<std::string>()),
                 entry.at("treasury").get<std::int64_t>(),
+                entry.at("code").get<std::string>(),
             });
         }
     } catch (const DataLoadError&) {

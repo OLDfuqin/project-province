@@ -65,6 +65,10 @@ public:
     [[nodiscard]] Army* find_army(const ArmyId& id) noexcept;
     [[nodiscard]] const std::map<ArmyId, Army>& armies() const noexcept;
     [[nodiscard]] std::size_t army_count() const noexcept;
+    [[nodiscard]] std::int64_t next_formation_number(
+        const CountryId& owner_id
+    ) const;
+    [[nodiscard]] std::string army_display_name(const ArmyId& army_id) const;
     void remove_army(const ArmyId& id);
     [[nodiscard]] CountryId controller_of(const ProvinceId& province_id) const;
     void set_occupation(const ProvinceId& province_id, const CountryId& controller_id);

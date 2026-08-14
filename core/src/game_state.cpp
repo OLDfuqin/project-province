@@ -1,6 +1,7 @@
 #include "province/core/game_state.hpp"
 
 #include <algorithm>
+#include <set>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -13,6 +14,9 @@ GameState::GameState(GameClock clock) : clock_{std::move(clock)} {}
 void GameState::add_country(Country country) {
     if (country.name.empty()) {
         throw std::invalid_argument{"country name cannot be empty"};
+    }
+    if (country.code.empty()) {
+        throw std::invalid_argument{"country code cannot be empty"};
     }
     if (country.treasury < 0) {
         throw std::invalid_argument{"country treasury cannot be negative at creation"};
@@ -165,9 +169,20 @@ ArmyId GameState::create_army(
     }
 
     ArmyId id{"army_" + std::to_string(next_army_sequence_++)};
+    const std::int64_t formation_number = next_formation_number(owner_id);
     const auto [iterator, inserted] = armies_.emplace(
         id,
-        Army{id, owner_id, province_id, manpower, 0, std::nullopt, true, "max"}
+        Army{
+            id,
+            owner_id,
+            province_id,
+            manpower,
+            0,
+            std::nullopt,
+            true,
+            "max",
+            formation_number,
+        }
     );
     if (!inserted) {
         throw std::logic_error{"generated duplicate army ID"};
@@ -191,6 +206,37 @@ const std::map<ArmyId, Army>& GameState::armies() const noexcept {
 
 std::size_t GameState::army_count() const noexcept {
     return armies_.size();
+}
+
+std::int64_t GameState::next_formation_number(const CountryId& owner_id) const {
+    if (find_country(owner_id) == nullptr) {
+        throw std::invalid_argument{"army owner does not exist"};
+    }
+    std::set<std::int64_t> used_numbers;
+    for (const auto& [army_id, army] : armies_) {
+        static_cast<void>(army_id);
+        if (army.owner_id == owner_id && army.formation_number > 0) {
+            used_numbers.insert(army.formation_number);
+        }
+    }
+    std::int64_t candidate = 1;
+    while (used_numbers.contains(candidate)) {
+        ++candidate;
+    }
+    return candidate;
+}
+
+std::string GameState::army_display_name(const ArmyId& army_id) const {
+    const Army* army = find_army(army_id);
+    if (army == nullptr) {
+        throw std::invalid_argument{"army does not exist"};
+    }
+    const Country* country = find_country(army->owner_id);
+    if (country == nullptr) {
+        throw std::logic_error{"army owner does not exist"};
+    }
+    return country->code + "\xC2\xB7\xE7\xAC\xAC" +
+        std::to_string(army->formation_number) + "\xE5\x86\x9B";
 }
 
 void GameState::remove_army(const ArmyId& id) {
@@ -287,6 +333,15 @@ const std::map<CountryRelationKey, DiplomaticStatus>& GameState::relations() con
 std::vector<std::string> GameState::validate() const {
     std::vector<std::string> issues;
 
+    std::set<std::string> country_codes;
+    for (const auto& [country_id, country] : countries_) {
+        if (country.code.empty()) {
+            issues.push_back("country '" + country_id.value() + "' has an empty code");
+        } else if (!country_codes.insert(country.code).second) {
+            issues.push_back("country '" + country_id.value() + "' has a duplicate code");
+        }
+    }
+
     for (const auto& [province_id, province] : provinces_) {
         if (!countries_.contains(province.owner_id)) {
             issues.push_back(
@@ -314,6 +369,7 @@ std::vector<std::string> GameState::validate() const {
             }
         }
     }
+    std::map<CountryId, std::set<std::int64_t>> formation_numbers;
     for (const auto& [army_id, army] : armies_) {
         if (!countries_.contains(army.owner_id)) {
             issues.push_back("army '" + army_id.value() + "' has an unknown owner");
@@ -323,6 +379,13 @@ std::vector<std::string> GameState::validate() const {
         }
         if (army.manpower <= 0) {
             issues.push_back("army '" + army_id.value() + "' has non-positive manpower");
+        }
+        if (army.formation_number <= 0) {
+            issues.push_back("army '" + army_id.value() + "' has a non-positive formation number");
+        } else if (!formation_numbers[army.owner_id]
+                        .insert(army.formation_number)
+                        .second) {
+            issues.push_back("army '" + army_id.value() + "' has a duplicate formation number");
         }
         if (army.movement_points < 0) {
             issues.push_back("army '" + army_id.value() + "' has negative movement points");

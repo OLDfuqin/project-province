@@ -17,6 +17,7 @@ struct Army final {
     std::optional<ProvinceId> advance_target;
     bool advance_enabled{true};
     std::string advance_strategy{"max"};
+    std::int64_t formation_number{};
 };
 
 } // namespace province::core

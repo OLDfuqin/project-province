@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "provinces": [
     {"id":"northreach","name":"北境","owner_id":"auroria","population":120000,"recruitable_population":2000,"neighbors":["redpass","westmark","z_nr_1"]},
     {"id":"z_nr_1","name":"霜原","owner_id":"auroria","population":30000,"recruitable_population":500,"neighbors":["northreach","z_nr_2","z_rp_1","z_wm_1"]},

@@ -50,6 +50,22 @@ std::string join_issues(const std::vector<std::string>& issues) {
     return message.str();
 }
 
+std::string legacy_country_code(const CountryId& country_id) {
+    if (country_id == CountryId{"auroria"}) {
+        return "\xE5\xA5\xA5";
+    }
+    if (country_id == CountryId{"verdantia"}) {
+        return "\xE7\xBB\xB4";
+    }
+    if (country_id == CountryId{"caelus"}) {
+        return "\xE5\x87\xAF";
+    }
+    if (country_id == CountryId{"solmere"}) {
+        return "\xE7\xB4\xA2";
+    }
+    return country_id.value();
+}
+
 } // namespace
 
 SaveGameError::SaveGameError(const std::string& message) : std::runtime_error{message} {}
@@ -202,11 +218,13 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
             clock.at("month").get<std::int32_t>(),
         }};
         for (const Json& entry : document.at("countries")) {
+            const CountryId country_id{entry.at("id").get<std::string>()};
             state.add_country(Country{
-                CountryId{entry.at("id").get<std::string>()},
+                country_id,
                 entry.at("name").get<std::string>(),
                 entry.at("color_rgb").get<std::uint32_t>(),
                 entry.at("treasury").get<std::int64_t>(),
+                legacy_country_code(country_id),
             });
         }
         for (const Json& entry : document.at("provinces")) {
@@ -234,6 +252,7 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
         }
         for (const Json& entry : document.at("armies")) {
             const ArmyId id{entry.at("id").get<std::string>()};
+            const CountryId owner_id{entry.at("owner_id").get<std::string>()};
             std::optional<ProvinceId> advance_target;
             if (entry.contains("advance_target")) {
                 advance_target.emplace(entry.at("advance_target").get<std::string>());
@@ -242,13 +261,14 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                 id,
                 Army{
                     id,
-                    CountryId{entry.at("owner_id").get<std::string>()},
+                    owner_id,
                     ProvinceId{entry.at("province_id").get<std::string>()},
                     entry.at("manpower").get<std::int64_t>(),
                     entry.at("movement_points").get<std::int32_t>(),
                     std::move(advance_target),
                     entry.value("advance_enabled", true),
                     entry.value("advance_strategy", std::string{"max"}),
+                    state.next_formation_number(owner_id),
                 }
             );
             static_cast<void>(iterator);

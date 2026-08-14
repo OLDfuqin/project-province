@@ -82,8 +82,8 @@ int main() {
     }
 
     GameState state{GameClock{1000, 1}};
-    state.add_country(Country{CountryId{"auroria"}, "Auroria", 0xC94B4B, 10'000});
-    state.add_country(Country{CountryId{"verdantia"}, "Verdantia", 0x4FA66B, 8'000});
+    state.add_country(Country{CountryId{"auroria"}, "Auroria", 0xC94B4B, 10'000, "A"});
+    state.add_country(Country{CountryId{"verdantia"}, "Verdantia", 0x4FA66B, 8'000, "V"});
 
     state.add_province(Province{
         ProvinceId{"northplain"},
@@ -122,7 +122,7 @@ int main() {
 
     bool rejected_duplicate_country = false;
     try {
-        state.add_country(Country{CountryId{"auroria"}, "Duplicate", 0, 0});
+        state.add_country(Country{CountryId{"auroria"}, "Duplicate", 0, 0, "D"});
     } catch (const std::invalid_argument&) {
         rejected_duplicate_country = true;
     }
@@ -173,7 +173,7 @@ int main() {
     }
     GameState rounding_state{GameClock{1000, 1}};
     rounding_state.add_country(Country{
-        CountryId{"rounding"}, "Rounding", 0xFFFFFF, 0
+        CountryId{"rounding"}, "Rounding", 0xFFFFFF, 0, "R"
     });
     rounding_state.add_province(Province{
         ProvinceId{"rounding_hills"},
@@ -200,6 +200,95 @@ int main() {
     if (loaded_state.find_country(CountryId{"auroria"}) == nullptr ||
         loaded_state.find_province(ProvinceId{"northreach"}) == nullptr) {
         std::cerr << "ScenarioLoader did not create expected entities\n";
+        return 1;
+    }
+    GameState army_identity_state =
+        ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor army_identity_processor;
+    const CommandResult first_aurorian_army = army_identity_processor.execute(
+        army_identity_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 100}
+    );
+    const CommandResult second_aurorian_army = army_identity_processor.execute(
+        army_identity_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 100}
+    );
+    const CommandResult first_caelan_army = army_identity_processor.execute(
+        army_identity_state,
+        RecruitArmyCommand{CountryId{"caelus"}, ProvinceId{"blueharbor"}, 100}
+    );
+    if (!first_aurorian_army.accepted || !second_aurorian_army.accepted ||
+        !first_caelan_army.accepted) {
+        std::cerr << "Army identity setup recruitment failed\n";
+        return 1;
+    }
+    const ArmyId first_aurorian_id = std::get<ArmyRecruitedEvent>(
+        first_aurorian_army.events.front().payload
+    ).army_id;
+    const ArmyId second_aurorian_id = std::get<ArmyRecruitedEvent>(
+        second_aurorian_army.events.front().payload
+    ).army_id;
+    const ArmyId first_caelan_id = std::get<ArmyRecruitedEvent>(
+        first_caelan_army.events.front().payload
+    ).army_id;
+    const std::string auroria_code{"\xE5\xA5\xA5"};
+    const std::string first_aurorian_display_name{
+        "\xE5\xA5\xA5\xC2\xB7\xE7\xAC\xAC" "1" "\xE5\x86\x9B"
+    };
+    if (army_identity_state.find_country(CountryId{"auroria"})->code != auroria_code ||
+        army_identity_state.find_army(first_aurorian_id)->formation_number != 1 ||
+        army_identity_state.find_army(second_aurorian_id)->formation_number != 2 ||
+        army_identity_state.find_army(first_caelan_id)->formation_number != 1 ||
+        army_identity_state.army_display_name(first_aurorian_id) !=
+            first_aurorian_display_name) {
+        std::cerr << "Army display identity was not initialized correctly\n";
+        return 1;
+    }
+    army_identity_state.remove_army(first_aurorian_id);
+    const CommandResult replacement_aurorian_army = army_identity_processor.execute(
+        army_identity_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 100}
+    );
+    const ArmyId replacement_aurorian_id = std::get<ArmyRecruitedEvent>(
+        replacement_aurorian_army.events.front().payload
+    ).army_id;
+    if (!replacement_aurorian_army.accepted ||
+        army_identity_state.find_army(replacement_aurorian_id)->formation_number != 1) {
+        std::cerr << "Army formation number gap was not reused\n";
+        return 1;
+    }
+    army_identity_state.find_army(replacement_aurorian_id)->formation_number = 2;
+    const std::vector<std::string> duplicate_formation_issues =
+        army_identity_state.validate();
+    if (std::none_of(
+            duplicate_formation_issues.begin(),
+            duplicate_formation_issues.end(),
+            [](const std::string& issue) {
+                return issue.find("duplicate formation number") != std::string::npos;
+            }
+        )) {
+        std::cerr << "Duplicate same-country formation number passed validation\n";
+        return 1;
+    }
+    army_identity_state.find_army(replacement_aurorian_id)->formation_number = 1;
+
+    GameState duplicate_code_state{GameClock{1000, 1}};
+    duplicate_code_state.add_country(Country{
+        CountryId{"first"}, "First", 0, 0, "X"
+    });
+    duplicate_code_state.add_country(Country{
+        CountryId{"second"}, "Second", 0, 0, "X"
+    });
+    const std::vector<std::string> duplicate_code_issues =
+        duplicate_code_state.validate();
+    if (std::none_of(
+            duplicate_code_issues.begin(),
+            duplicate_code_issues.end(),
+            [](const std::string& issue) {
+                return issue.find("duplicate code") != std::string::npos;
+            }
+        )) {
+        std::cerr << "Duplicate country code passed validation\n";
         return 1;
     }
     const province::core::GameStatus initial_status =
