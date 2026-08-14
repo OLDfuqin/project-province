@@ -27,7 +27,8 @@ func _initialize() -> void:
     if northreach_before.get("economy", -1) != 120000 or \
             northreach_before.get("fiscal_income", -1) != 1200 or \
             auroria_before.get("economy", -1) != 362500 or \
-            auroria_before.get("fiscal_income", -1) != 3625:
+            auroria_before.get("fiscal_income", -1) != 3625 or \
+            auroria_before.get("code", "") != "奥":
         push_error("Bridge did not expose derived province and country economy")
         bridge.free()
         quit(1)
@@ -55,6 +56,9 @@ func _initialize() -> void:
         quit(1)
         return
     if armies.size() != 1 or armies[0]["manpower"] != 1000 or \
+            armies[0].get("formation_number", 0) != 1 or \
+            armies[0].get("country_code", "") != "奥" or \
+            armies[0].get("display_name", "") != "奥·第1军" or \
             northreach.get("population", -1) != \
             northreach_before.get("population", -1) - 1000 or \
             northreach.get("recruitable_population", -1) != 1000 or \
@@ -66,6 +70,26 @@ func _initialize() -> void:
             auroria.get("fiscal_income", -1) != 3615 or \
             auroria.get("treasury", -1) != 9000:
         push_error("Recruitment was not reflected in bridge snapshots")
+        bridge.free()
+        quit(1)
+        return
+
+    var second_recruitment: Dictionary = bridge.recruit_army(
+        "auroria", "northreach", 125
+    )
+    var rename_result: Dictionary = bridge.rename_army(result["army_id"], 5)
+    var merge_result: Dictionary = bridge.merge_armies(
+        result["army_id"], [second_recruitment.get("army_id", "")]
+    )
+    armies = bridge.get_army_summaries()
+    if not second_recruitment.get("accepted", false) or \
+            not rename_result.get("accepted", false) or \
+            rename_result.get("display_name", "") != "奥·第5军" or \
+            not merge_result.get("accepted", false) or \
+            merge_result.get("current_manpower", 0) != 1125 or \
+            armies.size() != 1 or armies[0].get("manpower", 0) != 1125 or \
+            armies[0].get("display_name", "") != "奥·第5军":
+        push_error("Army identity bridge commands were not reflected")
         bridge.free()
         quit(1)
         return

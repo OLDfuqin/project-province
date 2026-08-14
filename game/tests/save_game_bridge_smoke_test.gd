@@ -67,7 +67,7 @@ func _initialize() -> void:
             loaded_army = summary
 
     if not save_result.get("accepted", false) or \
-            saved_document.get("schema_version", 0) != 3 or \
+            saved_document.get("schema_version", 0) != 4 or \
             retained_fixed_economy or \
             legacy_load.get("accepted", false) or \
             not load_result.get("accepted", false) or \
@@ -77,6 +77,8 @@ func _initialize() -> void:
             loaded_army.get("advance_target_id", "") != "goldcoast" or \
             loaded_army.get("advance_enabled", true) or \
             loaded_army.get("advance_strategy", "") != "stop_before_enemy" or \
+            loaded_army.get("formation_number", 0) != 1 or \
+            loaded_army.get("display_name", "") != "奥·第1军" or \
             bridge.get_road_summaries().size() != 1 or \
             bridge.get_diplomatic_relations().size() != 1 or \
             redpass.get("owner_id", "") != "auroria" or \

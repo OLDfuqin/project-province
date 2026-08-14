@@ -91,6 +91,7 @@ godot::Array ProvinceBridge::get_country_summaries() const {
         godot::Dictionary summary;
         summary["id"] = godot::String::utf8(country_id.value().c_str());
         summary["name"] = godot::String::utf8(country.name.c_str());
+        summary["code"] = godot::String::utf8(country.code.c_str());
         summary["color_rgb"] = static_cast<std::int64_t>(country.color_rgb);
         summary["treasury"] = country.treasury;
         summary["province_count"] = province_count;
@@ -625,6 +626,13 @@ godot::Array ProvinceBridge::get_army_summaries() const {
         godot::Dictionary summary;
         summary["id"] = godot::String::utf8(army_id.value().c_str());
         summary["owner_id"] = godot::String::utf8(army.owner_id.value().c_str());
+        const province::core::Country* country = state_->find_country(army.owner_id);
+        summary["formation_number"] = army.formation_number;
+        summary["country_code"] = country == nullptr
+            ? godot::String{}
+            : godot::String::utf8(country->code.c_str());
+        const std::string display_name = state_->army_display_name(army_id);
+        summary["display_name"] = godot::String::utf8(display_name.c_str());
         summary["province_id"] = godot::String::utf8(army.province_id.value().c_str());
         summary["manpower"] = army.manpower;
         summary["movement_points"] = army.movement_points;
@@ -636,6 +644,93 @@ godot::Array ProvinceBridge::get_army_summaries() const {
         summaries.push_back(summary);
     }
     return summaries;
+}
+
+godot::Dictionary ProvinceBridge::rename_army(
+    const godot::String& army_id,
+    const std::int64_t formation_number
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        const province::core::CommandResult result = command_processor_.execute(
+            *state_,
+            province::core::RenameArmyCommand{core_army_id, formation_number}
+        );
+        response["accepted"] = result.accepted;
+        response["error"] = godot::String::utf8(result.error.c_str());
+        if (result.accepted) {
+            const auto& renamed = std::get<province::core::ArmyRenamedEvent>(
+                result.events.front().payload
+            );
+            response["event_sequence"] =
+                static_cast<std::int64_t>(result.events.front().sequence);
+            response["army_id"] = army_id;
+            response["previous_formation_number"] =
+                renamed.previous_formation_number;
+            response["formation_number"] = renamed.current_formation_number;
+            const std::string display_name = state_->army_display_name(core_army_id);
+            response["display_name"] = godot::String::utf8(display_name.c_str());
+        }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
+}
+
+godot::Dictionary ProvinceBridge::merge_armies(
+    const godot::String& primary_army_id,
+    const godot::Array& merged_army_ids
+) {
+    godot::Dictionary response;
+    if (!state_) {
+        response["accepted"] = false;
+        response["error"] = "no scenario is loaded";
+        return response;
+    }
+    try {
+        std::vector<province::core::ArmyId> core_merged_ids;
+        core_merged_ids.reserve(merged_army_ids.size());
+        for (std::int64_t index = 0; index < merged_army_ids.size(); ++index) {
+            const godot::String merged_id = merged_army_ids[index];
+            core_merged_ids.emplace_back(merged_id.utf8().get_data());
+        }
+        const province::core::CommandResult result = command_processor_.execute(
+            *state_,
+            province::core::MergeArmiesCommand{
+                province::core::ArmyId{primary_army_id.utf8().get_data()},
+                std::move(core_merged_ids),
+            }
+        );
+        response["accepted"] = result.accepted;
+        response["error"] = godot::String::utf8(result.error.c_str());
+        if (result.accepted) {
+            const auto& merged = std::get<province::core::ArmiesMergedEvent>(
+                result.events.front().payload
+            );
+            godot::Array merged_ids;
+            for (const province::core::ArmyId& merged_id : merged.merged_army_ids) {
+                merged_ids.push_back(godot::String::utf8(merged_id.value().c_str()));
+            }
+            response["event_sequence"] =
+                static_cast<std::int64_t>(result.events.front().sequence);
+            response["primary_army_id"] = primary_army_id;
+            response["merged_army_ids"] = merged_ids;
+            response["previous_manpower"] = merged.previous_manpower;
+            response["current_manpower"] = merged.current_manpower;
+            response["movement_points"] = merged.current_movement_points;
+        }
+    } catch (const std::exception& error) {
+        response["accepted"] = false;
+        response["error"] = godot::String::utf8(error.what());
+    }
+    return response;
 }
 
 godot::Dictionary ProvinceBridge::move_army(

@@ -18,6 +18,8 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("get_road_summaries"), &ProvinceBridge::get_road_summaries);
     godot::ClassDB::bind_method(godot::D_METHOD("recruit_army", "country_id", "province_id", "manpower"), &ProvinceBridge::recruit_army);
     godot::ClassDB::bind_method(godot::D_METHOD("get_army_summaries"), &ProvinceBridge::get_army_summaries);
+    godot::ClassDB::bind_method(godot::D_METHOD("rename_army", "army_id", "formation_number"), &ProvinceBridge::rename_army);
+    godot::ClassDB::bind_method(godot::D_METHOD("merge_armies", "primary_army_id", "merged_army_ids"), &ProvinceBridge::merge_armies);
     godot::ClassDB::bind_method(godot::D_METHOD("move_army", "army_id", "destination"), &ProvinceBridge::move_army);
     godot::ClassDB::bind_method(godot::D_METHOD("auto_advance_army", "army_id"), &ProvinceBridge::auto_advance_army);
     godot::ClassDB::bind_method(godot::D_METHOD("auto_advance_army_to", "army_id", "target"), &ProvinceBridge::auto_advance_army_to);
