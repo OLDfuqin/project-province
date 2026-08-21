@@ -29,12 +29,12 @@
 - Modify: `core/src/movement_system.cpp`, `technology_system.cpp`, `road_system.cpp`, `game_state.cpp`
 - Test: `tests/core/core_smoke_test.cpp`, `tests/core/save_game_smoke_test.cpp`
 
-- [ ] Add failing core assertions for half-point monthly grants, cap 6/7/8 by military levels 0/4/8, military level 8 acceptance and level 9 rejection, roads level 4 acceptance and level 5 rejection, and terrain-based road prices/eligibility.
-- [ ] Run `scripts/build.cmd` and `build/bin/province_core_tests.exe` and confirm the new assertions fail against the legacy rules.
-- [ ] Replace integer movement storage with half-point units and centralize conversion constants; enforce the military and roads track-specific maximum levels.
-- [ ] Implement capped monthly grants: `2 + military_level * 0.5`, limited by `6 + military_level / 4`; preserve accumulated points up to the cap.
-- [ ] Implement terrain coefficient road eligibility and endpoint base cost sum, then apply road discount 0/10/20/30/50% for roads levels 0/1/2/3/4.
-- [ ] Run core tests and confirm they pass.
+- [x] Add failing core assertions for half-point monthly grants, cap 6/7/8 by military levels 0/4/8, military level 8 acceptance and level 9 rejection, roads level 4 acceptance and level 5 rejection, and terrain-based road prices/eligibility.
+- [x] Run `scripts/build.cmd` and `build/bin/province_core_tests.exe` and confirm the new assertions fail against the legacy rules.
+- [x] Replace integer movement storage with half-point units and centralize conversion constants; enforce the military and roads track-specific maximum levels.
+- [x] Implement capped monthly grants: `2 + military_level * 0.5`, limited by `6 + military_level / 4`; preserve accumulated points up to the cap.
+- [x] Implement terrain coefficient road eligibility and endpoint base cost sum, then apply road discount 0/10/20/30/50% for roads levels 0/1/2/3/4.
+- [x] Run core tests and confirm they pass.
 
 ### Task 2: Save format and bridge contract
 
@@ -42,11 +42,11 @@
 - Modify: `core/src/save_game.cpp`, `core/include/province/core/save_game.hpp`, `bridge/src/province_bridge.cpp`, `bridge/src/province_bridge.hpp`
 - Test: `tests/core/save_game_smoke_test.cpp`, `game/tests/save_game_bridge_smoke_test.gd`, `game/tests/technology_bridge_smoke_test.gd`, `game/tests/road_bridge_smoke_test.gd`, `game/tests/army_bridge_smoke_test.gd`
 
-- [ ] Add failing save/bridge assertions for half-point round trips, schema migration, capped grants, new road costs, and technology maximum summaries.
-- [ ] Run the focused tests and confirm failure.
-- [ ] Upgrade save schema, serialize half-point movement explicitly, and migrate prior integer-point saves by multiplying movement points by two.
-- [ ] Expose bridge summaries as numeric points (`movement_points`, `max_movement_points`, `monthly_movement_grant`) divided by two; expose road eligibility and discounted cost responses.
-- [ ] Update bridge tests and run all focused Godot scripts.
+- [x] Add failing save/bridge assertions for half-point round trips, schema migration, capped grants, new road costs, and technology maximum summaries.
+- [x] Run the focused tests and confirm failure.
+- [x] Upgrade save schema, serialize half-point movement explicitly, and migrate prior integer-point saves by multiplying movement points by two.
+- [x] Expose bridge summaries as numeric points (`movement_points`, `max_movement_points`, `monthly_movement_grant`) divided by two; expose road eligibility and discounted cost responses.
+- [x] Update bridge tests and run all focused Godot scripts.
 
 ### Task 3: UI previews and rules documentation
 
@@ -55,17 +55,17 @@
 - Test: `game/tests/province_management_window_component_smoke_test.gd`, `game/tests/province_management_window_smoke_test.gd`, `game/tests/road_construction_window_smoke_test.gd`, `game/tests/main_layout_smoke_test.gd`, `game/tests/map_smoke_test.gd`
 - Modify: `docs/current-game-rules.md`, `docs/project-structure.md`
 
-- [ ] Add failing UI assertions for half-point text and terrain/technology road estimates.
-- [ ] Run focused Godot tests and confirm failure.
-- [ ] Update movement display and path preview formatting to preserve `.5` values, and remove references to roads technology as monthly movement bonus.
-- [ ] Update road construction estimate to use selected endpoint terrain and current road technology eligibility/discount.
-- [ ] Update rules and file responsibility documentation with exact formulas and migration behavior.
-- [ ] Run all C++ and Godot tests plus headless main startup.
+- [x] Add failing UI assertions for half-point text and terrain/technology road estimates.
+- [x] Run focused Godot tests and confirm failure.
+- [x] Update movement display and path preview formatting to preserve `.5` values, and remove references to roads technology as monthly movement bonus.
+- [x] Update road construction estimate to use selected endpoint terrain and current road technology eligibility/discount.
+- [x] Update rules and file responsibility documentation with exact formulas and migration behavior.
+- [x] Run all C++ and Godot tests plus headless main startup.
 
 ### Task 4: Commit and integrate
 
-- [ ] Run `git diff --check` and inspect status, excluding the two preserved formatting-only files.
-- [ ] Commit focused core/save/bridge changes, UI changes, and documentation with clear messages.
-- [ ] Fast-forward `main` from the feature branch without discarding preserved user changes.
-- [ ] Run the complete verification suite on `main`.
-- [ ] Push only commits completed within the prior-day automation window when authorized.
+- [x] Run `git diff --check` and inspect status, excluding the two preserved formatting-only files.
+- [x] Commit focused core/save/bridge changes, UI changes, and documentation with clear messages.
+- [x] Fast-forward `main` from the feature branch without discarding preserved user changes.
+- [x] Run the complete verification suite on the integrated feature commit and core verification on `main`; the active Godot editor prevented replacing its locked main DLL.
+- [x] Push only commits completed within the prior-day automation window when authorized.
