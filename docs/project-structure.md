@@ -73,7 +73,7 @@ Godot/C++ 适配
 | `army.hpp` | 仅头文件 | 定义军队状态，包括所有者、本国编制编号、位置、兵力、移动点和自动推进计划。 |
 | `terrain.hpp` | 仅头文件 | 定义平原、森林、丘陵、山地四类地形。 |
 | `diplomacy.hpp` | 仅头文件 | 定义外交状态、和平结算策略和无序国家关系键。 |
-| `technology.hpp` | 仅头文件 | 定义经济、军事、道路科技分支及国家科技等级。 |
+| `technology.hpp` | 仅头文件 | 定义经济0–3级、军事0–8级、道路0–4级科技分支及国家科技等级。 |
 | `road.hpp` | `road.cpp` | 定义道路等级、无序地区连接键，以及道路字符串转换等基础逻辑。 |
 | `version.hpp` | 仅头文件 | 保存核心或数据兼容性所需的版本常量。 |
 
@@ -101,9 +101,9 @@ Godot/C++ 适配
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
 | `army_system.hpp` | `army_system.cpp` | 处理征兵、兵源与人口扣减、编制编号、军队更名和同地军队合并规则。 |
-| `movement_system.hpp` | `movement_system.cpp` | 发放移动点、计算道路移动成本、寻路并执行军队移动。 |
+| `movement_system.hpp` | `movement_system.cpp` | 以半点单位发放并限制移动点，计算道路移动成本、寻路并执行军队移动。 |
 | `battle_system.hpp` | `battle_system.cpp` | 自动结算敌军接触后的战斗、损失、胜负、撤退和占领。 |
-| `road_system.hpp` | `road_system.cpp` | 校验相邻地区、所有权和费用，创建或升级道路连接。 |
+| `road_system.hpp` | `road_system.cpp` | 按地形经济系数校验道路科技准入、计算两端基础费用与折扣，创建道路连接。 |
 | `peace_system.hpp` | `peace_system.cpp` | 结束战争、按策略恢复或保留领土，并遣返不合法驻留的军队。 |
 
 ### 3.5 AI、剧本和存档
