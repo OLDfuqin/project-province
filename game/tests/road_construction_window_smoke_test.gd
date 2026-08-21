@@ -11,6 +11,8 @@ func _initialize() -> void:
     var main_scene := packed_scene.instantiate() as Control
     root.add_child(main_scene)
     await process_frame
+    var bridge := main_scene.get_node("SimulationBridge")
+    bridge.research_technology("auroria", "roads")
 
     var road_entry := main_scene.get_node(
         "RightPanel/Center/RoadConstructionEntry"
@@ -32,7 +34,7 @@ func _initialize() -> void:
     var reset := road_window.get_node("ActionButtons/Reset") as Button
     if main_scene.workspace_mode_name() != "road_construction" or \
             not road_window.visible or \
-            not road_window.get_node("EstimatedCost").text.contains("500") or \
+            not road_window.get_node("EstimatedCost").text.contains("600") or \
             select_start.disabled or not select_end.disabled or not build_road.disabled:
         push_error("Road construction window did not open in its initial state")
         main_scene.free()

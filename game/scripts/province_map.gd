@@ -1,6 +1,8 @@
 class_name ProvinceMap
 extends Control
 
+const GameText := preload("res://scripts/ui/game_text_formatter.gd")
+
 signal province_hovered(province_id: String)
 signal province_selected(province_id: String)
 signal province_clicked(province_id: String)
@@ -355,10 +357,10 @@ func _draw() -> void:
         var province_id: String = army.get("province_id", "")
         var aggregate: Dictionary = armies_by_province.get(
             province_id,
-            {"manpower": 0, "movement_points": 0}
+            {"manpower": 0, "movement_points": 0.0}
         )
         aggregate["manpower"] += int(army.get("manpower", 0))
-        aggregate["movement_points"] += int(army.get("movement_points", 0))
+        aggregate["movement_points"] += float(army.get("movement_points", 0))
         armies_by_province[province_id] = aggregate
     for province_id: String in armies_by_province:
         if not _polygons.has(province_id):
@@ -368,8 +370,8 @@ func _draw() -> void:
         draw_circle(center, radius, Color("202938"))
         draw_arc(center, radius, 0.0, TAU, 24, Color("f7f1d0"), 3.0 / _zoom, true)
         var army_data: Dictionary = armies_by_province[province_id]
-        var manpower_text := "%d · 移%d" % [
-            army_data["manpower"], army_data["movement_points"]
+        var manpower_text := "%d · 移%s" % [
+            army_data["manpower"], GameText.movement_points(army_data["movement_points"])
         ]
         var text_size := ThemeDB.fallback_font.get_string_size(
             manpower_text,

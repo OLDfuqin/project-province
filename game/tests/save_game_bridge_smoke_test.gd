@@ -67,7 +67,7 @@ func _initialize() -> void:
             loaded_army = summary
 
     if not save_result.get("accepted", false) or \
-            saved_document.get("schema_version", 0) != 4 or \
+            saved_document.get("schema_version", 0) != 5 or \
             retained_fixed_economy or \
             legacy_load.get("accepted", false) or \
             not load_result.get("accepted", false) or \

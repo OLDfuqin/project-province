@@ -1,5 +1,7 @@
 extends VBoxContainer
 
+const GameText := preload("res://scripts/ui/game_text_formatter.gd")
+
 signal recruit_requested(province_id: String, manpower: int)
 signal rename_requested(army_id: String, formation_number: int)
 signal merge_requested(primary_army_id: String, merged_army_ids: Array)
@@ -180,11 +182,13 @@ func _populate_armies(
 
 func _refresh_army_details() -> void:
     var army: Dictionary = _army_by_id.get(_selected_army_id, {})
-    $ArmyDetails.text = "%s | 内部ID：%s | 兵力：%d | 移动点：%d" % [
+    $ArmyDetails.text = "%s | 内部ID：%s | 兵力：%d | 移动点：%s/%s（每月+%s）" % [
         army.get("display_name", _selected_army_id),
         _selected_army_id,
         army.get("manpower", 0),
-        army.get("movement_points", 0),
+        GameText.movement_points(army.get("movement_points", 0)),
+        GameText.movement_points(army.get("max_movement_points", 6)),
+        GameText.movement_points(army.get("monthly_movement_grant", 2)),
     ]
     $Rename/FormationNumber.value = int(army.get("formation_number", 1))
     _refresh_rename_and_merge()
@@ -273,15 +277,15 @@ func _on_merge_selection_changed(_index: int, _selected: bool) -> void:
         return
     var primary: Dictionary = _army_by_id.get(_selected_army_id, {})
     var total_manpower := int(primary.get("manpower", 0))
-    var movement_points := int(primary.get("movement_points", 0))
+    var movement_points: float = float(primary.get("movement_points", 0))
     for army_id: String in ids:
         var army: Dictionary = _army_by_id.get(army_id, {})
         total_manpower += int(army.get("manpower", 0))
-        movement_points = min(movement_points, int(army.get("movement_points", 0)))
-    $Merge/Preview.text = "合并后：%s | 兵力%d | 移动点%d" % [
+        movement_points = min(movement_points, float(army.get("movement_points", 0)))
+    $Merge/Preview.text = "合并后：%s | 兵力%d | 移动点%s" % [
         primary.get("display_name", _selected_army_id),
         total_manpower,
-        movement_points,
+        GameText.movement_points(movement_points),
     ]
 
 

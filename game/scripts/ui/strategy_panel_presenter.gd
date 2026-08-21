@@ -134,12 +134,12 @@ static func _advance_status(
         "preview_destination_id",
         origin_id
     )
-    return "%d步，首步%d移动点，总计%d移动点；当前%d，本回合增加%d；%d个月后到达%s（%d步，消耗%d移动点，%s）" % [
+    return "%d步，首步%d移动点，总计%d移动点；当前%s，本回合增加%s；%d个月后到达%s（%d步，消耗%d移动点，%s）" % [
         path_preview.get("step_count", 0),
         int(path_preview.get("first_step_cost", 0)),
         path_preview.get("total_movement_cost", 0),
-        army.get("movement_points", 0),
-        path_preview.get("preview_movement_granted", 0),
+        GameText.movement_points(army.get("movement_points", 0)),
+        GameText.movement_points(path_preview.get("preview_movement_granted", 0)),
         preview_months,
         GameText.province_name(province_by_id, preview_destination_id),
         path_preview.get("preview_step_count", 0),

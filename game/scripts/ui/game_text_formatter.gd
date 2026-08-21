@@ -74,6 +74,13 @@ static func advance_stop_reason(reason: String) -> String:
             return reason
 
 
+static func movement_points(value: Variant) -> String:
+    var number := float(value)
+    if is_equal_approx(number, round(number)):
+        return "%d" % int(round(number))
+    return "%.1f" % number
+
+
 static func advance_strategy(strategy: String) -> String:
     match strategy:
         "one_step":

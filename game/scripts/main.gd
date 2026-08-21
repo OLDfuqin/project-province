@@ -2,8 +2,7 @@ extends Control
 
 const PLAYER_COUNTRY_ID := "auroria"
 const QUICK_SAVE_PATH := "user://quick_save.json"
-const BASE_ROAD_BUILD_COST := 500
-const ROAD_TECH_COST_DISCOUNT := 100
+const DEFAULT_ROAD_BUILD_COST := 600
 const GameText := preload("res://scripts/ui/game_text_formatter.gd")
 const StrategyPresenter := preload("res://scripts/ui/strategy_panel_presenter.gd")
 
@@ -483,12 +482,12 @@ func _on_management_move_requested(army_id: String, destination_id: String) -> v
 
 
 func _record_movement_result(result: Dictionary) -> void:
-    event_log.text = "事件 #%d：%s → %s，消耗%d移动点，剩余%d" % [
+    event_log.text = "事件 #%d：%s → %s，消耗%d移动点，剩余%s" % [
         result.get("event_sequence", 0),
         _province_name(result.get("origin", "")),
         _province_name(result.get("destination", "")),
         result.get("movement_cost", 0),
-        result.get("remaining_points", 0),
+        GameText.movement_points(result.get("remaining_points", 0)),
     ]
     var battle_report := _battle_report(result)
     if not battle_report.is_empty():
@@ -554,15 +553,39 @@ func _on_road_construction_entry_pressed() -> void:
 
 
 func _estimated_road_build_cost() -> int:
+    var first: Dictionary = province_by_id.get(road_start_id, {})
+    var second: Dictionary = province_by_id.get(road_end_id, {})
+    if first.is_empty() or second.is_empty():
+        return DEFAULT_ROAD_BUILD_COST
+    var base_cost: int = _road_endpoint_base_cost(first.get("terrain", "plains")) + \
+        _road_endpoint_base_cost(second.get("terrain", "plains"))
+    var roads_level: int = _player_roads_level()
+    var discount: int = {1: 10, 2: 20, 3: 30, 4: 50}.get(roads_level, 0)
+    return int(base_cost * (100 - discount) / 100)
+
+
+func _player_roads_level() -> int:
     for technology: Dictionary in bridge.get_technology_summaries():
         if technology.get("country_id", "") == PLAYER_COUNTRY_ID:
-            return maxi(
-                0,
-                BASE_ROAD_BUILD_COST - ROAD_TECH_COST_DISCOUNT * int(
-                    technology.get("roads_level", 0)
-                )
-            )
-    return BASE_ROAD_BUILD_COST
+            return int(technology.get("roads_level", 0))
+    return 0
+
+
+func _road_endpoint_base_cost(terrain: String) -> int:
+    match terrain:
+        "plains":
+            return 300
+        "mountains":
+            return 700
+        _:
+            return 500
+
+
+func _road_required_level(first_terrain: String, second_terrain: String) -> int:
+    var first_t: int = {"plains": 10, "forest": 9, "hills": 9, "mountains": 8}.get(first_terrain, 10)
+    var second_t: int = {"plains": 10, "forest": 9, "hills": 9, "mountains": 8}.get(second_terrain, 10)
+    var minimum_t: int = mini(first_t, second_t)
+    return 1 if minimum_t >= 10 else 2 if minimum_t >= 9 else 3
 
 
 func _on_road_start_selection_requested() -> void:
@@ -645,7 +668,19 @@ func _select_road_endpoint(province_id: String) -> void:
     road_end_id = province_id
     map_input_mode = MapInputMode.NORMAL
     _refresh_road_selection()
-    road_construction_window.set_end_province(province.get("name", province_id))
+    var required_level: int = _road_required_level(
+        province_by_id.get(road_start_id, {}).get("terrain", "plains"),
+        province.get("terrain", "plains")
+    )
+    var can_build: bool = _player_roads_level() >= required_level
+    var status: String = "路线合法，可以确认修建" if can_build else \
+        "需要道路科技%d级（当前%d级）" % [required_level, _player_roads_level()]
+    road_construction_window.set_end_province(
+        province.get("name", province_id),
+        _estimated_road_build_cost(),
+        can_build,
+        status
+    )
 
 
 func _road_connection_exists(province_a: String, province_b: String) -> bool:
@@ -694,12 +729,12 @@ func _record_turn_actions(actions: Array) -> void:
                     _country_name(action.get("target_id", "?")),
                 ])
             "army_moved":
-                _record_event("回合行动：%s 从 %s 调动至 %s，消耗%d移动点，剩余%d移动点" % [
+                _record_event("回合行动：%s 从 %s 调动至 %s，消耗%d移动点，剩余%s移动点" % [
                     action.get("army_id", "?"),
                     _province_name(action.get("origin", "?")),
                     _province_name(action.get("destination", "?")),
                     action.get("movement_cost", 0),
-                    action.get("remaining_points", 0),
+                    GameText.movement_points(action.get("remaining_points", 0)),
                 ])
             "battle_resolved":
                 _record_event(_battle_action_report(action))
@@ -1170,10 +1205,10 @@ func _refresh_movement_preview() -> bool:
     if moving_army_id.is_empty() or auto_advance_target_id.is_empty():
         return false
 
-    var movement_points := 0
+    var movement_points: float = 0.0
     for army: Dictionary in bridge.get_army_summaries():
         if army["id"] == moving_army_id:
-            movement_points = int(army["movement_points"])
+            movement_points = float(army["movement_points"])
             break
     var preview_months := 1
     if turn_length.item_count > 0:

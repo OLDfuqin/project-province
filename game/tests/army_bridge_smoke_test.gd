@@ -117,6 +117,7 @@ func _initialize() -> void:
         return
     growth_bridge.free()
 
+    bridge.research_technology("auroria", "roads")
     var road_result: Dictionary = bridge.build_road(
         "auroria", "northreach", "westmark"
     )
@@ -210,6 +211,7 @@ func _initialize() -> void:
         return
     bridge.set_ai_enabled(false, "auroria")
     var deep_army: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.research_technology("auroria", "roads")
     bridge.build_road("auroria", "northreach", "westmark")
     bridge.declare_war("auroria", "verdantia")
     bridge.advance_turn(3)
@@ -270,6 +272,7 @@ func _initialize() -> void:
         return
     bridge.set_ai_enabled(false, "auroria")
     var paused: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.research_technology("auroria", "roads")
     bridge.build_road("auroria", "northreach", "westmark")
     bridge.declare_war("auroria", "verdantia")
     bridge.set_army_advance_target(paused["army_id"], "greenvale")
@@ -334,6 +337,7 @@ func _initialize() -> void:
         return
     bridge.set_ai_enabled(false, "auroria")
     var border_stop: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.research_technology("auroria", "roads")
     bridge.build_road("auroria", "northreach", "westmark")
     bridge.declare_war("auroria", "verdantia")
     bridge.set_army_advance_target(border_stop["army_id"], "greenvale")
@@ -381,6 +385,7 @@ func _initialize() -> void:
         return
     bridge.set_ai_enabled(false, "auroria")
     var planned: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    bridge.research_technology("auroria", "roads")
     bridge.build_road("auroria", "northreach", "westmark")
     bridge.declare_war("auroria", "verdantia")
     var plan_result: Dictionary = bridge.set_army_advance_target(

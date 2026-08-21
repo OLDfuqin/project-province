@@ -16,6 +16,7 @@ func _initialize() -> void:
     bridge.set_ai_enabled(false, "auroria")
 
     var research: Dictionary = bridge.research_technology("auroria", "roads")
+    var military_research: Dictionary = bridge.research_technology("auroria", "military")
     var army: Dictionary = bridge.recruit_army("auroria", "northreach", 500)
     var road: Dictionary = bridge.build_road("auroria", "northreach", "westmark")
     bridge.advance_turn(1)
@@ -28,9 +29,11 @@ func _initialize() -> void:
         if summary["id"] == army.get("army_id", ""):
             army_after = summary
     if not research.get("accepted", false) or research.get("cost", 0) != 1000 or \
-            not road.get("accepted", false) or road.get("cost", 0) != 400 or \
+            not road.get("accepted", false) or road.get("cost", 0) != 540 or \
             player_technology.get("roads_level", 0) != 1 or \
-            army_after.get("movement_points", 0) != 3:
+            not military_research.get("accepted", false) or \
+            player_technology.get("military_level", 0) != 1 or \
+            army_after.get("movement_points", 0) != 2.5:
         push_error("Technology effects were not reflected through the bridge")
         bridge.free()
         quit(1)

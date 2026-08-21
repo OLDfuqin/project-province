@@ -15,8 +15,9 @@ func _initialize() -> void:
         quit(1)
         return
 
+    bridge.research_technology("auroria", "roads")
     var result: Dictionary = bridge.build_road("auroria", "northreach", "westmark")
-    if not result.get("accepted", false) or result.get("cost", 0) != 500:
+    if not result.get("accepted", false) or result.get("cost", 0) != 540:
         push_error("Bridge road command failed: %s" % result.get("error", "unknown"))
         bridge.free()
         quit(1)
@@ -27,7 +28,7 @@ func _initialize() -> void:
     for country: Dictionary in bridge.get_country_summaries():
         if country["id"] == "auroria":
             auroria_treasury = int(country["treasury"])
-    if roads.size() != 1 or auroria_treasury != 9500:
+    if roads.size() != 1 or auroria_treasury != 8460:
         push_error("Bridge road result was not reflected in snapshots")
         bridge.free()
         quit(1)

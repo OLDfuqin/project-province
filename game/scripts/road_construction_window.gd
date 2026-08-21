@@ -45,10 +45,16 @@ func set_start(province_name: String, estimated_cost: int) -> void:
     $Status.text = "起点已选择，请选择终点"
 
 
-func set_end_province(province_name: String) -> void:
+func set_end_province(
+    province_name: String,
+    estimated_cost: int = 0,
+    can_build: bool = true,
+    status_message := "路线合法，可以确认修建"
+) -> void:
     $EndProvince.text = "终点：%s" % province_name
-    $ActionButtons/BuildRoad.disabled = false
-    $Status.text = "路线合法，可以确认修建"
+    $EstimatedCost.text = "预计费用：%d" % estimated_cost
+    $ActionButtons/BuildRoad.disabled = not can_build
+    $Status.text = status_message
 
 
 func set_status(message: String) -> void:
