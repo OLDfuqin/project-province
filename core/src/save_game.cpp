@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -138,7 +139,7 @@ void SaveGameSerializer::save(
             {"owner_id", army.owner_id.value()},
             {"province_id", army.province_id.value()},
             {"manpower", army.manpower},
-            {"movement_points", army.movement_points},
+            {"movement_points_half", army.movement_points},
             {"formation_number", army.formation_number},
         };
         if (army.advance_target.has_value()) {
@@ -211,10 +212,10 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
     try {
         const Json document = Json::parse(stream);
         const std::int32_t version = document.at("schema_version").get<std::int32_t>();
-        if (version != 3 && version != schema_version) {
+        if (version != 3 && version != 4 && version != schema_version) {
             throw SaveGameError{
                 "unsupported save schema version " + std::to_string(version) +
-                "; expected 3 or " + std::to_string(schema_version)
+                "; expected 3, 4 or " + std::to_string(schema_version)
             };
         }
         const Json& clock = document.at("clock");
@@ -264,6 +265,13 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
             if (entry.contains("advance_target")) {
                 advance_target.emplace(entry.at("advance_target").get<std::string>());
             }
+            const std::int64_t movement_points_half = version == schema_version
+                ? entry.at("movement_points_half").get<std::int64_t>()
+                : entry.at("movement_points").get<std::int64_t>() * 2;
+            if (movement_points_half < 0 || movement_points_half >
+                std::numeric_limits<std::int32_t>::max()) {
+                throw SaveGameError{"army movement points are out of range"};
+            }
             const auto [iterator, inserted] = state.armies_.emplace(
                 id,
                 Army{
@@ -271,7 +279,7 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                     owner_id,
                     ProvinceId{entry.at("province_id").get<std::string>()},
                     entry.at("manpower").get<std::int64_t>(),
-                    entry.at("movement_points").get<std::int32_t>(),
+                    static_cast<std::int32_t>(movement_points_half),
                     std::move(advance_target),
                     entry.value("advance_enabled", true),
                     entry.value("advance_strategy", std::string{"max"}),

@@ -14,6 +14,14 @@
 #include <vector>
 
 namespace province::bridge {
+namespace {
+
+[[nodiscard]] double movement_points_to_display(const std::int32_t half_points) noexcept {
+    return static_cast<double>(half_points) /
+        province::core::MovementSystem::movement_point_scale;
+}
+
+}
 
 godot::String ProvinceBridge::get_core_version() const {
     const auto value = province::core::version();
@@ -222,7 +230,7 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
                 action["destination"] =
                     godot::String::utf8(moved.destination.value().c_str());
                 action["movement_cost"] = moved.movement_cost;
-                action["remaining_points"] = moved.remaining_points;
+                action["remaining_points"] = movement_points_to_display(moved.remaining_points);
             } else if (event.type == province::core::GameEventType::battle_resolved) {
                 const auto& battle =
                     std::get<province::core::BattleResolution>(event.payload);
@@ -297,15 +305,21 @@ godot::Array ProvinceBridge::get_technology_summaries() const {
         summary["military_level"] = technology.military_level;
         summary["roads_level"] = technology.roads_level;
         summary["economy_cost"] = technology.economy_level <
-                province::core::TechnologySystem::maximum_level
+                province::core::TechnologySystem::maximum_level(
+                    province::core::TechnologyTrack::economy
+                )
             ? province::core::TechnologySystem::research_cost(technology.economy_level)
             : 0;
         summary["military_cost"] = technology.military_level <
-                province::core::TechnologySystem::maximum_level
+                province::core::TechnologySystem::maximum_level(
+                    province::core::TechnologyTrack::military
+                )
             ? province::core::TechnologySystem::research_cost(technology.military_level)
             : 0;
         summary["roads_cost"] = technology.roads_level <
-                province::core::TechnologySystem::maximum_level
+                province::core::TechnologySystem::maximum_level(
+                    province::core::TechnologyTrack::roads
+                )
             ? province::core::TechnologySystem::research_cost(technology.roads_level)
             : 0;
         summaries.push_back(summary);
@@ -642,7 +656,18 @@ godot::Array ProvinceBridge::get_army_summaries() const {
         summary["display_name"] = godot::String::utf8(display_name.c_str());
         summary["province_id"] = godot::String::utf8(army.province_id.value().c_str());
         summary["manpower"] = army.manpower;
-        summary["movement_points"] = army.movement_points;
+        summary["movement_points"] = movement_points_to_display(army.movement_points);
+        const province::core::CountryTechnology* technology =
+            state_->find_technology(army.owner_id);
+        const std::int32_t military_level = technology == nullptr
+            ? 0
+            : technology->military_level;
+        summary["max_movement_points"] = movement_points_to_display(
+            province::core::MovementSystem::maximum_movement_points_half(military_level)
+        );
+        summary["monthly_movement_grant"] = movement_points_to_display(
+            province::core::MovementSystem::monthly_movement_points_half(military_level)
+        );
         summary["advance_target_id"] = army.advance_target.has_value()
             ? godot::String::utf8(army.advance_target->value().c_str())
             : godot::String{};
@@ -731,7 +756,9 @@ godot::Dictionary ProvinceBridge::merge_armies(
             response["merged_army_ids"] = merged_ids;
             response["previous_manpower"] = merged.previous_manpower;
             response["current_manpower"] = merged.current_manpower;
-            response["movement_points"] = merged.current_movement_points;
+            response["movement_points"] = movement_points_to_display(
+                merged.current_movement_points
+            );
         }
     } catch (const std::exception& error) {
         response["accepted"] = false;
@@ -978,12 +1005,14 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path_for_months(
             response["error"] = "army owner has no technology state";
             return response;
         }
-        const std::int64_t movement_granted =
-            static_cast<std::int64_t>(months) *
-            (province::core::MovementSystem::monthly_movement_points +
-             technology->roads_level);
-        const std::int64_t preview_available_movement =
-            static_cast<std::int64_t>(army->movement_points) + movement_granted;
+        const std::int32_t monthly_grant_half =
+            province::core::MovementSystem::monthly_movement_points_half(
+                technology->military_level
+            );
+        const std::int64_t movement_granted_half =
+            static_cast<std::int64_t>(months) * monthly_grant_half;
+        const std::int64_t preview_available_movement_half =
+            static_cast<std::int64_t>(army->movement_points) + movement_granted_half;
 
         const std::vector<province::core::ProvinceId> path =
             province::core::AiSystem{}.find_path_toward(*state_, *army, target_id);
@@ -1025,7 +1054,9 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path_for_months(
                     preview_stop_reason = "enemy_border";
                     continue;
                 }
-                if (preview_available_movement < preview_cost + cost) {
+                if (preview_available_movement_half <
+                    static_cast<std::int64_t>(preview_cost + cost) *
+                        province::core::MovementSystem::movement_point_scale) {
                     preview_stop_reason = "insufficient_movement";
                     continue;
                 }
@@ -1047,8 +1078,12 @@ godot::Dictionary ProvinceBridge::get_auto_advance_path_for_months(
         response["first_step_cost"] = first_step_cost;
         response["total_movement_cost"] = total_cost;
         response["preview_months"] = months;
-        response["preview_movement_granted"] = movement_granted;
-        response["preview_available_movement"] = preview_available_movement;
+        response["preview_movement_granted"] = movement_points_to_display(
+            static_cast<std::int32_t>(movement_granted_half)
+        );
+        response["preview_available_movement"] = movement_points_to_display(
+            static_cast<std::int32_t>(preview_available_movement_half)
+        );
         response["preview_destination_id"] =
             godot::String::utf8(preview_destination.value().c_str());
         response["preview_step_count"] = preview_steps;

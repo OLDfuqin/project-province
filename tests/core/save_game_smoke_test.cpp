@@ -85,9 +85,10 @@ bool run_save_game_smoke_tests() {
         }
         const auto& saved_country = saved_document.at("countries").front();
         const auto& saved_army = saved_document.at("armies").front();
-        if (saved_document.at("schema_version").get<std::int32_t>() != 4 ||
+        if (saved_document.at("schema_version").get<std::int32_t>() != 5 ||
             saved_fixed_economy || !saved_country.contains("code") ||
             !saved_army.contains("formation_number") ||
+            !saved_army.contains("movement_points_half") ||
             saved_army.at("formation_number").get<std::int64_t>() != 5) {
             std::cerr << "Save game did not write formation identity schema\n";
             return false;
@@ -125,6 +126,9 @@ bool run_save_game_smoke_tests() {
         }
         for (auto& army_document : legacy_document.at("armies")) {
             army_document.erase("formation_number");
+            army_document["movement_points"] =
+                army_document.at("movement_points_half").get<std::int32_t>() / 2;
+            army_document.erase("movement_points_half");
         }
         std::ofstream legacy_stream{legacy_path};
         legacy_stream << legacy_document.dump(2) << '\n';

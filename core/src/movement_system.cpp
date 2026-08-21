@@ -1,5 +1,6 @@
 #include "province/core/movement_system.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 
@@ -17,13 +18,20 @@ MonthlyMovementReport MovementSystem::grant_monthly_points(GameState& state) con
         if (technology == nullptr) {
             throw std::logic_error{"army owner has no technology state"};
         }
-        const std::int32_t granted_points =
-            monthly_movement_points + technology->roads_level;
+        const std::int32_t granted_points = monthly_movement_points_half(
+            technology->military_level
+        );
+        const std::int32_t movement_cap = maximum_movement_points_half(
+            technology->military_level
+        );
         if (army_snapshot.movement_points >
             std::numeric_limits<std::int32_t>::max() - granted_points) {
             throw std::overflow_error{"army movement point overflow"};
         }
-        army->movement_points += granted_points;
+        army->movement_points = std::min(
+            movement_cap,
+            army->movement_points + granted_points
+        );
         report.grants.push_back(ArmyMovementGrant{
             army_id,
             granted_points,
@@ -66,11 +74,12 @@ ArmyMoveResult MovementSystem::move(
         state.road_level(origin, destination) == RoadLevel::paved
             ? paved_road_cost
             : terrain_movement_cost(destination_province->terrain);
-    if (army->movement_points < cost) {
+    const std::int32_t cost_half = cost * movement_point_scale;
+    if (army->movement_points < cost_half) {
         return {false, "army has insufficient movement points", origin, destination, cost};
     }
 
-    army->movement_points -= cost;
+    army->movement_points -= cost_half;
     army->province_id = destination;
     return {true, {}, origin, destination, cost};
 }

@@ -30,6 +30,7 @@ int main() {
     using province::core::ProvinceId;
     using province::core::ScenarioLoader;
     using province::core::AdvanceTurnCommand;
+    using province::core::Army;
     using province::core::CommandProcessor;
     using province::core::CommandResult;
     using province::core::TurnAdvancedEvent;
@@ -525,6 +526,10 @@ int main() {
     );
     const ArmyId paved_army_id =
         std::get<ArmyRecruitedEvent>(paved_recruit.events.front().payload).army_id;
+    [[maybe_unused]] const CommandResult paved_technology = paved_move_processor.execute(
+        paved_move_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::roads}
+    );
     [[maybe_unused]] const CommandResult paved_road = paved_move_processor.execute(
         paved_move_state,
         BuildRoadCommand{
@@ -731,8 +736,54 @@ int main() {
         return 1;
     }
 
+    GameState locked_road_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor locked_road_processor;
+    if (locked_road_processor.execute(
+            locked_road_state,
+            BuildRoadCommand{
+                CountryId{"auroria"}, ProvinceId{"northreach"}, ProvinceId{"westmark"}
+            }
+        ).accepted) {
+        std::cerr << "Road construction should require road technology level 1\n";
+        return 1;
+    }
+
+    GameState terrain_road_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    terrain_road_state.find_technology(CountryId{"auroria"})->roads_level = 2;
+    CommandProcessor terrain_road_processor;
+    const CommandResult terrain_road = terrain_road_processor.execute(
+        terrain_road_state,
+        BuildRoadCommand{
+            CountryId{"auroria"}, ProvinceId{"z_wm_1"}, ProvinceId{"z_wm_2"}
+        }
+    );
+    if (!terrain_road.accepted ||
+        std::get<RoadBuiltEvent>(terrain_road.events.front().payload).cost != 640) {
+        std::cerr << "Road technology level 2 did not apply forest/hills eligibility\n";
+        return 1;
+    }
+
+    GameState mountain_road_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    mountain_road_state.find_technology(CountryId{"auroria"})->roads_level = 3;
+    CommandProcessor mountain_road_processor;
+    const CommandResult mountain_road = mountain_road_processor.execute(
+        mountain_road_state,
+        BuildRoadCommand{
+            CountryId{"auroria"}, ProvinceId{"z_nr_1"}, ProvinceId{"z_nr_2"}
+        }
+    );
+    if (!mountain_road.accepted ||
+        std::get<RoadBuiltEvent>(mountain_road.events.front().payload).cost != 700) {
+        std::cerr << "Road technology level 3 did not apply mountain eligibility\n";
+        return 1;
+    }
+
     GameState road_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
     CommandProcessor road_processor;
+    [[maybe_unused]] const CommandResult road_technology = road_processor.execute(
+        road_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::roads}
+    );
     const CommandResult road_built = road_processor.execute(
         road_state,
         BuildRoadCommand{
@@ -743,14 +794,14 @@ int main() {
     );
     const Country* road_country = road_state.find_country(CountryId{"auroria"});
     if (!road_built.accepted || road_built.events.size() != 1 ||
-        road_country == nullptr || road_country->treasury != 9'500 ||
+        road_country == nullptr || road_country->treasury != 8'460 ||
         road_state.road_level(ProvinceId{"northreach"}, ProvinceId{"westmark"}) !=
             RoadLevel::paved) {
         std::cerr << "BuildRoadCommand did not build and charge for a paved road\n";
         return 1;
     }
     const auto& road_event = std::get<RoadBuiltEvent>(road_built.events.front().payload);
-    if (road_event.cost != 500 || road_built.events.front().sequence != 1) {
+    if (road_event.cost != 540 || road_built.events.front().sequence != 2) {
         std::cerr << "RoadBuiltEvent contained incorrect data\n";
         return 1;
     }
@@ -780,7 +831,7 @@ int main() {
         }
     );
     if (duplicate_road.accepted || foreign_road.accepted || non_adjacent_road.accepted ||
-        road_state.find_country(CountryId{"auroria"})->treasury != 9'500) {
+        road_state.find_country(CountryId{"auroria"})->treasury != 8'460) {
         std::cerr << "Road validation failed or charged for a rejected command\n";
         return 1;
     }
@@ -793,6 +844,11 @@ int main() {
     }
     poor_country->treasury = 499;
     CommandProcessor poor_processor;
+    [[maybe_unused]] const CommandResult poor_technology = poor_processor.execute(
+        poor_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::roads}
+    );
+    poor_country->treasury = 499;
     const CommandResult unaffordable_road = poor_processor.execute(
         poor_state,
         BuildRoadCommand{
@@ -975,6 +1031,52 @@ int main() {
         return 1;
     }
 
+    GameState movement_rules_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    CommandProcessor movement_rules_processor;
+    const CommandResult movement_rules_recruit = movement_rules_processor.execute(
+        movement_rules_state,
+        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 500}
+    );
+    const ArmyId movement_rules_army_id =
+        std::get<ArmyRecruitedEvent>(movement_rules_recruit.events.front().payload).army_id;
+    const CommandResult movement_rules_month = movement_rules_processor.execute(
+        movement_rules_state,
+        AdvanceTurnCommand{1}
+    );
+    Army* movement_rules_army = movement_rules_state.find_army(movement_rules_army_id);
+    if (!movement_rules_month.accepted || movement_rules_army == nullptr ||
+        movement_rules_army->movement_points != 4) {
+        std::cerr << "Base monthly movement grant is not 2 points in half-point units\n";
+        return 1;
+    }
+    movement_rules_state.find_technology(CountryId{"auroria"})->military_level = 4;
+    movement_rules_army->movement_points = 0;
+    if (!movement_rules_processor.execute(
+            movement_rules_state,
+            AdvanceTurnCommand{1}
+        ).accepted ||
+        movement_rules_state.find_army(movement_rules_army_id)->movement_points != 8) {
+        std::cerr << "Military technology did not grant 0.5 movement per level: "
+                  << (movement_rules_army == nullptr ? -1 : movement_rules_army->movement_points)
+                  << "\n";
+        return 1;
+    }
+    movement_rules_state.find_technology(CountryId{"auroria"})->military_level = 8;
+    movement_rules_army->movement_points = 0;
+    if (!movement_rules_processor.execute(
+            movement_rules_state,
+            AdvanceTurnCommand{12}
+        ).accepted ||
+        movement_rules_state.find_army(movement_rules_army_id)->movement_points != 16) {
+        std::cerr << "Military movement cap is not 8 points at level 8\n";
+        return 1;
+    }
+    movement_rules_state.find_technology(CountryId{"auroria"})->military_level = 9;
+    if (movement_rules_state.validate().empty()) {
+        std::cerr << "Military technology level 8 should be the maximum valid level\n";
+        return 1;
+    }
+
     GameState roads_tech_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
     CommandProcessor roads_tech_processor;
     const CommandResult roads_research = roads_tech_processor.execute(
@@ -998,9 +1100,9 @@ int main() {
         AdvanceTurnCommand{1}
     );
     if (!roads_research.accepted || !discounted_road.accepted ||
-        std::get<RoadBuiltEvent>(discounted_road.events.front().payload).cost != 400 ||
-        roads_tech_state.find_army(roads_army_id)->movement_points != 3) {
-        std::cerr << "Road technology did not improve cost and movement allowance\n";
+        std::get<RoadBuiltEvent>(discounted_road.events.front().payload).cost != 540 ||
+        roads_tech_state.find_army(roads_army_id)->movement_points != 4) {
+        std::cerr << "Road technology did not apply terrain cost rules\n";
         return 1;
     }
 

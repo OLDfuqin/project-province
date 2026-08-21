@@ -17,7 +17,7 @@ TechnologyResearchResult TechnologySystem::research(
         return {false, "researching country does not exist", country_id, track, 0, 0, 0};
     }
     const std::int32_t previous_level = technology->level(track);
-    if (previous_level >= maximum_level) {
+    if (previous_level >= maximum_level(track)) {
         return {
             false,
             "technology track is already at maximum level",

@@ -32,8 +32,21 @@ RoadBuildResult RoadSystem::build_paved_road(
     if (technology == nullptr) {
         return {false, "road builder has no technology state", 0};
     }
-    const std::int64_t cost =
-        paved_road_cost - 100 * technology->roads_level;
+    const std::int32_t required_level = required_roads_level(
+        first->terrain,
+        second->terrain
+    );
+    if (technology->roads_level < required_level) {
+        return {
+            false,
+            "road technology level is insufficient for these terrain endpoints",
+            0,
+        };
+    }
+    const std::int64_t base_cost = endpoint_base_cost(first->terrain) +
+        endpoint_base_cost(second->terrain);
+    const std::int64_t cost = base_cost *
+        (100 - discount_percent(technology->roads_level)) / 100;
     if (country->treasury < cost) {
         return {false, "country treasury is insufficient to build the road", 0};
     }

@@ -413,9 +413,9 @@ std::vector<std::string> GameState::validate() const {
             technology.economy_level < 0 ||
             technology.military_level < 0 ||
             technology.roads_level < 0 ||
-            technology.economy_level > CountryTechnology::maximum_level ||
-            technology.military_level > CountryTechnology::maximum_level ||
-            technology.roads_level > CountryTechnology::maximum_level;
+            technology.economy_level > CountryTechnology::economy_maximum_level ||
+            technology.military_level > CountryTechnology::military_maximum_level ||
+            technology.roads_level > CountryTechnology::roads_maximum_level;
         if (invalid_level) {
             issues.push_back("country '" + country_id.value() + "' has an invalid technology level");
         }

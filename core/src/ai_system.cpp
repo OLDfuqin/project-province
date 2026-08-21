@@ -239,7 +239,7 @@ std::vector<AiDecision> AiSystem::plan_month(
                     }
                 }
                 const std::int32_t level = technology->level(selected);
-                if (level < TechnologySystem::maximum_level &&
+                if (level < TechnologySystem::maximum_level(selected) &&
                     country.treasury >= TechnologySystem::research_cost(level)) {
                     decisions.push_back(AiDecision{
                         country_id,
@@ -287,7 +287,8 @@ std::vector<AiDecision> AiSystem::plan_month(
             const std::optional<ProvinceId> next_step = find_wartime_step(state, army);
             if (next_step.has_value()) {
                 const std::int32_t cost = connection_cost(state, army.province_id, *next_step);
-                if (army.movement_points >= cost) {
+                if (army.movement_points >=
+                    cost * MovementSystem::movement_point_scale) {
                     decisions.push_back(AiDecision{
                         country_id,
                         MoveArmyCommand{army_id, *next_step},

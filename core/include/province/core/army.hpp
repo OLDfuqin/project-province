@@ -13,6 +13,7 @@ struct Army final {
     CountryId owner_id;
     ProvinceId province_id;
     std::int64_t manpower{};
+    // Stored in half-point units; bridge/UI convert it to display points.
     std::int32_t movement_points{};
     std::optional<ProvinceId> advance_target;
     bool advance_enabled{true};

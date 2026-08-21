@@ -20,8 +20,13 @@ struct TechnologyResearchResult final {
 
 class TechnologySystem final {
 public:
-    static constexpr std::int32_t maximum_level = CountryTechnology::maximum_level;
     static constexpr std::int64_t base_research_cost = 1'000;
+
+    [[nodiscard]] static constexpr std::int32_t maximum_level(
+        TechnologyTrack track
+    ) noexcept {
+        return CountryTechnology::maximum_level(track);
+    }
 
     [[nodiscard]] static std::int64_t research_cost(std::int32_t current_level) noexcept;
     [[nodiscard]] TechnologyResearchResult research(
