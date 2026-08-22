@@ -53,6 +53,10 @@ int main() {
     using province::core::RoadBuiltEvent;
     using province::core::RoadLevel;
 
+    if (!run_battle_calculator_tests()) {
+        return 1;
+    }
+
     GameClock clock{1000, 11};
     clock.advance_months(3);
 
