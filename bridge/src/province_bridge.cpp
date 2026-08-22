@@ -44,8 +44,13 @@ void append_battle_metadata(
     const province::core::BattleResolution& battle
 ) {
     target["battle_occurred"] = battle.occurred;
-    target["attacker_won"] = battle.attacker_won;
+    target["attacker_won"] = battle.occurred && battle.attacker_won;
     target["province_occupied"] = battle.province_occupied;
+    if (!battle.occurred) {
+        target["casualties"] = 0;
+        target["battle_outcomes"] = godot::Array{};
+        return;
+    }
     target["battle_result"] = battle_result_name(battle.result);
     target["attacker_random_x"] = random_tenths_to_display(battle.attacker_random_tenths);
     target["defender_random_x"] = random_tenths_to_display(battle.defender_random_tenths);

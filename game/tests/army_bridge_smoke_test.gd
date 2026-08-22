@@ -234,6 +234,38 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var rewar_result: Dictionary = bridge.declare_war("auroria", "verdantia")
+    bridge.advance_turn(3)
+    var direct_occupation_step: Dictionary = bridge.move_army(result["army_id"], "westmark")
+    var direct_occupation: Dictionary = bridge.move_army(result["army_id"], "greenvale")
+    var battle_aggregate_fields := [
+        "battle_result", "attacker_random_x", "defender_random_x",
+        "attacker_initial_manpower", "defender_initial_manpower",
+        "attacker_military_level", "defender_military_level",
+        "attacker_base_strength", "defender_base_strength",
+        "defender_final_strength", "terrain_defense_bonus",
+        "attacker_casualties", "defender_casualties",
+        "attacker_remaining_manpower", "defender_remaining_manpower",
+    ]
+    for key: String in battle_aggregate_fields:
+        if direct_occupation.has(key):
+            push_error("Unopposed occupation exposed battle field %s" % key)
+            bridge.free()
+            quit(1)
+            return
+    if not rewar_result.get("accepted", false) or \
+            not direct_occupation_step.get("accepted", false) or \
+            not direct_occupation.get("accepted", false) or \
+            direct_occupation.get("battle_occurred", true) or \
+            direct_occupation.get("attacker_won", true) or \
+            not direct_occupation.get("province_occupied", false) or \
+            direct_occupation.get("casualties", -1) != 0 or \
+            not direct_occupation.get("battle_outcomes", []).is_empty():
+        push_error("Unopposed occupation exposed misleading battle metadata")
+        bridge.free()
+        quit(1)
+        return
+
     if not bridge.load_scenario(data_directory, 1000, 1):
         push_error("Scenario reload failed: %s" % bridge.get_last_error())
         bridge.free()
