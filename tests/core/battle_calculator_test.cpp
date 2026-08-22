@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -22,6 +23,18 @@ bool expect_invalid(const province::core::BattleCalculationInput& input) {
         [[maybe_unused]] const auto result =
             province::core::BattleCalculator::calculate(input);
     } catch (const std::invalid_argument&) {
+        return true;
+    } catch (...) {
+        return false;
+    }
+    return false;
+}
+
+bool expect_overflow(const province::core::BattleCalculationInput& input) {
+    try {
+        [[maybe_unused]] const auto result =
+            province::core::BattleCalculator::calculate(input);
+    } catch (const std::overflow_error&) {
         return true;
     } catch (...) {
         return false;
@@ -236,6 +249,88 @@ bool run_battle_calculator_tests() {
                 large.attacker_remaining_manpower >= 0 &&
                 large.defender_remaining_manpower >= 0,
             "large battle overflowed or produced negative manpower"
+        )) {
+        return false;
+    }
+
+    const BattleCalculation weighted_boundary = BattleCalculator::calculate({
+        1, 0,
+        {
+            {ArmyId{"level_3"}, CountryId{"solmere"}, 1, 3},
+            {
+                ArmyId{"level_4"},
+                CountryId{"verdantia"},
+                1'000'000'000'000'000'000,
+                4,
+            },
+        },
+        0, 10, 10,
+    });
+    if (!expect(
+            weighted_boundary.defender_military_level == 3,
+            "large weighted level just below four rounded up"
+        )) {
+        return false;
+    }
+
+    constexpr std::int64_t maximum = std::numeric_limits<std::int64_t>::max();
+    const BattleCalculation exact_limit = BattleCalculator::calculate({
+        maximum, 0,
+        {{ArmyId{"defender"}, CountryId{"solmere"}, maximum, 0}},
+        0, 10, 10,
+    });
+    if (!expect(
+            exact_limit.attacker_base_strength == maximum &&
+                exact_limit.defender_base_strength == maximum &&
+                exact_limit.defender_final_strength == maximum,
+            "an exact INT64_MAX strength crossed the exclusive upper bound"
+        )) {
+        return false;
+    }
+
+    constexpr std::int64_t root_quarter = maximum / 4;
+    constexpr std::int64_t almost_four_quarters = root_quarter * 4 - 1;
+    const BattleCalculation near_integer_strength = BattleCalculator::calculate({
+        almost_four_quarters, 0,
+        {{ArmyId{"defender"}, CountryId{"solmere"}, root_quarter, 0}},
+        0, 10, 10,
+    });
+    if (!expect(
+            near_integer_strength.attacker_base_strength == root_quarter * 2 - 1,
+            "large square-root strength just below an integer rounded up"
+        )) {
+        return false;
+    }
+
+    constexpr std::int64_t terrain_base = (maximum / 13) * 10;
+    constexpr std::int64_t terrain_expected = (maximum / 13) * 13;
+    const BattleCalculation near_limit_terrain = BattleCalculator::calculate({
+        terrain_base, 0,
+        {{ArmyId{"defender"}, CountryId{"solmere"}, terrain_base, 0}},
+        30, 10, 10,
+    });
+    if (!expect(
+            near_limit_terrain.defender_base_strength == terrain_base &&
+                near_limit_terrain.defender_final_strength == terrain_expected,
+            "near-limit terrain scaling was not exact"
+        )) {
+        return false;
+    }
+
+    BattleCalculationInput overflowing_strength{
+        maximum, 1,
+        {{ArmyId{"defender"}, CountryId{"solmere"}, maximum, 0}},
+        0, 10, 10,
+    };
+    BattleCalculationInput overflowing_terrain{
+        maximum, 0,
+        {{ArmyId{"defender"}, CountryId{"solmere"}, maximum, 0}},
+        10, 10, 10,
+    };
+    if (!expect(
+            expect_overflow(overflowing_strength) &&
+                expect_overflow(overflowing_terrain),
+            "strength at or above 2^63 was not rejected"
         )) {
         return false;
     }

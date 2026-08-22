@@ -1,7 +1,6 @@
 #include "province/core/battle_calculator.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <numeric>
@@ -17,6 +16,125 @@ struct ProportionalShare final {
     std::int64_t quotient{};
     std::int64_t remainder{};
 };
+
+struct WideUnsigned final {
+    std::uint64_t high{};
+    std::uint64_t low{};
+};
+
+struct WideProduct final {
+    std::uint64_t low{};
+    std::uint64_t middle{};
+    std::uint64_t high{};
+};
+
+struct DoubleWord final {
+    std::uint64_t low{};
+    std::uint64_t high{};
+};
+
+DoubleWord multiply_words(const std::uint64_t left, const std::uint64_t right) {
+    const std::uint64_t left_low = static_cast<std::uint32_t>(left);
+    const std::uint64_t left_high = left >> 32;
+    const std::uint64_t right_low = static_cast<std::uint32_t>(right);
+    const std::uint64_t right_high = right >> 32;
+
+    const std::uint64_t low_product = left_low * right_low;
+    const std::uint64_t cross_left = left_high * right_low;
+    const std::uint64_t cross_right = left_low * right_high;
+    const std::uint64_t high_product = left_high * right_high;
+    const std::uint64_t middle =
+        (low_product >> 32) +
+        static_cast<std::uint32_t>(cross_left) +
+        static_cast<std::uint32_t>(cross_right);
+
+    return {
+        (middle << 32) | static_cast<std::uint32_t>(low_product),
+        high_product + (cross_left >> 32) + (cross_right >> 32) + (middle >> 32),
+    };
+}
+
+void multiply(WideProduct& value, const std::uint64_t multiplier) {
+    const std::uint64_t limbs[]{value.low, value.middle, value.high};
+    std::uint64_t result[3]{};
+    std::uint64_t carry = 0;
+    for (std::size_t index = 0; index < 3; ++index) {
+        const DoubleWord product = multiply_words(limbs[index], multiplier);
+        result[index] = product.low + carry;
+        const bool carry_from_addition = result[index] < product.low;
+        carry = product.high + static_cast<std::uint64_t>(carry_from_addition);
+    }
+    if (carry != 0) {
+        throw std::overflow_error{"wide integer multiplication overflowed"};
+    }
+    value = {result[0], result[1], result[2]};
+}
+
+WideProduct product_of(
+    const std::uint64_t first,
+    const std::uint64_t second,
+    const std::uint64_t third,
+    const std::uint64_t fourth = 1
+) {
+    WideProduct product{1, 0, 0};
+    multiply(product, first);
+    multiply(product, second);
+    multiply(product, third);
+    multiply(product, fourth);
+    return product;
+}
+
+bool greater_or_equal(const WideProduct& left, const WideProduct& right) {
+    if (left.high != right.high) {
+        return left.high > right.high;
+    }
+    if (left.middle != right.middle) {
+        return left.middle > right.middle;
+    }
+    return left.low >= right.low;
+}
+
+void add(WideUnsigned& value, const std::uint64_t addend) {
+    const std::uint64_t previous_low = value.low;
+    value.low += addend;
+    if (value.low < previous_low) {
+        if (value.high == std::numeric_limits<std::uint64_t>::max()) {
+            throw std::overflow_error{"wide integer addition overflowed"};
+        }
+        ++value.high;
+    }
+}
+
+bool greater_or_equal(const WideUnsigned& left, const WideUnsigned& right) {
+    return left.high > right.high ||
+        (left.high == right.high && left.low >= right.low);
+}
+
+void subtract(WideUnsigned& value, const WideUnsigned& subtrahend) {
+    const bool borrow = value.low < subtrahend.low;
+    value.low -= subtrahend.low;
+    value.high -= subtrahend.high + static_cast<std::uint64_t>(borrow);
+}
+
+std::int32_t exact_weighted_level(
+    const std::vector<DefenderBattleInput>& defenders,
+    const std::int64_t total_manpower
+) {
+    WideUnsigned weighted_sum;
+    for (const DefenderBattleInput& defender : defenders) {
+        for (std::int32_t level = 0; level < defender.military_level; ++level) {
+            add(weighted_sum, static_cast<std::uint64_t>(defender.manpower));
+        }
+    }
+
+    const WideUnsigned divisor{0, static_cast<std::uint64_t>(total_manpower)};
+    std::int32_t quotient = 0;
+    while (greater_or_equal(weighted_sum, divisor)) {
+        subtract(weighted_sum, divisor);
+        ++quotient;
+    }
+    return quotient;
+}
 
 void validate_level(const std::int32_t level) {
     if (level < 0 || level > 8) {
@@ -45,15 +163,84 @@ std::int64_t checked_add(
     return left + right;
 }
 
-std::int64_t floor_strength(
-    const long double strength,
+std::int64_t checked_multiply(
+    const std::int64_t left,
+    const std::int64_t right,
     const char* description
 ) {
-    if (!std::isfinite(strength) ||
-        strength > static_cast<long double>(std::numeric_limits<std::int64_t>::max())) {
+    if (left != 0 && right > std::numeric_limits<std::int64_t>::max() / left) {
         throw std::overflow_error{description};
     }
-    return static_cast<std::int64_t>(std::floor(strength));
+    return left * right;
+}
+
+std::int64_t checked_strength_add(
+    const std::int64_t left,
+    const std::int64_t right,
+    const char* description
+) {
+    if (right > std::numeric_limits<std::int64_t>::max() - left) {
+        throw std::overflow_error{description};
+    }
+    return left + right;
+}
+
+std::int64_t scale_and_floor(
+    const std::int64_t value,
+    const std::int64_t numerator,
+    const std::int64_t denominator,
+    const char* description
+) {
+    const std::int64_t whole = checked_multiply(
+        value / denominator,
+        numerator,
+        description
+    );
+    const std::int64_t fractional = checked_multiply(
+        value % denominator,
+        numerator,
+        description
+    ) / denominator;
+    return checked_strength_add(whole, fractional, description);
+}
+
+std::int64_t greater_side_strength(
+    const std::int64_t lesser,
+    const std::int64_t greater,
+    const std::uint64_t coefficient
+) {
+    const WideProduct strength_squared = product_of(
+        coefficient,
+        coefficient,
+        static_cast<std::uint64_t>(lesser),
+        static_cast<std::uint64_t>(greater)
+    );
+    constexpr std::uint64_t exclusive_limit = std::uint64_t{1} << 63;
+    const WideProduct limit_squared = product_of(
+        exclusive_limit,
+        exclusive_limit,
+        1'000'000
+    );
+    if (greater_or_equal(strength_squared, limit_squared)) {
+        throw std::overflow_error{"battle strength exceeds int64 range"};
+    }
+
+    std::uint64_t lower = 0;
+    std::uint64_t upper = exclusive_limit;
+    while (lower + 1 < upper) {
+        const std::uint64_t middle = lower + (upper - lower) / 2;
+        const WideProduct candidate_squared = product_of(
+            middle,
+            middle,
+            1'000'000
+        );
+        if (greater_or_equal(strength_squared, candidate_squared)) {
+            lower = middle;
+        } else {
+            upper = middle;
+        }
+    }
+    return static_cast<std::int64_t>(lower);
 }
 
 std::int64_t effective_strength(
@@ -63,15 +250,21 @@ std::int64_t effective_strength(
     const std::int32_t random_tenths,
     const std::int32_t military_level
 ) {
-    long double strength = static_cast<long double>(random_tenths) / 10.0L;
-    strength *= static_cast<long double>(lesser);
-    if (is_greater_side) {
-        strength *= std::sqrt(
-            static_cast<long double>(greater) / static_cast<long double>(lesser)
+    const std::int64_t coefficient =
+        random_tenths * (100 + 10 * military_level);
+    if (!is_greater_side) {
+        return scale_and_floor(
+            lesser,
+            coefficient,
+            1'000,
+            "battle strength exceeds int64 range"
         );
     }
-    strength *= static_cast<long double>(100 + 10 * military_level) / 100.0L;
-    return floor_strength(strength, "battle strength exceeds int64 range");
+    return greater_side_strength(
+        lesser,
+        greater,
+        static_cast<std::uint64_t>(coefficient)
+    );
 }
 
 ProportionalShare proportional_share(
@@ -185,7 +378,6 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
 
     std::set<ArmyId> defender_ids;
     std::int64_t defender_manpower = 0;
-    long double weighted_defender_levels = 0.0L;
     for (const DefenderBattleInput& defender : input.defenders) {
         if (defender.manpower <= 0) {
             throw std::invalid_argument{"defender manpower must be positive"};
@@ -199,13 +391,10 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
             defender.manpower,
             "total defender manpower exceeds int64 range"
         );
-        weighted_defender_levels +=
-            static_cast<long double>(defender.manpower) * defender.military_level;
     }
 
-    const auto defender_military_level = static_cast<std::int32_t>(std::floor(
-        weighted_defender_levels / static_cast<long double>(defender_manpower)
-    ));
+    const std::int32_t defender_military_level =
+        exact_weighted_level(input.defenders, defender_manpower);
     const std::int64_t lesser = std::min(input.attacker_manpower, defender_manpower);
     const std::int64_t greater = std::max(input.attacker_manpower, defender_manpower);
     const std::int64_t attacker_base_strength = effective_strength(
@@ -222,9 +411,10 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
         input.defender_random_tenths,
         defender_military_level
     );
-    const std::int64_t defender_final_strength = floor_strength(
-        static_cast<long double>(defender_base_strength) *
-            static_cast<long double>(100 + input.terrain_defense_bonus) / 100.0L,
+    const std::int64_t defender_final_strength = scale_and_floor(
+        defender_base_strength,
+        100 + input.terrain_defense_bonus,
+        100,
         "terrain-adjusted defender strength exceeds int64 range"
     );
 
