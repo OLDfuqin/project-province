@@ -102,7 +102,8 @@ Godot/C++ 适配
 | --- | --- | --- |
 | `army_system.hpp` | `army_system.cpp` | 处理征兵、兵源与人口扣减、编制编号、军队更名和同地军队合并规则。 |
 | `movement_system.hpp` | `movement_system.cpp` | 以半点单位发放并限制移动点，计算道路移动成本、寻路并执行军队移动。 |
-| `battle_system.hpp` | `battle_system.cpp` | 自动结算敌军接触后的战斗、损失、胜负、撤退和占领。 |
+| `battle_calculator.hpp` | `battle_calculator.cpp` | 头文件定义纯战斗输入/输出契约；实现有效战力、伤亡、结果和防守方比例分配公式。 |
+| `battle_system.hpp` | `battle_system.cpp` | 收集战斗状态并取得随机参数，应用计算结果，只撤回存活的进攻军，并执行军队销毁和地区占领。 |
 | `road_system.hpp` | `road_system.cpp` | 按地形经济系数校验道路科技准入、计算两端基础费用与折扣，创建道路连接。 |
 | `peace_system.hpp` | `peace_system.cpp` | 结束战争、按策略恢复或保留领土，并遣返不合法驻留的军队。 |
 
@@ -198,6 +199,7 @@ Godot/C++ 适配
 
 | 文件 | 用途 |
 | --- | --- |
+| `battle_calculator_test.cpp` | 使用固定随机参数验证战斗公式边界、结果判定和确定性的防守伤亡分配。 |
 | `core_smoke_test.cpp` | 核心测试程序入口及综合规则测试，覆盖剧本、回合、经济、人口、道路、征兵、移动、战争、和平和科技。 |
 | `ai_smoke_test.cpp` | AI 决策、目标选择、寻路和回合行动测试。 |
 | `save_game_smoke_test.cpp` | 存档 schema、序列化/反序列化和状态往返一致性测试。 |
