@@ -15,7 +15,7 @@ Godot/C++ 适配
   bridge/src + game/province_bridge.gdextension
             │
             ▼
-确定性模拟核心
+C++ 模拟核心
   core/include + core/src
             │
             ▼
