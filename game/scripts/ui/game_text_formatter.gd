@@ -2,16 +2,24 @@ class_name GameTextFormatter
 extends RefCounted
 
 
+static func battle_result_name(result: String) -> String:
+    match result:
+        "attacker_victory":
+            return "进攻方胜利"
+        "mutual_destruction":
+            return "双方同归于尽"
+        _:
+            return "防守方胜利"
+
+
 static func battle_report(result: Dictionary, province_by_id: Dictionary) -> String:
     if not result.get("battle_occurred", false) and not result.get("province_occupied", false):
         return ""
     if not result.get("battle_occurred", false):
         return "地区在无抵抗情况下被占领"
-    var total_casualties := 0
     var details: Array[String] = []
     for outcome: Dictionary in result.get("battle_outcomes", []):
         var casualties := int(outcome.get("casualties", 0))
-        total_casualties += casualties
         var suffix := ""
         if outcome.get("destroyed", false):
             suffix = "，部队被消灭"
@@ -21,9 +29,9 @@ static func battle_report(result: Dictionary, province_by_id: Dictionary) -> Str
                 outcome["retreat_province"]
             )
         details.append("%s 损失%d%s" % [outcome.get("army_id", "?"), casualties, suffix])
-    return "战斗：%s；总伤亡%d%s | %s" % [
-        "进攻方胜利" if result.get("attacker_won", false) else "防守方胜利",
-        total_casualties,
+    return "战斗：%s；%s%s | %s" % [
+        battle_result_name(String(result.get("battle_result", "defender_victory"))),
+        _battle_calculation_summary(result),
         "；地区被占领" if result.get("province_occupied", false) else "",
         "，".join(details),
     ]
@@ -51,12 +59,31 @@ static func battle_action_report(action: Dictionary, province_by_id: Dictionary)
             outcome.get("remaining_manpower", 0),
             suffix,
         ])
-    return "回合战斗：%s，%s，总伤亡%d%s | %s" % [
+    return "回合战斗：%s，%s，%s%s | %s" % [
         province_name(province_by_id, action.get("province_id", "?")),
-        "进攻方胜利" if action.get("attacker_won", false) else "防守方胜利",
-        action.get("casualties", 0),
+        battle_result_name(String(action.get("battle_result", "defender_victory"))),
+        _battle_calculation_summary(action),
         "，地区被占领" if action.get("province_occupied", false) else "",
         "，".join(details),
+    ]
+
+
+static func _battle_calculation_summary(result: Dictionary) -> String:
+    return "进攻方：随机系数X%.1f，参战兵力%d，军事等级%d，基础有效战力%d；防守方：随机系数X%.1f，参战兵力%d，军事等级%d，基础有效战力%d，地形防御%d%%，最终有效战力%d；结算：进攻方伤亡%d、剩余兵力%d；防守方伤亡%d、剩余兵力%d" % [
+        float(result.get("attacker_random_x", 0.0)),
+        int(result.get("attacker_initial_manpower", 0)),
+        int(result.get("attacker_military_level", 0)),
+        int(result.get("attacker_base_strength", 0)),
+        float(result.get("defender_random_x", 0.0)),
+        int(result.get("defender_initial_manpower", 0)),
+        int(result.get("defender_military_level", 0)),
+        int(result.get("defender_base_strength", 0)),
+        int(result.get("terrain_defense_bonus", 0)),
+        int(result.get("defender_final_strength", 0)),
+        int(result.get("attacker_casualties", 0)),
+        int(result.get("attacker_remaining_manpower", 0)),
+        int(result.get("defender_casualties", 0)),
+        int(result.get("defender_remaining_manpower", 0)),
     ]
 
 
