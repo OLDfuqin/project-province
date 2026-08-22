@@ -1,44 +1,34 @@
 #include "province/core/battle_system.hpp"
 
-#include <algorithm>
+#include <random>
 #include <stdexcept>
+#include <utility>
 
 namespace province::core {
 
 namespace {
 
-std::int64_t effective_strength(
+std::int32_t default_random_roll() {
+    static std::mt19937 engine{std::random_device{}()};
+    static std::uniform_int_distribution<std::int32_t> distribution{7, 14};
+    return distribution(engine);
+}
+
+const CountryTechnology& technology_for(
     const GameState& state,
-    const CountryId& country_id,
-    const std::int64_t manpower
+    const CountryId& country_id
 ) {
     const CountryTechnology* technology = state.find_technology(country_id);
     if (technology == nullptr) {
         throw std::logic_error{"army owner has no technology state"};
     }
-    return manpower * (100 + 10 * technology->military_level) / 100;
+    return *technology;
 }
 
 } // namespace
 
-std::optional<ProvinceId> BattleSystem::find_retreat_province(
-    const GameState& state,
-    const CountryId& country_id,
-    const ProvinceId& battle_province,
-    const ProvinceId& excluded_province
-) {
-    const Province* province = state.find_province(battle_province);
-    if (province == nullptr) {
-        return std::nullopt;
-    }
-    for (const ProvinceId& neighbor_id : province->neighbors) {
-        if (neighbor_id != excluded_province &&
-            state.controller_of(neighbor_id) == country_id) {
-            return neighbor_id;
-        }
-    }
-    return std::nullopt;
-}
+BattleSystem::BattleSystem(RandomRoll random_roll)
+    : random_roll_(random_roll ? std::move(random_roll) : RandomRoll{default_random_roll}) {}
 
 BattleResolution BattleSystem::resolve_entry(
     GameState& state,
@@ -52,22 +42,25 @@ BattleResolution BattleSystem::resolve_entry(
 
     const ProvinceId battle_province = attacker->province_id;
     const CountryId attacker_country = attacker->owner_id;
-    std::vector<ArmyId> defender_ids;
-    std::int64_t defender_strength = 0;
+    const std::int64_t attacker_manpower = attacker->manpower;
+    std::vector<DefenderBattleInput> defenders;
     CountryId defender_country = state.controller_of(battle_province);
     for (const auto& [army_id, army] : state.armies()) {
-        if (army_id != attacker_army_id && army.province_id == battle_province &&
-            army.owner_id != attacker_country &&
-            state.are_at_war(attacker_country, army.owner_id)) {
-            defender_ids.push_back(army_id);
-            defender_strength += effective_strength(state, army.owner_id, army.manpower);
-            defender_country = army.owner_id;
+        if (army_id == attacker_army_id || army.province_id != battle_province ||
+            army.owner_id == attacker_country ||
+            !state.are_at_war(attacker_country, army.owner_id)) {
+            continue;
         }
+        const CountryTechnology& technology = technology_for(state, army.owner_id);
+        defenders.push_back({army_id, army.owner_id, army.manpower, technology.military_level});
     }
-    if (defender_ids.empty()) {
+
+    if (defenders.empty()) {
         BattleResolution result{
-            false, battle_province, attacker_country, defender_country, true, false, {}
+            false, battle_province, attacker_country, defender_country
         };
+        result.result = BattleResultType::attacker_victory;
+        result.attacker_won = true;
         if (state.controller_of(battle_province) != attacker_country) {
             state.set_occupation(battle_province, attacker_country);
             result.province_occupied = true;
@@ -75,94 +68,85 @@ BattleResolution BattleSystem::resolve_entry(
         return result;
     }
 
-    const std::int64_t attacker_manpower = attacker->manpower;
+    defender_country = defenders.front().country_id;
     const Province* battlefield = state.find_province(battle_province);
-    if (battlefield == nullptr) throw std::logic_error{"battle province disappeared"};
-    defender_strength = defender_strength *
-        (100 + terrain_defense_bonus(battlefield->terrain)) / 100;
-    const std::int64_t attacker_strength =
-        effective_strength(state, attacker_country, attacker_manpower);
-    const bool attacker_won = attacker_strength > defender_strength;
-    const std::int64_t attacker_casualties = std::min(
+    if (battlefield == nullptr) {
+        throw std::logic_error{"battle province disappeared"};
+    }
+    const CountryTechnology& attacker_technology = technology_for(state, attacker_country);
+    const std::int32_t attacker_roll = random_roll_();
+    const std::int32_t defender_roll = random_roll_();
+    const BattleCalculation calculation = BattleCalculator::calculate({
         attacker_manpower,
-        std::max<std::int64_t>(1, defender_strength / 4)
-    );
-    const std::int64_t defender_casualty_budget = std::max<std::int64_t>(
-        1,
-        attacker_strength / 4
-    );
+        attacker_technology.military_level,
+        defenders,
+        terrain_defense_bonus(battlefield->terrain),
+        attacker_roll,
+        defender_roll,
+    });
 
     BattleResolution result{
-        true,
-        battle_province,
-        attacker_country,
-        defender_country,
-        attacker_won,
-        false,
-        {},
+        true, battle_province, attacker_country, defender_country
     };
+    result.result = calculation.result;
+    result.attacker_won = calculation.result == BattleResultType::attacker_victory;
+    result.attacker_random_tenths = calculation.attacker_random_tenths;
+    result.defender_random_tenths = calculation.defender_random_tenths;
+    result.attacker_initial_manpower = calculation.attacker_initial_manpower;
+    result.defender_initial_manpower = calculation.defender_initial_manpower;
+    result.attacker_military_level = calculation.attacker_military_level;
+    result.defender_military_level = calculation.defender_military_level;
+    result.terrain_defense_bonus = calculation.terrain_defense_bonus;
+    result.attacker_base_strength = calculation.attacker_base_strength;
+    result.defender_base_strength = calculation.defender_base_strength;
+    result.defender_final_strength = calculation.defender_final_strength;
+    result.attacker_casualties = calculation.attacker_casualties;
+    result.defender_casualties = calculation.defender_casualties;
+    result.attacker_remaining_manpower = calculation.attacker_remaining_manpower;
+    result.defender_remaining_manpower = calculation.defender_remaining_manpower;
 
-    attacker->manpower -= attacker_casualties;
-    ArmyBattleOutcome attacker_outcome{
+    attacker->manpower = calculation.attacker_remaining_manpower;
+    result.armies.push_back({
         attacker_army_id,
-        attacker_casualties,
-        attacker->manpower,
+        calculation.attacker_casualties,
+        calculation.attacker_remaining_manpower,
         std::nullopt,
-        attacker->manpower == 0,
-    };
-    if (attacker->manpower == 0) {
+        calculation.attacker_remaining_manpower == 0,
+    });
+    if (calculation.attacker_remaining_manpower == 0) {
         state.remove_army(attacker_army_id);
-    } else if (!attacker_won) {
-        attacker->province_id = attacker_origin;
-        attacker_outcome.retreat_province = attacker_origin;
     }
-    result.armies.push_back(std::move(attacker_outcome));
 
-    std::int64_t remaining_budget = defender_casualty_budget;
-    for (std::size_t index = 0; index < defender_ids.size(); ++index) {
-        Army* defender = state.find_army(defender_ids[index]);
+    for (const DefenderBattleLoss& loss : calculation.defender_losses) {
+        Army* defender = state.find_army(loss.army_id);
         if (defender == nullptr) {
-            continue;
+            throw std::logic_error{"defending army disappeared during battle"};
         }
-        const std::int64_t armies_left =
-            static_cast<std::int64_t>(defender_ids.size() - index);
-        const std::int64_t assigned = std::max<std::int64_t>(1, remaining_budget / armies_left);
-        const std::int64_t casualties = std::min(defender->manpower, assigned);
-        remaining_budget = std::max<std::int64_t>(0, remaining_budget - casualties);
-        defender->manpower -= casualties;
-
-        ArmyBattleOutcome outcome{
-            defender->id,
-            casualties,
-            defender->manpower,
+        defender->manpower = loss.remaining_manpower;
+        result.armies.push_back({
+            loss.army_id,
+            loss.casualties,
+            loss.remaining_manpower,
             std::nullopt,
-            defender->manpower == 0,
-        };
-        if (defender->manpower == 0) {
-            state.remove_army(defender_ids[index]);
-        } else if (attacker_won) {
-            const auto retreat = find_retreat_province(
-                state,
-                defender->owner_id,
-                battle_province,
-                attacker_origin
-            );
-            if (retreat.has_value()) {
-                defender->province_id = *retreat;
-                outcome.retreat_province = retreat;
-            } else {
-                state.remove_army(defender_ids[index]);
-                outcome.remaining_manpower = 0;
-                outcome.destroyed = true;
-            }
+            loss.remaining_manpower == 0,
+        });
+        if (loss.remaining_manpower == 0) {
+            state.remove_army(loss.army_id);
         }
-        result.armies.push_back(std::move(outcome));
     }
 
-    if (attacker_won && state.find_army(attacker_army_id) != nullptr) {
+    if (calculation.result == BattleResultType::defender_victory) {
+        Army* surviving_attacker = state.find_army(attacker_army_id);
+        if (surviving_attacker != nullptr) {
+            surviving_attacker->province_id = attacker_origin;
+            result.armies.front().retreat_province = attacker_origin;
+        }
+    } else if (calculation.result == BattleResultType::attacker_victory &&
+               state.find_army(attacker_army_id) != nullptr) {
         state.set_occupation(battle_province, attacker_country);
         result.province_occupied = true;
     }
+
     return result;
 }
 

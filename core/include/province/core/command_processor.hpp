@@ -28,6 +28,9 @@ struct CommandResult final {
 
 class CommandProcessor final {
 public:
+    CommandProcessor() = default;
+    explicit CommandProcessor(BattleSystem::RandomRoll random_roll);
+
     [[nodiscard]] CommandResult execute(GameState& state, const GameCommand& command);
     [[nodiscard]] static bool is_supported_turn_length(std::int32_t months) noexcept;
     void enable_ai(CountryId human_country_id);

@@ -16,9 +16,27 @@
 #include "province/core/version.hpp"
 #include "smoke_test_groups.hpp"
 
-#include <iostream>
 #include <array>
+#include <cstddef>
+#include <iostream>
+#include <memory>
 #include <stdexcept>
+#include <vector>
+
+namespace {
+
+auto fixed_rolls(std::initializer_list<std::int32_t> values) {
+    auto rolls = std::make_shared<std::vector<std::int32_t>>(values);
+    auto index = std::make_shared<std::size_t>(0);
+    return [rolls, index]() mutable -> std::int32_t {
+        if (*index >= rolls->size()) {
+            throw std::logic_error{"missing fixed battle roll"};
+        }
+        return (*rolls)[(*index)++];
+    };
+}
+
+} // namespace
 
 int main() {
     using province::core::Country;
@@ -39,6 +57,7 @@ int main() {
     using province::core::PopulationResolvedEvent;
     using province::core::MovementPointsGrantedEvent;
     using province::core::BuildRoadCommand;
+    using province::core::BattleResultType;
     using province::core::RecruitArmyCommand;
     using province::core::RenameArmyCommand;
     using province::core::MergeArmiesCommand;
@@ -636,107 +655,191 @@ int main() {
         return 1;
     }
 
-    GameState battle_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
-    CommandProcessor battle_processor;
-    const CommandResult attacker_recruit = battle_processor.execute(
-        battle_state,
-        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 1'000}
+    GameState defense_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    defense_state.set_diplomatic_status(
+        CountryId{"auroria"}, CountryId{"solmere"}, province::core::DiplomaticStatus::war
     );
-    const CommandResult defender_recruit = battle_processor.execute(
-        battle_state,
-        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"redpass"}, 500}
+    const ArmyId retreating_attacker = defense_state.create_army(
+        CountryId{"auroria"}, ProvinceId{"northreach"}, 1'000
     );
-    const ArmyId attacker_id =
-        std::get<ArmyRecruitedEvent>(attacker_recruit.events.front().payload).army_id;
-    const ArmyId defender_id =
-        std::get<ArmyRecruitedEvent>(defender_recruit.events.front().payload).army_id;
-    [[maybe_unused]] const CommandResult battle_war = battle_processor.execute(
-        battle_state,
-        DeclareWarCommand{CountryId{"auroria"}, CountryId{"solmere"}}
+    const ArmyId surviving_defender = defense_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"redpass"}, 1'000
     );
-    [[maybe_unused]] const CommandResult battle_month = battle_processor.execute(
-        battle_state,
-        AdvanceTurnCommand{1}
+    defense_state.find_army(retreating_attacker)->movement_points = 10;
+    CommandProcessor defense_processor{fixed_rolls({7, 14})};
+    const CommandResult defended_move = defense_processor.execute(
+        defense_state, MoveArmyCommand{retreating_attacker, ProvinceId{"redpass"}}
     );
-    const CommandResult battle_move = battle_processor.execute(
-        battle_state,
-        MoveArmyCommand{attacker_id, ProvinceId{"redpass"}}
-    );
-    if (!battle_move.accepted || battle_move.events.size() != 2 ||
-        battle_state.find_army(attacker_id) == nullptr ||
-        battle_state.find_army(attacker_id)->manpower != 875 ||
-        battle_state.find_army(defender_id) == nullptr ||
-        battle_state.find_army(defender_id)->manpower != 250 ||
-        battle_state.find_army(defender_id)->province_id != ProvinceId{"goldcoast"} ||
-        battle_state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"} ||
-        battle_state.find_province(ProvinceId{"redpass"})->owner_id != CountryId{"solmere"}) {
-        std::cerr << "Battle casualties, retreat or occupation are incorrect\n";
+    if (!defended_move.accepted || defended_move.events.size() != 2) {
+        std::cerr << "Defender victory movement did not produce battle events\n";
         return 1;
     }
-    const auto& battle =
-        std::get<province::core::BattleResolution>(battle_move.events.back().payload);
-    if (!battle.occurred || !battle.attacker_won || !battle.province_occupied ||
-        battle.armies.size() != 2) {
-        std::cerr << "BattleResolved event is incorrect\n";
-        return 1;
-    }
-    const CommandResult occupied_recruitment = battle_processor.execute(
-        battle_state,
-        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"redpass"}, 100}
-    );
-    if (occupied_recruitment.accepted) {
-        std::cerr << "Legal owner recruited soldiers in an occupied province\n";
-        return 1;
-    }
-    const CommandResult annexation_peace = battle_processor.execute(
-        battle_state,
-        MakePeaceCommand{
-            CountryId{"auroria"},
-            CountryId{"solmere"},
-            PeaceSettlementPolicy::annex_occupied_provinces,
-        }
-    );
-    if (!annexation_peace.accepted ||
-        battle_state.find_province(ProvinceId{"redpass"})->owner_id != CountryId{"auroria"} ||
-        battle_state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"} ||
-        battle_state.are_at_war(CountryId{"auroria"}, CountryId{"solmere"})) {
-        std::cerr << "Annexation peace did not transfer occupied territory\n";
+    const auto& defended_battle =
+        std::get<province::core::BattleResolution>(defended_move.events.back().payload);
+    if (defended_battle.result != BattleResultType::defender_victory ||
+        defended_battle.attacker_won || defended_battle.province_occupied ||
+        defended_battle.attacker_random_tenths != 7 ||
+        defended_battle.defender_random_tenths != 14 ||
+        defended_battle.attacker_initial_manpower != 1'000 ||
+        defended_battle.defender_initial_manpower != 1'000 ||
+        defended_battle.attacker_military_level != 0 ||
+        defended_battle.defender_military_level != 0 ||
+        defended_battle.terrain_defense_bonus != 0 ||
+        defended_battle.attacker_base_strength != 700 ||
+        defended_battle.defender_base_strength != 1'400 ||
+        defended_battle.defender_final_strength != 1'400 ||
+        defended_battle.attacker_casualties != 700 ||
+        defended_battle.defender_casualties != 350 ||
+        defended_battle.attacker_remaining_manpower != 300 ||
+        defended_battle.defender_remaining_manpower != 650 ||
+        defended_battle.armies.size() != 2 ||
+        defended_battle.armies.front().retreat_province != ProvinceId{"northreach"} ||
+        defended_battle.armies.back().retreat_province.has_value() ||
+        defense_state.find_army(retreating_attacker) == nullptr ||
+        defense_state.find_army(retreating_attacker)->manpower != 300 ||
+        defense_state.find_army(retreating_attacker)->province_id != ProvinceId{"northreach"} ||
+        defense_state.find_army(surviving_defender) == nullptr ||
+        defense_state.find_army(surviving_defender)->manpower != 650 ||
+        defense_state.find_army(surviving_defender)->province_id != ProvinceId{"redpass"} ||
+        defense_state.controller_of(ProvinceId{"redpass"}) != CountryId{"solmere"}) {
+        std::cerr << "Surviving armies did not remain or retreat after defender victory\n";
         return 1;
     }
 
-    GameState defeat_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
-    CommandProcessor defeat_processor;
-    const CommandResult weak_recruit = defeat_processor.execute(
-        defeat_state,
-        RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 300}
+    GameState victory_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    victory_state.set_diplomatic_status(
+        CountryId{"auroria"}, CountryId{"solmere"}, province::core::DiplomaticStatus::war
     );
-    const CommandResult strong_recruit = defeat_processor.execute(
-        defeat_state,
-        RecruitArmyCommand{CountryId{"solmere"}, ProvinceId{"redpass"}, 500}
+    victory_state.find_technology(CountryId{"auroria"})->military_level = 2;
+    const ArmyId victorious_attacker = victory_state.create_army(
+        CountryId{"auroria"}, ProvinceId{"northreach"}, 4'000
     );
-    const ArmyId weak_id =
-        std::get<ArmyRecruitedEvent>(weak_recruit.events.front().payload).army_id;
-    const ArmyId strong_id =
-        std::get<ArmyRecruitedEvent>(strong_recruit.events.front().payload).army_id;
-    [[maybe_unused]] const CommandResult defeat_war = defeat_processor.execute(
-        defeat_state,
-        DeclareWarCommand{CountryId{"auroria"}, CountryId{"solmere"}}
+    const ArmyId destroyed_defender = victory_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"redpass"}, 1'000
     );
-    [[maybe_unused]] const CommandResult defeat_month = defeat_processor.execute(
-        defeat_state,
-        AdvanceTurnCommand{1}
+    victory_state.find_army(victorious_attacker)->movement_points = 10;
+    CommandProcessor victory_processor{fixed_rolls({10, 10})};
+    const CommandResult victorious_move = victory_processor.execute(
+        victory_state, MoveArmyCommand{victorious_attacker, ProvinceId{"redpass"}}
     );
-    const CommandResult defeated_attack = defeat_processor.execute(
-        defeat_state,
-        MoveArmyCommand{weak_id, ProvinceId{"redpass"}}
+    if (!victorious_move.accepted || victorious_move.events.size() != 2) {
+        std::cerr << "Attacker victory movement did not produce battle events\n";
+        return 1;
+    }
+    const auto& victorious_battle =
+        std::get<province::core::BattleResolution>(victorious_move.events.back().payload);
+    if (victorious_battle.result != BattleResultType::attacker_victory ||
+        !victorious_battle.attacker_won || !victorious_battle.province_occupied ||
+        victory_state.find_army(victorious_attacker) == nullptr ||
+        victory_state.find_army(victorious_attacker)->manpower != 3'500 ||
+        victory_state.find_army(victorious_attacker)->province_id != ProvinceId{"redpass"} ||
+        victory_state.find_army(destroyed_defender) != nullptr ||
+        victory_state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"}) {
+        std::cerr << "Attacker victory did not destroy defenders and occupy province\n";
+        return 1;
+    }
+
+    GameState mutual_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    mutual_state.set_diplomatic_status(
+        CountryId{"auroria"}, CountryId{"solmere"}, province::core::DiplomaticStatus::war
     );
-    if (!defeated_attack.accepted || defeat_state.find_army(weak_id) == nullptr ||
-        defeat_state.find_army(weak_id)->province_id != ProvinceId{"northreach"} ||
-        defeat_state.find_army(weak_id)->manpower != 175 ||
-        defeat_state.find_army(strong_id) == nullptr ||
-        defeat_state.find_army(strong_id)->manpower != 425 ||
-        defeat_state.controller_of(ProvinceId{"redpass"}) != CountryId{"solmere"}) {
-        std::cerr << "Defeated attacker did not take losses and retreat\n";
+    const ArmyId mutual_attacker = mutual_state.create_army(
+        CountryId{"auroria"}, ProvinceId{"northreach"}, 1
+    );
+    const ArmyId mutual_defender = mutual_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"redpass"}, 1
+    );
+    mutual_state.find_army(mutual_attacker)->movement_points = 10;
+    CommandProcessor mutual_processor{fixed_rolls({7, 7})};
+    const CommandResult mutual_move = mutual_processor.execute(
+        mutual_state, MoveArmyCommand{mutual_attacker, ProvinceId{"redpass"}}
+    );
+    if (!mutual_move.accepted || mutual_move.events.size() != 2) {
+        std::cerr << "Mutual destruction movement did not produce battle events\n";
+        return 1;
+    }
+    const auto& mutual_battle =
+        std::get<province::core::BattleResolution>(mutual_move.events.back().payload);
+    if (mutual_battle.result != BattleResultType::mutual_destruction ||
+        mutual_battle.attacker_won || mutual_battle.province_occupied ||
+        mutual_state.find_army(mutual_attacker) != nullptr ||
+        mutual_state.find_army(mutual_defender) != nullptr ||
+        mutual_state.controller_of(ProvinceId{"redpass"}) != CountryId{"solmere"}) {
+        std::cerr << "Mutual destruction changed armies or occupation incorrectly\n";
+        return 1;
+    }
+
+    GameState multiple_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    multiple_state.set_diplomatic_status(
+        CountryId{"auroria"}, CountryId{"solmere"}, province::core::DiplomaticStatus::war
+    );
+    const ArmyId multiple_attacker = multiple_state.create_army(
+        CountryId{"auroria"}, ProvinceId{"northreach"}, 7
+    );
+    const ArmyId first_defender = multiple_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"redpass"}, 1
+    );
+    const ArmyId second_defender = multiple_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"redpass"}, 1
+    );
+    const ArmyId third_defender = multiple_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"redpass"}, 1
+    );
+    multiple_state.find_army(multiple_attacker)->movement_points = 10;
+    CommandProcessor multiple_processor{fixed_rolls({10, 10})};
+    const CommandResult multiple_move = multiple_processor.execute(
+        multiple_state, MoveArmyCommand{multiple_attacker, ProvinceId{"redpass"}}
+    );
+    if (!multiple_move.accepted || multiple_move.events.size() != 2) {
+        std::cerr << "Multiple-defender movement did not produce battle events\n";
+        return 1;
+    }
+    const auto& multiple_battle =
+        std::get<province::core::BattleResolution>(multiple_move.events.back().payload);
+    if (multiple_battle.armies.size() != 4 ||
+        multiple_battle.defender_casualties != 2 ||
+        multiple_battle.armies[1].army_id != first_defender ||
+        multiple_battle.armies[1].casualties != 1 || !multiple_battle.armies[1].destroyed ||
+        multiple_battle.armies[2].army_id != second_defender ||
+        multiple_battle.armies[2].casualties != 1 || !multiple_battle.armies[2].destroyed ||
+        multiple_battle.armies[3].army_id != third_defender ||
+        multiple_battle.armies[3].casualties != 0 || multiple_battle.armies[3].destroyed ||
+        multiple_state.find_army(first_defender) != nullptr ||
+        multiple_state.find_army(second_defender) != nullptr ||
+        multiple_state.find_army(third_defender) == nullptr ||
+        multiple_state.find_army(third_defender)->manpower != 1 ||
+        multiple_state.find_army(third_defender)->province_id != ProvinceId{"redpass"}) {
+        std::cerr << "Multiple defender losses or positions were applied incorrectly\n";
+        return 1;
+    }
+
+    GameState undefended_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    undefended_state.set_diplomatic_status(
+        CountryId{"auroria"}, CountryId{"solmere"}, province::core::DiplomaticStatus::war
+    );
+    const ArmyId undefended_attacker = undefended_state.create_army(
+        CountryId{"auroria"}, ProvinceId{"northreach"}, 100
+    );
+    undefended_state.find_army(undefended_attacker)->movement_points = 10;
+    std::size_t undefended_roll_count = 0;
+    CommandProcessor undefended_processor{[&undefended_roll_count]() -> std::int32_t {
+        ++undefended_roll_count;
+        return 10;
+    }};
+    const CommandResult undefended_move = undefended_processor.execute(
+        undefended_state, MoveArmyCommand{undefended_attacker, ProvinceId{"redpass"}}
+    );
+    if (!undefended_move.accepted || undefended_move.events.size() != 2) {
+        std::cerr << "Undefended movement did not produce occupation events\n";
+        return 1;
+    }
+    const auto& undefended_battle =
+        std::get<province::core::BattleResolution>(undefended_move.events.back().payload);
+    if (undefended_roll_count != 0 || undefended_battle.occurred ||
+        undefended_battle.result != BattleResultType::attacker_victory ||
+        !undefended_battle.attacker_won || !undefended_battle.province_occupied ||
+        undefended_state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"}) {
+        std::cerr << "Undefended occupation consumed rolls or produced the wrong state\n";
         return 1;
     }
 
@@ -1111,7 +1214,7 @@ int main() {
     }
 
     GameState military_tech_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
-    CommandProcessor military_tech_processor;
+    CommandProcessor military_tech_processor{fixed_rolls({10, 10})};
     const CommandResult military_attacker = military_tech_processor.execute(
         military_tech_state,
         RecruitArmyCommand{CountryId{"auroria"}, ProvinceId{"northreach"}, 500}
@@ -1140,8 +1243,10 @@ int main() {
     );
     const auto& technology_battle_result =
         std::get<province::core::BattleResolution>(technology_battle.events.back().payload);
-    if (!technology_battle.accepted || !technology_battle_result.attacker_won ||
-        !technology_battle_result.province_occupied) {
+    if (!technology_battle.accepted ||
+        technology_battle_result.result != BattleResultType::defender_victory ||
+        technology_battle_result.attacker_military_level != 1 ||
+        technology_battle_result.attacker_base_strength != 550) {
         std::cerr << "Military technology did not contribute to effective strength\n";
         return 1;
     }

@@ -4,9 +4,13 @@
 #include <map>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 namespace province::core {
+
+CommandProcessor::CommandProcessor(BattleSystem::RandomRoll random_roll)
+    : battle_system_(std::move(random_roll)) {}
 
 void CommandProcessor::enable_ai(CountryId human_country_id) {
     human_country_id_ = std::move(human_country_id);
