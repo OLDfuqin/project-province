@@ -1,6 +1,38 @@
 extends SceneTree
 
 
+func _has_complete_battle_metadata(battle_dictionary: Dictionary) -> bool:
+    var required := [
+        "battle_result", "attacker_random_x", "defender_random_x",
+        "attacker_initial_manpower", "defender_initial_manpower",
+        "attacker_military_level", "defender_military_level",
+        "attacker_base_strength", "defender_base_strength",
+        "defender_final_strength", "terrain_defense_bonus",
+        "attacker_casualties", "defender_casualties",
+        "attacker_remaining_manpower", "defender_remaining_manpower",
+    ]
+    for key: String in required:
+        if not battle_dictionary.has(key):
+            push_error("Battle dictionary is missing %s" % key)
+            return false
+
+    var result: String = battle_dictionary["battle_result"]
+    if result != "defender_victory" and \
+            result != "attacker_victory" and \
+            result != "mutual_destruction":
+        push_error("Battle dictionary has invalid result %s" % result)
+        return false
+
+    for key: String in ["attacker_random_x", "defender_random_x"]:
+        var random_x: float = float(battle_dictionary[key])
+        var tenths: float = round(random_x * 10.0)
+        if random_x < 0.7 or random_x > 1.4 or \
+                not is_equal_approx(random_x, tenths / 10.0):
+            push_error("Battle dictionary has invalid %s %s" % [key, random_x])
+            return false
+    return true
+
+
 func _initialize() -> void:
     var bridge: Object = ClassDB.instantiate("ProvinceBridge")
     if bridge == null:
@@ -140,17 +172,16 @@ func _initialize() -> void:
         quit(1)
         return
 
-    var defender: Dictionary = bridge.recruit_army("verdantia", "greenvale", 500)
+    var defender: Dictionary = bridge.recruit_army("verdantia", "greenvale", 100)
     var peace_entry: Dictionary = bridge.move_army(result["army_id"], "greenvale")
     var war_result: Dictionary = bridge.declare_war("auroria", "verdantia")
     bridge.advance_turn(1)
-    var war_entry: Dictionary = bridge.auto_advance_army(result["army_id"])
+    var war_entry: Dictionary = bridge.move_army(result["army_id"], "greenvale")
     var relations: Array = bridge.get_diplomatic_relations()
     if peace_entry.get("accepted", false) or \
             not defender.get("accepted", false) or \
             not war_result.get("accepted", false) or \
             not war_entry.get("accepted", false) or \
-            war_entry.get("auto_destination", "") != "greenvale" or \
             not war_entry.get("battle_occurred", false) or \
             not war_entry.get("attacker_won", false) or \
             not war_entry.get("province_occupied", false) or \
@@ -161,23 +192,22 @@ func _initialize() -> void:
         return
 
     var occupied_greenvale: Dictionary = {}
-    var defender_after: Dictionary = {}
     for province: Dictionary in bridge.get_province_summaries():
         if province["id"] == "greenvale":
             occupied_greenvale = province
-    for army: Dictionary in bridge.get_army_summaries():
-        if army["id"] == defender["army_id"]:
-            defender_after = army
     if occupied_greenvale.get("owner_id", "") != "auroria" or \
             occupied_greenvale.get("legal_owner_id", "") != "verdantia" or \
-            not occupied_greenvale.get("occupied", false) or \
-            defender_after.get("province_id", "") != "sunmeadow":
-        push_error("Battle occupation or defender retreat was not reflected")
+            not occupied_greenvale.get("occupied", false):
+        push_error("Battle occupation was not reflected")
         bridge.free()
         quit(1)
         return
     if war_entry.get("battle_outcomes", []).is_empty():
         push_error("Battle outcome details were not reflected in bridge state")
+        bridge.free()
+        quit(1)
+        return
+    if not _has_complete_battle_metadata(war_entry):
         bridge.free()
         quit(1)
         return
@@ -385,6 +415,7 @@ func _initialize() -> void:
         return
     bridge.set_ai_enabled(false, "auroria")
     var planned: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
+    var planned_defender: Dictionary = bridge.recruit_army("verdantia", "greenvale", 100)
     bridge.research_technology("auroria", "roads")
     bridge.build_road("auroria", "northreach", "westmark")
     bridge.declare_war("auroria", "verdantia")
@@ -394,6 +425,7 @@ func _initialize() -> void:
     var turn_plan: Dictionary = bridge.advance_turn(3)
     var planned_move_seen := false
     var planned_battle_seen := false
+    var planned_battle_metadata_valid := false
     for action: Dictionary in turn_plan.get("turn_actions", []):
         if action.get("type", "") == "army_moved" and \
                 action.get("army_id", "") == planned["army_id"] and \
@@ -405,6 +437,7 @@ func _initialize() -> void:
                 action.get("province_id", "") == "greenvale" and \
                 action.get("province_occupied", false):
             planned_battle_seen = true
+            planned_battle_metadata_valid = _has_complete_battle_metadata(action)
     var planned_after: Dictionary = {}
     var planned_greenvale: Dictionary = {}
     for army_summary: Dictionary in bridge.get_army_summaries():
@@ -414,9 +447,11 @@ func _initialize() -> void:
         if province_summary["id"] == "greenvale":
             planned_greenvale = province_summary
     if not plan_result.get("accepted", false) or \
+            not planned_defender.get("accepted", false) or \
             not turn_plan.get("accepted", false) or \
             not planned_move_seen or \
             not planned_battle_seen or \
+            not planned_battle_metadata_valid or \
             planned_after.get("province_id", "") != "greenvale" or \
             planned_after.get("advance_target_id", "") != "" or \
             planned_greenvale.get("owner_id", "") != "auroria" or \

@@ -21,6 +21,65 @@ namespace {
         province::core::MovementSystem::movement_point_scale;
 }
 
+[[nodiscard]] godot::String battle_result_name(
+    const province::core::BattleResultType result
+) {
+    switch (result) {
+        case province::core::BattleResultType::defender_victory:
+            return "defender_victory";
+        case province::core::BattleResultType::attacker_victory:
+            return "attacker_victory";
+        case province::core::BattleResultType::mutual_destruction:
+            return "mutual_destruction";
+    }
+    return "defender_victory";
+}
+
+[[nodiscard]] double random_tenths_to_display(const std::int32_t value) noexcept {
+    return static_cast<double>(value) / 10.0;
+}
+
+void append_battle_metadata(
+    godot::Dictionary& target,
+    const province::core::BattleResolution& battle
+) {
+    target["battle_occurred"] = battle.occurred;
+    target["attacker_won"] = battle.attacker_won;
+    target["province_occupied"] = battle.province_occupied;
+    target["battle_result"] = battle_result_name(battle.result);
+    target["attacker_random_x"] = random_tenths_to_display(battle.attacker_random_tenths);
+    target["defender_random_x"] = random_tenths_to_display(battle.defender_random_tenths);
+    target["attacker_initial_manpower"] = battle.attacker_initial_manpower;
+    target["defender_initial_manpower"] = battle.defender_initial_manpower;
+    target["attacker_military_level"] = battle.attacker_military_level;
+    target["defender_military_level"] = battle.defender_military_level;
+    target["attacker_base_strength"] = battle.attacker_base_strength;
+    target["defender_base_strength"] = battle.defender_base_strength;
+    target["defender_final_strength"] = battle.defender_final_strength;
+    target["terrain_defense_bonus"] = battle.terrain_defense_bonus;
+    target["attacker_casualties"] = battle.attacker_casualties;
+    target["defender_casualties"] = battle.defender_casualties;
+    target["attacker_remaining_manpower"] = battle.attacker_remaining_manpower;
+    target["defender_remaining_manpower"] = battle.defender_remaining_manpower;
+
+    std::int64_t casualties = 0;
+    godot::Array outcomes;
+    for (const province::core::ArmyBattleOutcome& outcome : battle.armies) {
+        casualties += outcome.casualties;
+        godot::Dictionary summary;
+        summary["army_id"] = godot::String::utf8(outcome.army_id.value().c_str());
+        summary["casualties"] = outcome.casualties;
+        summary["remaining_manpower"] = outcome.remaining_manpower;
+        summary["destroyed"] = outcome.destroyed;
+        summary["retreat_province"] = outcome.retreat_province.has_value()
+            ? godot::String::utf8(outcome.retreat_province->value().c_str())
+            : godot::String{};
+        outcomes.push_back(summary);
+    }
+    target["casualties"] = casualties;
+    target["battle_outcomes"] = outcomes;
+}
+
 }
 
 godot::String ProvinceBridge::get_core_version() const {
@@ -237,26 +296,7 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
                 action["type"] = "battle_resolved";
                 action["province_id"] =
                     godot::String::utf8(battle.province_id.value().c_str());
-                action["battle_occurred"] = battle.occurred;
-                action["attacker_won"] = battle.attacker_won;
-                action["province_occupied"] = battle.province_occupied;
-                std::int64_t casualties = 0;
-                godot::Array outcomes;
-                for (const province::core::ArmyBattleOutcome& outcome : battle.armies) {
-                    casualties += outcome.casualties;
-                    godot::Dictionary summary;
-                    summary["army_id"] =
-                        godot::String::utf8(outcome.army_id.value().c_str());
-                    summary["casualties"] = outcome.casualties;
-                    summary["remaining_manpower"] = outcome.remaining_manpower;
-                    summary["destroyed"] = outcome.destroyed;
-                    summary["retreat_province"] = outcome.retreat_province.has_value()
-                        ? godot::String::utf8(outcome.retreat_province->value().c_str())
-                        : godot::String{};
-                    outcomes.push_back(summary);
-                }
-                action["casualties"] = casualties;
-                action["battle_outcomes"] = outcomes;
+                append_battle_metadata(action, battle);
             } else if (event.type == province::core::GameEventType::technology_researched) {
                 const auto& research =
                     std::get<province::core::TechnologyResearchResult>(event.payload);
@@ -803,23 +843,7 @@ godot::Dictionary ProvinceBridge::move_army(
                         std::get<province::core::BattleResolution>(event.payload);
                     response["battle_event_sequence"] =
                         static_cast<std::int64_t>(event.sequence);
-                    response["battle_occurred"] = battle.occurred;
-                    response["attacker_won"] = battle.attacker_won;
-                    response["province_occupied"] = battle.province_occupied;
-                    godot::Array outcomes;
-                    for (const province::core::ArmyBattleOutcome& outcome : battle.armies) {
-                        godot::Dictionary summary;
-                        summary["army_id"] =
-                            godot::String::utf8(outcome.army_id.value().c_str());
-                        summary["casualties"] = outcome.casualties;
-                        summary["remaining_manpower"] = outcome.remaining_manpower;
-                        summary["destroyed"] = outcome.destroyed;
-                        summary["retreat_province"] = outcome.retreat_province.has_value()
-                            ? godot::String::utf8(outcome.retreat_province->value().c_str())
-                            : godot::String{};
-                        outcomes.push_back(summary);
-                    }
-                    response["battle_outcomes"] = outcomes;
+                    append_battle_metadata(response, battle);
                 }
             }
             const province::core::Army* current_army = state_->find_army(
