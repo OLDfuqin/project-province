@@ -167,6 +167,34 @@ bool run_battle_calculator_tests() {
         return false;
     }
 
+    const BattleCalculation unequal_remainders = BattleCalculator::calculate({
+        1'000, 2,
+        {
+            {ArmyId{"army_a"}, CountryId{"solmere"}, 500, 1},
+            {ArmyId{"army_z"}, CountryId{"verdantia"}, 300, 2},
+        },
+        20, 9, 11,
+    });
+    // Total losses are 482. Exact shares are 301.25 and 180.75, so army_z
+    // receives the one unassigned casualty despite its lexically larger ID.
+    const auto* smaller_remainder_loss = find_loss(
+        unequal_remainders, ArmyId{"army_a"}
+    );
+    const auto* larger_remainder_loss = find_loss(
+        unequal_remainders, ArmyId{"army_z"}
+    );
+    if (!expect(
+            unequal_remainders.attacker_base_strength == 965 &&
+                unequal_remainders.defender_casualties == 482 &&
+                smaller_remainder_loss != nullptr &&
+                smaller_remainder_loss->casualties == 301 &&
+                larger_remainder_loss != nullptr &&
+                larger_remainder_loss->casualties == 181,
+            "the larger unequal remainder did not receive the extra casualty"
+        )) {
+        return false;
+    }
+
     const BattleCalculation mutual = BattleCalculator::calculate({
         1, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, 1, 0}},

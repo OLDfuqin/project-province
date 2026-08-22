@@ -28,7 +28,7 @@ static func battle_report(result: Dictionary, province_by_id: Dictionary) -> Str
                 province_by_id,
                 outcome["retreat_province"]
             )
-        details.append("%s 损失%d%s" % [outcome.get("army_id", "?"), casualties, suffix])
+        details.append("%s 损失%d%s" % [_battle_army_name(outcome), casualties, suffix])
     return "战斗：%s；%s%s | %s" % [
         battle_result_name(String(result.get("battle_result", "defender_victory"))),
         _battle_calculation_summary(result),
@@ -54,7 +54,7 @@ static func battle_action_report(action: Dictionary, province_by_id: Dictionary)
                 outcome["retreat_province"]
             )
         details.append("%s 损失%d，剩余%d%s" % [
-            outcome.get("army_id", "?"),
+            _battle_army_name(outcome),
             outcome.get("casualties", 0),
             outcome.get("remaining_manpower", 0),
             suffix,
@@ -66,6 +66,13 @@ static func battle_action_report(action: Dictionary, province_by_id: Dictionary)
         "，地区被占领" if action.get("province_occupied", false) else "",
         "，".join(details),
     ]
+
+
+static func _battle_army_name(outcome: Dictionary) -> String:
+    var display_name := String(outcome.get("display_name", ""))
+    return display_name if not display_name.is_empty() else String(
+        outcome.get("army_id", "?")
+    )
 
 
 static func _battle_calculation_summary(result: Dictionary) -> String:

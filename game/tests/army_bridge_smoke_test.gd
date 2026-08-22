@@ -30,6 +30,11 @@ func _has_complete_battle_metadata(battle_dictionary: Dictionary) -> bool:
                 not is_equal_approx(random_x, tenths / 10.0):
             push_error("Battle dictionary has invalid %s %s" % [key, random_x])
             return false
+    for outcome: Dictionary in battle_dictionary.get("battle_outcomes", []):
+        if String(outcome.get("army_id", "")).is_empty() or \
+                String(outcome.get("display_name", "")).is_empty():
+            push_error("Battle outcome did not preserve stable and visible army identity")
+            return false
     return true
 
 
@@ -458,6 +463,8 @@ func _initialize() -> void:
     var planned_move_seen := false
     var planned_battle_seen := false
     var planned_battle_metadata_valid := false
+    var planned_attacker_identity_seen := false
+    var planned_destroyed_defender_identity_seen := false
     for action: Dictionary in turn_plan.get("turn_actions", []):
         if action.get("type", "") == "army_moved" and \
                 action.get("army_id", "") == planned["army_id"] and \
@@ -470,6 +477,15 @@ func _initialize() -> void:
                 action.get("province_occupied", false):
             planned_battle_seen = true
             planned_battle_metadata_valid = _has_complete_battle_metadata(action)
+            for outcome: Dictionary in action.get("battle_outcomes", []):
+                if outcome.get("army_id", "") == planned["army_id"] and \
+                        outcome.get("display_name", "") == planned["display_name"]:
+                    planned_attacker_identity_seen = true
+                if outcome.get("army_id", "") == planned_defender["army_id"] and \
+                        outcome.get("display_name", "") == \
+                            planned_defender["display_name"] and \
+                        outcome.get("destroyed", false):
+                    planned_destroyed_defender_identity_seen = true
     var planned_after: Dictionary = {}
     var planned_greenvale: Dictionary = {}
     for army_summary: Dictionary in bridge.get_army_summaries():
@@ -484,6 +500,9 @@ func _initialize() -> void:
             not planned_move_seen or \
             not planned_battle_seen or \
             not planned_battle_metadata_valid or \
+            not planned_attacker_identity_seen or \
+            not planned_destroyed_defender_identity_seen or \
+            planned.get("display_name", "") != "\u5965\u00b7\u7b2c1\u519b" or \
             planned_after.get("province_id", "") != "greenvale" or \
             planned_after.get("advance_target_id", "") != "" or \
             planned_greenvale.get("owner_id", "") != "auroria" or \

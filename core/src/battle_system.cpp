@@ -1,7 +1,10 @@
 #include "province/core/battle_system.hpp"
 
+#include <algorithm>
+#include <map>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace province::core {
@@ -25,6 +28,47 @@ const CountryTechnology& technology_for(
     return *technology;
 }
 
+void validate_application_targets(
+    const GameState& state,
+    const ArmyId& attacker_army_id,
+    const std::int64_t attacker_manpower,
+    const std::vector<DefenderBattleInput>& defenders,
+    const BattleCalculation& calculation
+) {
+    const Army* attacker = state.find_army(attacker_army_id);
+    if (attacker == nullptr || attacker->manpower != attacker_manpower) {
+        throw std::logic_error{"attacking army changed during battle calculation"};
+    }
+    if (calculation.attacker_initial_manpower != attacker_manpower ||
+        calculation.attacker_casualties < 0 ||
+        calculation.attacker_casualties > attacker_manpower ||
+        calculation.attacker_remaining_manpower !=
+            attacker_manpower - calculation.attacker_casualties) {
+        throw std::logic_error{"battle calculation does not match attacker snapshot"};
+    }
+    if (calculation.defender_losses.size() != defenders.size()) {
+        throw std::logic_error{"battle calculation does not map every defender"};
+    }
+    for (const DefenderBattleInput& defender : defenders) {
+        const auto loss = std::find_if(
+            calculation.defender_losses.begin(),
+            calculation.defender_losses.end(),
+            [&defender](const DefenderBattleLoss& candidate) {
+                return candidate.army_id == defender.army_id;
+            }
+        );
+        if (loss == calculation.defender_losses.end() || loss->casualties < 0 ||
+            loss->casualties > defender.manpower ||
+            loss->remaining_manpower != defender.manpower - loss->casualties) {
+            throw std::logic_error{"battle calculation does not match defender snapshot"};
+        }
+        const Army* current = state.find_army(defender.army_id);
+        if (current == nullptr || current->manpower != defender.manpower) {
+            throw std::logic_error{"defending army changed during battle calculation"};
+        }
+    }
+}
+
 } // namespace
 
 BattleSystem::BattleSystem(RandomRoll random_roll)
@@ -43,6 +87,11 @@ BattleResolution BattleSystem::resolve_entry(
     const ProvinceId battle_province = attacker->province_id;
     const CountryId attacker_country = attacker->owner_id;
     const std::int64_t attacker_manpower = attacker->manpower;
+    std::map<ArmyId, std::string> display_names;
+    display_names.emplace(
+        attacker_army_id,
+        state.army_display_name(attacker_army_id)
+    );
     std::vector<DefenderBattleInput> defenders;
     CountryId defender_country = state.controller_of(battle_province);
     for (const auto& [army_id, army] : state.armies()) {
@@ -52,6 +101,7 @@ BattleResolution BattleSystem::resolve_entry(
             continue;
         }
         const CountryTechnology& technology = technology_for(state, army.owner_id);
+        display_names.emplace(army_id, state.army_display_name(army_id));
         defenders.push_back({army_id, army.owner_id, army.manpower, technology.military_level});
     }
 
@@ -105,9 +155,19 @@ BattleResolution BattleSystem::resolve_entry(
     result.attacker_remaining_manpower = calculation.attacker_remaining_manpower;
     result.defender_remaining_manpower = calculation.defender_remaining_manpower;
 
-    attacker->manpower = calculation.attacker_remaining_manpower;
+    validate_application_targets(
+        state,
+        attacker_army_id,
+        attacker_manpower,
+        defenders,
+        calculation
+    );
+
+    Army* attacker_to_apply = state.find_army(attacker_army_id);
+    attacker_to_apply->manpower = calculation.attacker_remaining_manpower;
     result.armies.push_back({
         attacker_army_id,
+        display_names.at(attacker_army_id),
         calculation.attacker_casualties,
         calculation.attacker_remaining_manpower,
         std::nullopt,
@@ -125,6 +185,7 @@ BattleResolution BattleSystem::resolve_entry(
         defender->manpower = loss.remaining_manpower;
         result.armies.push_back({
             loss.army_id,
+            display_names.at(loss.army_id),
             loss.casualties,
             loss.remaining_manpower,
             std::nullopt,
@@ -142,7 +203,8 @@ BattleResolution BattleSystem::resolve_entry(
             result.armies.front().retreat_province = attacker_origin;
         }
     } else if (calculation.result == BattleResultType::attacker_victory &&
-               state.find_army(attacker_army_id) != nullptr) {
+               state.find_army(attacker_army_id) != nullptr &&
+               state.controller_of(battle_province) != attacker_country) {
         state.set_occupation(battle_province, attacker_country);
         result.province_occupied = true;
     }

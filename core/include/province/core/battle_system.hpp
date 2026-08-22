@@ -6,12 +6,14 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace province::core {
 
 struct ArmyBattleOutcome final {
     ArmyId army_id;
+    std::string display_name;
     std::int64_t casualties{};
     std::int64_t remaining_manpower{};
     std::optional<ProvinceId> retreat_province;

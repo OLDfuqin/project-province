@@ -1,4 +1,5 @@
 #include "province/core/command_processor.hpp"
+#include "province/core/battle_system.hpp"
 #include "province/core/country.hpp"
 #include "province/core/game_command.hpp"
 #include "province/core/game_event.hpp"
@@ -58,6 +59,7 @@ int main() {
     using province::core::MovementPointsGrantedEvent;
     using province::core::BuildRoadCommand;
     using province::core::BattleResultType;
+    using province::core::BattleSystem;
     using province::core::RecruitArmyCommand;
     using province::core::RenameArmyCommand;
     using province::core::MergeArmiesCommand;
@@ -693,6 +695,8 @@ int main() {
         defended_battle.attacker_remaining_manpower != 300 ||
         defended_battle.defender_remaining_manpower != 650 ||
         defended_battle.armies.size() != 2 ||
+        defended_battle.armies.front().display_name !=
+            "\xE5\xA5\xA5\xC2\xB7\xE7\xAC\xAC" "1" "\xE5\x86\x9B" ||
         defended_battle.armies.front().retreat_province != ProvinceId{"northreach"} ||
         defended_battle.armies.back().retreat_province.has_value() ||
         defense_state.find_army(retreating_attacker) == nullptr ||
@@ -730,12 +734,145 @@ int main() {
         std::get<province::core::BattleResolution>(victorious_move.events.back().payload);
     if (victorious_battle.result != BattleResultType::attacker_victory ||
         !victorious_battle.attacker_won || !victorious_battle.province_occupied ||
+        victorious_battle.armies.size() != 2 ||
+        victorious_battle.armies.front().army_id != victorious_attacker ||
+        victorious_battle.armies.front().display_name !=
+            "\xE5\xA5\xA5\xC2\xB7\xE7\xAC\xAC" "1" "\xE5\x86\x9B" ||
+        victorious_battle.armies.back().army_id != destroyed_defender ||
+        victorious_battle.armies.back().display_name !=
+            "\xE7\xB4\xA2\xC2\xB7\xE7\xAC\xAC" "1" "\xE5\x86\x9B" ||
+        !victorious_battle.armies.back().destroyed ||
         victory_state.find_army(victorious_attacker) == nullptr ||
         victory_state.find_army(victorious_attacker)->manpower != 3'500 ||
         victory_state.find_army(victorious_attacker)->province_id != ProvinceId{"redpass"} ||
         victory_state.find_army(destroyed_defender) != nullptr ||
         victory_state.controller_of(ProvinceId{"redpass"}) != CountryId{"auroria"}) {
         std::cerr << "Attacker victory did not destroy defenders and occupy province\n";
+        return 1;
+    }
+
+    GameState controlled_battle_state = ScenarioLoader::load(
+        "game/data", GameClock{1000, 1}
+    );
+    controlled_battle_state.set_diplomatic_status(
+        CountryId{"auroria"}, CountryId{"solmere"},
+        province::core::DiplomaticStatus::war
+    );
+    controlled_battle_state.set_occupation(
+        ProvinceId{"redpass"}, CountryId{"auroria"}
+    );
+    controlled_battle_state.find_technology(
+        CountryId{"auroria"}
+    )->military_level = 2;
+    const ArmyId controlled_battle_attacker = controlled_battle_state.create_army(
+        CountryId{"auroria"}, ProvinceId{"northreach"}, 4'000
+    );
+    const ArmyId controlled_battle_defender = controlled_battle_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"redpass"}, 1'000
+    );
+    controlled_battle_state.find_army(
+        controlled_battle_attacker
+    )->movement_points = 10;
+    const auto occupations_before_controlled_battle =
+        controlled_battle_state.occupations();
+    CommandProcessor controlled_battle_processor{fixed_rolls({10, 10})};
+    const CommandResult controlled_battle_move = controlled_battle_processor.execute(
+        controlled_battle_state,
+        MoveArmyCommand{controlled_battle_attacker, ProvinceId{"redpass"}}
+    );
+    if (!controlled_battle_move.accepted || controlled_battle_move.events.size() != 2) {
+        std::cerr << "Controlled-province battle did not produce battle events\n";
+        return 1;
+    }
+    const auto& controlled_battle = std::get<province::core::BattleResolution>(
+        controlled_battle_move.events.back().payload
+    );
+    if (controlled_battle.result != BattleResultType::attacker_victory ||
+        !controlled_battle.attacker_won || controlled_battle.province_occupied ||
+        controlled_battle_state.find_army(controlled_battle_defender) != nullptr ||
+        controlled_battle_state.controller_of(ProvinceId{"redpass"}) !=
+            CountryId{"auroria"} ||
+        controlled_battle_state.occupations() != occupations_before_controlled_battle) {
+        std::cerr << "Victory in an already controlled province emitted occupation\n";
+        return 1;
+    }
+
+    GameState recapture_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    recapture_state.set_diplomatic_status(
+        CountryId{"auroria"}, CountryId{"solmere"},
+        province::core::DiplomaticStatus::war
+    );
+    recapture_state.set_occupation(
+        ProvinceId{"northreach"}, CountryId{"solmere"}
+    );
+    recapture_state.find_technology(CountryId{"auroria"})->military_level = 2;
+    const ArmyId recapturing_attacker = recapture_state.create_army(
+        CountryId{"auroria"}, ProvinceId{"westmark"}, 4'000
+    );
+    const ArmyId recapture_defender = recapture_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"northreach"}, 1'000
+    );
+    recapture_state.find_army(recapturing_attacker)->movement_points = 10;
+    CommandProcessor recapture_processor{fixed_rolls({10, 10})};
+    const CommandResult recapture_move = recapture_processor.execute(
+        recapture_state,
+        MoveArmyCommand{recapturing_attacker, ProvinceId{"northreach"}}
+    );
+    if (!recapture_move.accepted || recapture_move.events.size() != 2) {
+        std::cerr << "Legal-province recapture did not produce battle events\n";
+        return 1;
+    }
+    const auto& recapture_battle = std::get<province::core::BattleResolution>(
+        recapture_move.events.back().payload
+    );
+    if (recapture_battle.result != BattleResultType::attacker_victory ||
+        !recapture_battle.province_occupied ||
+        recapture_state.find_army(recapture_defender) != nullptr ||
+        recapture_state.controller_of(ProvinceId{"northreach"}) !=
+            CountryId{"auroria"} ||
+        recapture_state.occupations().contains(ProvinceId{"northreach"})) {
+        std::cerr << "Legal-province recapture did not clear hostile occupation\n";
+        return 1;
+    }
+
+    GameState consistency_state = ScenarioLoader::load("game/data", GameClock{1000, 1});
+    consistency_state.set_diplomatic_status(
+        CountryId{"auroria"}, CountryId{"solmere"},
+        province::core::DiplomaticStatus::war
+    );
+    const ArmyId consistency_attacker = consistency_state.create_army(
+        CountryId{"auroria"}, ProvinceId{"northreach"}, 1'000
+    );
+    const ArmyId consistency_defender = consistency_state.create_army(
+        CountryId{"solmere"}, ProvinceId{"redpass"}, 1'000
+    );
+    consistency_state.find_army(consistency_attacker)->province_id =
+        ProvinceId{"redpass"};
+    std::int32_t consistency_roll_count = 0;
+    BattleSystem consistency_battle_system{[&]() -> std::int32_t {
+        ++consistency_roll_count;
+        if (consistency_roll_count == 2) {
+            consistency_state.find_army(consistency_defender)->manpower = 999;
+        }
+        return 10;
+    }};
+    bool rejected_inconsistent_battle_state = false;
+    try {
+        [[maybe_unused]] const auto inconsistent_result =
+            consistency_battle_system.resolve_entry(
+                consistency_state,
+                consistency_attacker,
+                ProvinceId{"northreach"}
+            );
+    } catch (const std::logic_error&) {
+        rejected_inconsistent_battle_state = true;
+    }
+    if (!rejected_inconsistent_battle_state ||
+        consistency_state.find_army(consistency_attacker) == nullptr ||
+        consistency_state.find_army(consistency_attacker)->manpower != 1'000 ||
+        consistency_state.find_army(consistency_defender) == nullptr ||
+        consistency_state.find_army(consistency_defender)->manpower != 999) {
+        std::cerr << "BattleSystem partially applied an inconsistent calculation\n";
         return 1;
     }
 

@@ -10,6 +10,7 @@
 #include "province/core/version.hpp"
 
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -32,7 +33,7 @@ namespace {
         case province::core::BattleResultType::mutual_destruction:
             return "mutual_destruction";
     }
-    return "defender_victory";
+    throw std::logic_error{"invalid battle result type"};
 }
 
 [[nodiscard]] double random_tenths_to_display(const std::int32_t value) noexcept {
@@ -73,6 +74,7 @@ void append_battle_metadata(
         casualties += outcome.casualties;
         godot::Dictionary summary;
         summary["army_id"] = godot::String::utf8(outcome.army_id.value().c_str());
+        summary["display_name"] = godot::String::utf8(outcome.display_name.c_str());
         summary["casualties"] = outcome.casualties;
         summary["remaining_manpower"] = outcome.remaining_manpower;
         summary["destroyed"] = outcome.destroyed;

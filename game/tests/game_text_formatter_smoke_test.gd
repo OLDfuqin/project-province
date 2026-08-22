@@ -41,6 +41,7 @@ func _initialize() -> void:
 		"defender_remaining_manpower": 260,
 		"battle_outcomes": [{
 			"army_id": "army_1", "casualties": 580,
+			"display_name": "\u5965\u00b7\u7b2c1\u519b",
 			"remaining_manpower": 420, "destroyed": false,
 			"retreat_province": "northreach",
 		}],
@@ -51,6 +52,13 @@ func _initialize() -> void:
 		return
 	var action_report := GameText.battle_action_report(battle, provinces)
 	if not _assert_fragments(action_report, "Detailed turn battle report"):
+		return
+	var visible_name := "\u5965\u00b7\u7b2c1\u519b"
+	if report.find(visible_name) == -1 or report.find("army_1") != -1:
+		_fail("Immediate battle report did not prefer the visible army name")
+		return
+	if action_report.find(visible_name) == -1 or action_report.find("army_1") != -1:
+		_fail("Turn battle report did not prefer the visible army name")
 		return
 
 	for expected: Dictionary in [
