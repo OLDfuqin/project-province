@@ -65,6 +65,11 @@ func _initialize() -> void:
 				expected["result"], expected["label"],
 			])
 			return
+		if GameText.battle_action_report(labeled_battle, provinces).find(expected["label"]) == -1:
+			_fail("Turn battle result %s did not render as %s" % [
+				expected["result"], expected["label"],
+			])
+			return
 
 	var unopposed := {"battle_occurred": false, "province_occupied": true}
 	if GameText.battle_report(unopposed, provinces) != "地区在无抵抗情况下被占领":
