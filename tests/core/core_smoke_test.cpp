@@ -81,6 +81,9 @@ int main() {
     if (!run_grid_map_layout_tests()) {
         return 1;
     }
+    if (!run_map_cell_generator_tests()) {
+        return 1;
+    }
 
     GameClock clock{1000, 11};
     clock.advance_months(3);
