@@ -1,6 +1,8 @@
 #include "province/core/scenario_loader.hpp"
 
 #include "province/core/country.hpp"
+#include "province/core/grid_map_layout.hpp"
+#include "province/core/map_scenario_generator.hpp"
 #include "province/core/province.hpp"
 #include "province/core/stable_id.hpp"
 
@@ -9,6 +11,8 @@
 #include <charconv>
 #include <cstdint>
 #include <fstream>
+#include <memory>
+#include <random>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -90,41 +94,6 @@ void load_countries(GameState& state, const std::filesystem::path& path) {
     }
 }
 
-void load_provinces(GameState& state, const std::filesystem::path& path) {
-    const Json document = read_document(path);
-    require_schema_version(document, path);
-
-    try {
-        for (const Json& entry : document.at("provinces")) {
-            std::vector<ProvinceId> neighbors;
-            for (const Json& neighbor : entry.at("neighbors")) {
-                neighbors.emplace_back(neighbor.get<std::string>());
-            }
-
-            Province province{
-                ProvinceId{entry.at("id").get<std::string>()},
-                entry.at("name").get<std::string>(),
-                CountryId{entry.at("owner_id").get<std::string>()},
-                entry.at("population").get<std::int64_t>(),
-                entry.at("recruitable_population").get<std::int64_t>(),
-                0,
-                std::move(neighbors),
-            };
-            province.terrain = terrain_from_string(entry.value("terrain", "plains"));
-            const std::int64_t percent = terrain_economy_percent(province.terrain);
-            province.base_economy = (province.population / 100) * percent +
-                (province.population % 100) * percent / 100;
-            state.add_province(std::move(province));
-        }
-    } catch (const DataLoadError&) {
-        throw;
-    } catch (const std::exception& error) {
-        throw DataLoadError{
-            "invalid province data in '" + path.string() + "': " + error.what()
-        };
-    }
-}
-
 [[nodiscard]] std::string join_issues(const std::vector<std::string>& issues) {
     std::ostringstream message;
     message << "scenario validation failed:";
@@ -140,17 +109,22 @@ DataLoadError::DataLoadError(const std::string& message) : std::runtime_error{me
 
 GameState ScenarioLoader::load(
     const std::filesystem::path& data_directory,
-    GameClock initial_clock
+    GameClock initial_clock,
+    RandomIndexSource random_index
 ) {
     GameState state{std::move(initial_clock)};
     load_countries(state, data_directory / "countries.json");
-    load_provinces(state, data_directory / "provinces.json");
-
-    const std::vector<std::string> issues = state.validate();
-    if (!issues.empty()) {
-        throw DataLoadError{join_issues(issues)};
+    const GridMapLayout layout = GridMapLayoutLoader::load(
+        data_directory / "grid_map_layout.json"
+    );
+    if (!random_index) {
+        auto engine = std::make_shared<std::mt19937_64>(std::random_device{}());
+        random_index = [engine](const std::uint32_t bound) {
+            if (bound == 0) throw std::invalid_argument{"random bound cannot be zero"};
+            return std::uniform_int_distribution<std::uint32_t>{0, bound - 1}(*engine);
+        };
     }
-    return state;
+    return MapScenarioGenerator::generate(std::move(state), layout, random_index);
 }
 
 } // namespace province::core

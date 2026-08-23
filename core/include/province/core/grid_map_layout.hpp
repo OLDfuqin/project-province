@@ -1,6 +1,6 @@
 #pragma once
 
-#include "province/core/scenario_loader.hpp"
+#include "province/core/data_load_error.hpp"
 #include "province/core/stable_id.hpp"
 
 #include <compare>

@@ -17,6 +17,7 @@
 namespace province::core {
 
 class SaveGameSerializer;
+class MapScenarioGenerator;
 
 class GameState final {
 public:
@@ -27,6 +28,7 @@ public:
 
     [[nodiscard]] const GameClock& clock() const noexcept;
     [[nodiscard]] GameClock& clock() noexcept;
+    [[nodiscard]] const std::string& map_layout_id() const noexcept;
     [[nodiscard]] const Country* find_country(const CountryId& id) const noexcept;
     [[nodiscard]] Country* find_country(const CountryId& id) noexcept;
     [[nodiscard]] const Province* find_province(const ProvinceId& id) const noexcept;
@@ -96,7 +98,9 @@ public:
 
 private:
     friend class SaveGameSerializer;
+    friend class MapScenarioGenerator;
     GameClock clock_;
+    std::string map_layout_id_;
     std::map<CountryId, Country> countries_;
     std::map<CountryId, CountryTechnology> technologies_;
     std::map<ProvinceId, Province> provinces_;

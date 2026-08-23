@@ -33,7 +33,8 @@ void GameState::add_province(Province province) {
     if (province.name.empty()) {
         throw std::invalid_argument{"province name cannot be empty"};
     }
-    if (province.population < 0 || province.recruitable_population < 0) {
+    if (province.population < 0 || province.recruitable_population < 0 ||
+        province.base_economy < 0) {
         throw std::invalid_argument{"province population cannot be negative"};
     }
     if (province.recruitable_population > province.population) {
@@ -65,6 +66,10 @@ const GameClock& GameState::clock() const noexcept {
 
 GameClock& GameState::clock() noexcept {
     return clock_;
+}
+
+const std::string& GameState::map_layout_id() const noexcept {
+    return map_layout_id_;
 }
 
 const Country* GameState::find_country(const CountryId& id) const noexcept {

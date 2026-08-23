@@ -1,7 +1,9 @@
 #pragma once
 
+#include "province/core/data_load_error.hpp"
 #include "province/core/game_clock.hpp"
 #include "province/core/game_state.hpp"
+#include "province/core/map_cell_generator.hpp"
 
 #include <filesystem>
 #include <stdexcept>
@@ -9,18 +11,13 @@
 
 namespace province::core {
 
-class DataLoadError final : public std::runtime_error {
-public:
-    explicit DataLoadError(const std::string& message);
-};
-
 class ScenarioLoader final {
 public:
     [[nodiscard]] static GameState load(
         const std::filesystem::path& data_directory,
-        GameClock initial_clock
+        GameClock initial_clock,
+        RandomIndexSource random_index = {}
     );
 };
 
 } // namespace province::core
-
