@@ -88,6 +88,10 @@ public:
         const CountryId& country_a,
         const CountryId& country_b
     ) const;
+    [[nodiscard]] bool are_hostile(
+        const CountryId& country_a,
+        const CountryId& country_b
+    ) const noexcept;
     void set_diplomatic_status(
         const CountryId& country_a,
         const CountryId& country_b,

@@ -97,7 +97,7 @@ BattleResolution BattleSystem::resolve_entry(
     for (const auto& [army_id, army] : state.armies()) {
         if (army_id == attacker_army_id || army.province_id != battle_province ||
             army.owner_id == attacker_country ||
-            !state.are_at_war(attacker_country, army.owner_id)) {
+            !state.are_hostile(attacker_country, army.owner_id)) {
             continue;
         }
         const CountryTechnology& technology = technology_for(state, army.owner_id);
@@ -112,8 +112,13 @@ BattleResolution BattleSystem::resolve_entry(
         result.result = BattleResultType::attacker_victory;
         result.attacker_won = true;
         if (state.controller_of(battle_province) != attacker_country) {
-            state.set_occupation(battle_province, attacker_country);
-            result.province_occupied = true;
+            const Country* defender = state.find_country(defender_country);
+            if (defender != nullptr && defender->hidden) {
+                state.transfer_province_ownership(battle_province, attacker_country);
+            } else {
+                state.set_occupation(battle_province, attacker_country);
+                result.province_occupied = true;
+            }
         }
         return result;
     }
@@ -205,8 +210,13 @@ BattleResolution BattleSystem::resolve_entry(
     } else if (calculation.result == BattleResultType::attacker_victory &&
                state.find_army(attacker_army_id) != nullptr &&
                state.controller_of(battle_province) != attacker_country) {
-        state.set_occupation(battle_province, attacker_country);
-        result.province_occupied = true;
+        const Country* defender = state.find_country(defender_country);
+        if (defender != nullptr && defender->hidden) {
+            state.transfer_province_ownership(battle_province, attacker_country);
+        } else {
+            state.set_occupation(battle_province, attacker_country);
+            result.province_occupied = true;
+        }
     }
 
     return result;

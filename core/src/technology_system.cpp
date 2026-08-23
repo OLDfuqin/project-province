@@ -16,6 +16,9 @@ TechnologyResearchResult TechnologySystem::research(
     if (country == nullptr || technology == nullptr) {
         return {false, "researching country does not exist", country_id, track, 0, 0, 0};
     }
+    if (country->hidden) {
+        return {false, "hidden neutral country cannot research", country_id, track, 0, 0, 0};
+    }
     const std::int32_t previous_level = technology->level(track);
     if (previous_level >= maximum_level(track)) {
         return {

@@ -312,6 +312,18 @@ bool GameState::are_at_war(
     return diplomatic_status(country_a, country_b) == DiplomaticStatus::war;
 }
 
+bool GameState::are_hostile(
+    const CountryId& country_a,
+    const CountryId& country_b
+) const noexcept {
+    if (country_a == country_b) return false;
+    const Country* first = find_country(country_a);
+    const Country* second = find_country(country_b);
+    if (first == nullptr || second == nullptr) return false;
+    if (first->hidden || second->hidden) return first->hidden != second->hidden;
+    return are_at_war(country_a, country_b);
+}
+
 void GameState::set_diplomatic_status(
     const CountryId& country_a,
     const CountryId& country_b,

@@ -180,6 +180,10 @@ CommandResult CommandProcessor::execute_declare_war(
     if (state.find_country(command.defender_id) == nullptr) {
         return {false, "defender country does not exist", {}};
     }
+    if (state.find_country(command.aggressor_id)->hidden ||
+        state.find_country(command.defender_id)->hidden) {
+        return {false, "hidden neutral country cannot participate in diplomacy", {}};
+    }
     if (state.are_at_war(command.aggressor_id, command.defender_id)) {
         return {false, "countries are already at war", {}};
     }

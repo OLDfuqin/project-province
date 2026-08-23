@@ -25,6 +25,9 @@ ArmyRecruitResult ArmySystem::recruit(
     if (country == nullptr) {
         return {false, "recruiting country does not exist", 0, std::nullopt};
     }
+    if (country->hidden) {
+        return {false, "hidden neutral country cannot recruit", 0, std::nullopt};
+    }
     if (province == nullptr) {
         return {false, "recruitment province does not exist", 0, std::nullopt};
     }

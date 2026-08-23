@@ -12,6 +12,9 @@ RoadBuildResult RoadSystem::build_paved_road(
     if (country == nullptr) {
         return {false, "road builder country does not exist", 0};
     }
+    if (country->hidden) {
+        return {false, "hidden neutral country cannot build roads", 0};
+    }
 
     const Province* first = state.find_province(province_a);
     const Province* second = state.find_province(province_b);

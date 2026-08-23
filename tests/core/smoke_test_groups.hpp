@@ -5,5 +5,6 @@
 [[nodiscard]] bool run_map_cell_generator_tests();
 [[nodiscard]] bool run_map_scenario_generator_tests();
 [[nodiscard]] bool run_neutral_population_tests();
+[[nodiscard]] bool run_neutral_combat_tests();
 [[nodiscard]] bool run_ai_smoke_tests();
 [[nodiscard]] bool run_save_game_smoke_tests();

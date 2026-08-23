@@ -14,6 +14,11 @@ MonthlyMovementReport MovementSystem::grant_monthly_points(GameState& state) con
         if (army == nullptr) {
             throw std::logic_error{"army disappeared during movement point grant"};
         }
+        const Country* owner = state.find_country(army->owner_id);
+        if (owner != nullptr && owner->hidden) {
+            army->movement_points = 0;
+            continue;
+        }
         const CountryTechnology* technology = state.find_technology(army->owner_id);
         if (technology == nullptr) {
             throw std::logic_error{"army owner has no technology state"};
@@ -52,6 +57,10 @@ ArmyMoveResult MovementSystem::move(
         return {false, "army does not exist", destination, destination, 0};
     }
     const ProvinceId origin = army->province_id;
+    const Country* moving_country = state.find_country(army->owner_id);
+    if (moving_country == nullptr || moving_country->hidden) {
+        return {false, "hidden neutral armies cannot move", origin, destination, 0};
+    }
     if (destination_province == nullptr) {
         return {false, "movement destination does not exist", origin, destination, 0};
     }
@@ -60,7 +69,7 @@ ArmyMoveResult MovementSystem::move(
     }
     const CountryId destination_controller = state.controller_of(destination);
     if (destination_controller != army->owner_id &&
-        !state.are_at_war(army->owner_id, destination_controller)) {
+        !state.are_hostile(army->owner_id, destination_controller)) {
         return {
             false,
             "army cannot enter foreign territory without war or military access",

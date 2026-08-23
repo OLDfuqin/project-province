@@ -38,7 +38,7 @@ int main() {
         !run_map_cell_generator_tests() || !run_map_scenario_generator_tests()) {
         return 1;
     }
-    if (!run_neutral_population_tests()) return 1;
+    if (!run_neutral_population_tests() || !run_neutral_combat_tests()) return 1;
 
     GameClock clock{1000, 11};
     clock.advance_months(3);

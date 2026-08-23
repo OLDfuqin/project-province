@@ -58,7 +58,7 @@ std::optional<ProvinceId> choose_wartime_step(
         for (const ProvinceId& neighbor_id : current->neighbors) {
             const CountryId neighbor_controller = state.controller_of(neighbor_id);
             if (neighbor_controller != army.owner_id &&
-                !state.are_at_war(army.owner_id, neighbor_controller)) {
+                !state.are_hostile(army.owner_id, neighbor_controller)) {
                 continue;
             }
             const std::int32_t candidate = current_distance +
@@ -78,7 +78,7 @@ std::optional<ProvinceId> choose_wartime_step(
         static_cast<void>(province);
         const CountryId controller = state.controller_of(province_id);
         const auto found = distance.find(province_id);
-        if (controller != army.owner_id && state.are_at_war(army.owner_id, controller) &&
+        if (controller != army.owner_id && state.are_hostile(army.owner_id, controller) &&
             found != distance.end() && found->second < best_distance) {
             target = province_id;
             best_distance = found->second;
@@ -140,7 +140,7 @@ std::vector<ProvinceId> choose_path_toward(
         for (const ProvinceId& neighbor_id : current->neighbors) {
             const CountryId neighbor_controller = state.controller_of(neighbor_id);
             if (neighbor_controller != army.owner_id &&
-                !state.are_at_war(army.owner_id, neighbor_controller)) {
+                !state.are_hostile(army.owner_id, neighbor_controller)) {
                 continue;
             }
             const std::int32_t candidate = current_distance +
@@ -197,16 +197,18 @@ std::vector<AiDecision> AiSystem::plan_month(
     std::vector<AiDecision> decisions;
     std::map<CountryId, std::int64_t> military_strength;
     for (const auto& [country_id, country] : state.countries()) {
-        static_cast<void>(country);
+        if (country.hidden) continue;
         military_strength.emplace(country_id, 0);
     }
     for (const auto& [army_id, army] : state.armies()) {
         static_cast<void>(army_id);
+        const Country* owner = state.find_country(army.owner_id);
+        if (owner == nullptr || owner->hidden) continue;
         military_strength[army.owner_id] += army.manpower;
     }
 
     for (const auto& [country_id, country] : state.countries()) {
-        if (country_id == human_country_id) {
+        if (country_id == human_country_id || country.hidden) {
             continue;
         }
 
@@ -257,8 +259,10 @@ std::vector<AiDecision> AiSystem::plan_month(
                 }
                 for (const ProvinceId& neighbor_id : province.neighbors) {
                     const CountryId neighbor_controller = state.controller_of(neighbor_id);
+                    const Country* neighbor_country = state.find_country(neighbor_controller);
                     if (neighbor_controller != country_id &&
                         !state.are_at_war(country_id, neighbor_controller) &&
+                        neighbor_country != nullptr && !neighbor_country->hidden &&
                         military_strength[country_id] >= military_strength[neighbor_controller]) {
                         target = neighbor_controller;
                         break;

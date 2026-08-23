@@ -15,8 +15,14 @@ PeaceSettlementResult PeaceSystem::settle(
         result.error = "a country cannot make peace with itself";
         return result;
     }
-    if (state.find_country(country_a) == nullptr || state.find_country(country_b) == nullptr) {
+    const Country* first_country = state.find_country(country_a);
+    const Country* second_country = state.find_country(country_b);
+    if (first_country == nullptr || second_country == nullptr) {
         result.error = "both peace participants must exist";
+        return result;
+    }
+    if (first_country->hidden || second_country->hidden) {
+        result.error = "hidden neutral country cannot make peace";
         return result;
     }
     if (!state.are_at_war(country_a, country_b)) {

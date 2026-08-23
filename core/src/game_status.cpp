@@ -8,7 +8,7 @@ GameStatus GameStatusSystem::evaluate(
 ) const {
     GameStatus status;
     for (const auto& [country_id, country] : state.countries()) {
-        static_cast<void>(country);
+        if (country.hidden) continue;
         status.countries.emplace(country_id, CountryStatus{country_id, 0, true});
     }
     for (const auto& [province_id, province] : state.provinces()) {
