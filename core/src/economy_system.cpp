@@ -27,19 +27,6 @@ std::int64_t scaled_floor(
     return whole_result + fractional_result;
 }
 
-std::int64_t terrain_economy_numerator(const TerrainType terrain) noexcept {
-    switch (terrain) {
-    case TerrainType::plains:
-        return 100;
-    case TerrainType::forest:
-    case TerrainType::hills:
-        return 90;
-    case TerrainType::mountains:
-        return 80;
-    }
-    return 100;
-}
-
 } // namespace
 
 std::int64_t EconomySystem::province_economy(
@@ -55,13 +42,11 @@ std::int64_t EconomySystem::province_economy(
     if (technology == nullptr) {
         throw std::logic_error{"cannot calculate economy without controller technology"};
     }
-    const std::int64_t combined_numerator =
-        (100 + 10 * technology->economy_level) *
-        terrain_economy_numerator(province->terrain);
+    const std::int64_t combined_numerator = 100 + 10 * technology->economy_level;
     return scaled_floor(
-        province->population,
+        province->base_economy,
         combined_numerator,
-        10'000
+        100
     );
 }
 

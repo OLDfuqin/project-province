@@ -13,6 +13,7 @@ struct Country final {
     std::uint32_t color_rgb{};
     std::int64_t treasury{};
     std::string code;
+    bool hidden{};
 };
 
 } // namespace province::core

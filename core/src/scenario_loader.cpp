@@ -107,9 +107,13 @@ void load_provinces(GameState& state, const std::filesystem::path& path) {
                 CountryId{entry.at("owner_id").get<std::string>()},
                 entry.at("population").get<std::int64_t>(),
                 entry.at("recruitable_population").get<std::int64_t>(),
+                0,
                 std::move(neighbors),
             };
             province.terrain = terrain_from_string(entry.value("terrain", "plains"));
+            const std::int64_t percent = terrain_economy_percent(province.terrain);
+            province.base_economy = (province.population / 100) * percent +
+                (province.population % 100) * percent / 100;
             state.add_province(std::move(province));
         }
     } catch (const DataLoadError&) {

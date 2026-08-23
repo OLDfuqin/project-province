@@ -246,7 +246,7 @@ bool run_battle_calculator_tests() {
         return false;
     }
 
-    for (const std::int32_t bonus : std::array{0, 10, 20, 30}) {
+    for (const std::int32_t bonus : std::array{0, 10, 20, 30, 50}) {
         BattleCalculationInput terrain_input = valid;
         terrain_input.terrain_defense_bonus = bonus;
         const BattleCalculation terrain = BattleCalculator::calculate(terrain_input);

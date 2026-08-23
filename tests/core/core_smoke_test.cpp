@@ -73,6 +73,7 @@ int main() {
     using province::core::ArmyMovedEvent;
     using province::core::RoadBuiltEvent;
     using province::core::RoadLevel;
+    using province::core::TerrainType;
 
     if (!run_battle_calculator_tests()) {
         return 1;
@@ -119,6 +120,7 @@ int main() {
         CountryId{"auroria"},
         120'000,
         2'000,
+        75'000,
         {ProvinceId{"southpass"}},
     });
     state.add_province(Province{
@@ -127,6 +129,7 @@ int main() {
         CountryId{"verdantia"},
         90'000,
         1'500,
+        90'000,
         {ProvinceId{"northplain"}},
     });
 
@@ -136,6 +139,27 @@ int main() {
     }
     if (!state.validate().empty()) {
         std::cerr << "Valid GameState failed validation\n";
+        return 1;
+    }
+    if (EconomySystem::province_economy(state, ProvinceId{"northplain"}) != 75'000 ||
+        EconomySystem::province_fiscal_income(state, ProvinceId{"northplain"}) != 750) {
+        std::cerr << "Stored base economy was not used\n";
+        return 1;
+    }
+    state.find_technology(CountryId{"auroria"})->economy_level = 2;
+    if (EconomySystem::province_economy(state, ProvinceId{"northplain"}) != 90'000 ||
+        EconomySystem::province_fiscal_income(state, ProvinceId{"northplain"}) != 900) {
+        std::cerr << "Economy technology did not scale stored base economy\n";
+        return 1;
+    }
+    state.find_technology(CountryId{"auroria"})->economy_level = 0;
+    if (province::core::terrain_economy_percent(TerrainType::capital) != 100 ||
+        province::core::terrain_movement_cost(TerrainType::capital) != 2 ||
+        province::core::terrain_road_endpoint_cost(TerrainType::capital) != 300 ||
+        province::core::terrain_defense_bonus(TerrainType::capital) != 50 ||
+        std::string{province::core::terrain_name(TerrainType::capital)} != "capital" ||
+        province::core::terrain_from_string("capital") != TerrainType::capital) {
+        std::cerr << "Capital terrain parameters failed\n";
         return 1;
     }
     state.find_technology(CountryId{"auroria"})->economy_level = 1;
@@ -209,6 +233,7 @@ int main() {
         CountryId{"rounding"},
         10'029,
         0,
+        9'026,
         {},
         0,
         province::core::TerrainType::hills,
@@ -1191,7 +1216,7 @@ int main() {
         13'625,
         20'881,
         31'789,
-        53'708,
+        53'707,
     };
     for (std::size_t index = 0; index < turn_lengths.size(); ++index) {
         const std::int32_t months = turn_lengths[index];

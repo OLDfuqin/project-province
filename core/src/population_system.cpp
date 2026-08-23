@@ -37,6 +37,9 @@ MonthlyPopulationReport PopulationSystem::resolve_month(GameState& state) const 
 
         const std::int64_t previous_population = province->population;
         province->population += growth;
+        const std::int64_t economy_percent = terrain_economy_percent(province->terrain);
+        province->base_economy += (growth / 100) * economy_percent +
+            (growth % 100) * economy_percent / 100;
         province->population_growth_remainder = remainder;
 
         const std::int64_t previous_recruitable_population =

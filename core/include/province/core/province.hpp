@@ -15,6 +15,7 @@ struct Province final {
     CountryId owner_id;
     std::int64_t population{};
     std::int64_t recruitable_population{};
+    std::int64_t base_economy{};
     std::vector<ProvinceId> neighbors;
     std::int64_t population_growth_remainder{};
     TerrainType terrain{TerrainType::plains};

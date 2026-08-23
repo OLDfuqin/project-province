@@ -240,15 +240,21 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
             for (const Json& neighbor : entry.at("neighbors")) {
                 neighbors.emplace_back(neighbor.get<std::string>());
             }
+            const std::int64_t population = entry.at("population").get<std::int64_t>();
+            const TerrainType terrain = terrain_from_string(entry.value("terrain", "plains"));
+            const std::int64_t percent = terrain_economy_percent(terrain);
+            const std::int64_t base_economy = (population / 100) * percent +
+                (population % 100) * percent / 100;
             state.add_province(Province{
                 ProvinceId{entry.at("id").get<std::string>()},
                 entry.at("name").get<std::string>(),
                 CountryId{entry.at("owner_id").get<std::string>()},
-                entry.at("population").get<std::int64_t>(),
+                population,
                 entry.at("recruitable_population").get<std::int64_t>(),
+                base_economy,
                 std::move(neighbors),
                 entry.at("population_growth_remainder").get<std::int64_t>(),
-                terrain_from_string(entry.value("terrain", "plains")),
+                terrain,
             });
         }
         for (const Json& entry : document.at("roads")) {

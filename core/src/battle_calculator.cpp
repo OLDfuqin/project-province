@@ -149,7 +149,7 @@ void validate_roll(const std::int32_t roll) {
 }
 
 bool valid_terrain_bonus(const std::int32_t bonus) {
-    return bonus == 0 || bonus == 10 || bonus == 20 || bonus == 30;
+    return bonus == 0 || bonus == 10 || bonus == 20 || bonus == 30 || bonus == 50;
 }
 
 std::int64_t checked_add(
@@ -373,7 +373,7 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
     validate_roll(input.attacker_random_tenths);
     validate_roll(input.defender_random_tenths);
     if (!valid_terrain_bonus(input.terrain_defense_bonus)) {
-        throw std::invalid_argument{"terrain defense bonus must be 0, 10, 20, or 30"};
+        throw std::invalid_argument{"terrain defense bonus must be 0, 10, 20, 30, or 50"};
     }
 
     std::set<ArmyId> defender_ids;

@@ -21,15 +21,13 @@ public:
     [[nodiscard]] static constexpr std::int32_t terrain_coefficient_t(
         TerrainType terrain
     ) noexcept {
-        return terrain == TerrainType::plains ? 10 :
-            terrain == TerrainType::mountains ? 8 : 9;
+        return terrain_economy_percent(terrain) / 10;
     }
 
     [[nodiscard]] static constexpr std::int64_t endpoint_base_cost(
         TerrainType terrain
     ) noexcept {
-        return terrain == TerrainType::plains ? 300 :
-            terrain == TerrainType::mountains ? 700 : 500;
+        return terrain_road_endpoint_cost(terrain);
     }
 
     [[nodiscard]] static constexpr std::int32_t required_roads_level(
