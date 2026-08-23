@@ -6,6 +6,36 @@
 
 namespace province::core {
 
+void PopulationSystem::apply_population_delta(
+    Province& province,
+    const std::int64_t delta
+) {
+    if (delta == 0) return;
+    if (delta == std::numeric_limits<std::int64_t>::min()) {
+        throw std::overflow_error{"population delta magnitude overflow"};
+    }
+    const std::int64_t magnitude = delta > 0 ? delta : -delta;
+    const std::int64_t percent = terrain_economy_percent(province.terrain);
+    const std::int64_t economy_delta = (magnitude / 100) * percent +
+        (magnitude % 100) * percent / 100;
+    if (delta > 0) {
+        if (magnitude > std::numeric_limits<std::int64_t>::max() - province.population ||
+            economy_delta > std::numeric_limits<std::int64_t>::max() - province.base_economy) {
+            throw std::overflow_error{"province population or base economy overflow"};
+        }
+        province.population += magnitude;
+        province.base_economy += economy_delta;
+        return;
+    }
+    if (magnitude > province.population) {
+        throw std::invalid_argument{"population delta would make population negative"};
+    }
+    province.population -= magnitude;
+    province.base_economy = std::max<std::int64_t>(
+        0, province.base_economy - economy_delta
+    );
+}
+
 MonthlyPopulationReport PopulationSystem::resolve_month(GameState& state) const {
     MonthlyPopulationReport report;
     report.changes.reserve(state.province_count());
@@ -31,16 +61,46 @@ MonthlyPopulationReport PopulationSystem::resolve_month(GameState& state) const 
             whole_units * monthly_growth_rate + fractional_numerator / rate_denominator;
         const std::int64_t remainder = fractional_numerator % rate_denominator;
 
-        if (growth > std::numeric_limits<std::int64_t>::max() - province->population) {
-            throw std::overflow_error{"province population overflow"};
+        const std::int64_t previous_population = province->population;
+        province->population_growth_remainder = remainder;
+
+        const Country* owner = state.find_country(province->owner_id);
+        if (owner == nullptr) {
+            throw std::logic_error{"province owner disappeared during population resolution"};
+        }
+        if (owner->hidden) {
+            Army* guard = nullptr;
+            for (const auto& [army_id, army_snapshot] : state.armies()) {
+                if (army_snapshot.owner_id != province->owner_id ||
+                    army_snapshot.province_id != province_id) continue;
+                if (guard != nullptr) {
+                    throw std::logic_error{"neutral province has multiple guards"};
+                }
+                guard = state.find_army(army_id);
+            }
+            if (guard != nullptr) {
+                if (growth > std::numeric_limits<std::int64_t>::max() - guard->manpower) {
+                    throw std::overflow_error{"neutral guard manpower overflow"};
+                }
+                guard->manpower += growth;
+            } else if (growth > 0) {
+                [[maybe_unused]] const ArmyId recreated = state.create_army(
+                    province->owner_id, province_id, growth
+                );
+            }
+            report.changes.push_back(ProvincePopulationChange{
+                province_id,
+                previous_population,
+                previous_population,
+                0,
+                province->recruitable_population,
+                province->recruitable_population,
+                0,
+            });
+            continue;
         }
 
-        const std::int64_t previous_population = province->population;
-        province->population += growth;
-        const std::int64_t economy_percent = terrain_economy_percent(province->terrain);
-        province->base_economy += (growth / 100) * economy_percent +
-            (growth % 100) * economy_percent / 100;
-        province->population_growth_remainder = remainder;
+        apply_population_delta(*province, growth);
 
         const std::int64_t previous_recruitable_population =
             province->recruitable_population;

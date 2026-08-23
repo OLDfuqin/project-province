@@ -54,18 +54,25 @@ std::int64_t EconomySystem::province_fiscal_income(
     const GameState& state,
     const ProvinceId& province_id
 ) {
+    const Country* controller = state.find_country(state.controller_of(province_id));
+    if (controller == nullptr) {
+        throw std::logic_error{"cannot calculate fiscal income without controller"};
+    }
+    if (controller->hidden) return 0;
     return province_economy(state, province_id) / 100;
 }
 
 MonthlyFiscalReport EconomySystem::resolve_month(GameState& state) const {
     std::map<CountryId, std::int64_t> income_by_country;
     for (const auto& [country_id, country] : state.countries()) {
-        static_cast<void>(country);
+        if (country.hidden) continue;
         income_by_country.emplace(country_id, 0);
     }
 
     for (const auto& [province_id, province] : state.provinces()) {
         const CountryId controller = state.controller_of(province_id);
+        const Country* controlling_country = state.find_country(controller);
+        if (controlling_country != nullptr && controlling_country->hidden) continue;
         auto income = income_by_country.find(controller);
         if (income == income_by_country.end()) {
             throw std::logic_error{"cannot resolve economy for province with unknown owner"};

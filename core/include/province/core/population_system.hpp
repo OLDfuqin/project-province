@@ -29,6 +29,8 @@ public:
     static constexpr std::int64_t recruitable_growth_rate = 50; // 0.5%
     static constexpr std::int64_t recruitable_cap_rate = 1'000; // 10%
 
+    static void apply_population_delta(Province& province, std::int64_t delta);
+
     [[nodiscard]] MonthlyPopulationReport resolve_month(GameState& state) const;
 };
 

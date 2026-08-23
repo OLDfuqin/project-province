@@ -1,6 +1,6 @@
 #include "province/core/army_system.hpp"
+#include "province/core/population_system.hpp"
 
-#include <algorithm>
 #include <limits>
 #include <set>
 
@@ -45,14 +45,7 @@ ArmyRecruitResult ArmySystem::recruit(
 
     country->treasury -= cost;
     province->recruitable_population -= manpower;
-    const std::int64_t economy_percent = terrain_economy_percent(province->terrain);
-    const std::int64_t economy_loss = (manpower / 100) * economy_percent +
-        (manpower % 100) * economy_percent / 100;
-    province->base_economy = std::max<std::int64_t>(
-        0,
-        province->base_economy - economy_loss
-    );
-    province->population -= manpower;
+    PopulationSystem::apply_population_delta(*province, -manpower);
     const ArmyId army_id = state.create_army(country_id, province_id, manpower);
     return {true, {}, cost, army_id};
 }
