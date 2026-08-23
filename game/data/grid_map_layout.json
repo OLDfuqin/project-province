@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "layout_id": "generated_grid_v1",
+  "width": 9,
+  "height": 9,
+  "cell_size": 80,
+  "countries": [
+    {"id":"auroria","minimum":[1,1],"maximum":[4,4],"capital_cells":[[2,2],[3,2],[2,3],[3,3]]},
+    {"id":"caelus","minimum":[6,1],"maximum":[9,4],"capital_cells":[[7,2],[8,2],[7,3],[8,3]]},
+    {"id":"solmere","minimum":[1,6],"maximum":[4,9],"capital_cells":[[2,7],[3,7],[2,8],[3,8]]},
+    {"id":"verdantia","minimum":[6,6],"maximum":[9,9],"capital_cells":[[7,7],[8,7],[7,8],[8,8]]}
+  ]
+}
