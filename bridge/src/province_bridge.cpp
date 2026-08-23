@@ -146,6 +146,9 @@ godot::Array ProvinceBridge::get_country_summaries() const {
     }
 
     for (const auto& [country_id, country] : state_->countries()) {
+        if (country.hidden) {
+            continue;
+        }
         std::int64_t province_count = 0;
         std::int64_t economy = 0;
         std::int64_t fiscal_income = 0;
@@ -346,6 +349,10 @@ godot::Array ProvinceBridge::get_technology_summaries() const {
         return summaries;
     }
     for (const auto& [country_id, technology] : state_->technologies()) {
+        const province::core::Country* country = state_->find_country(country_id);
+        if (country == nullptr || country->hidden) {
+            continue;
+        }
         godot::Dictionary summary;
         summary["country_id"] = godot::String::utf8(country_id.value().c_str());
         summary["economy_level"] = technology.economy_level;
@@ -496,6 +503,10 @@ godot::Dictionary ProvinceBridge::get_game_status(
         : godot::String{};
     godot::Array countries;
     for (const auto& [country_id, country_status] : status.countries) {
+        const province::core::Country* country = state_->find_country(country_id);
+        if (country == nullptr || country->hidden) {
+            continue;
+        }
         godot::Dictionary summary;
         summary["country_id"] = godot::String::utf8(country_id.value().c_str());
         summary["controlled_provinces"] = country_status.controlled_provinces;
@@ -517,6 +528,12 @@ godot::Array ProvinceBridge::get_war_summaries() const {
         }
         const province::core::CountryId first = relation.first();
         const province::core::CountryId second = relation.second();
+        const province::core::Country* first_country = state_->find_country(first);
+        const province::core::Country* second_country = state_->find_country(second);
+        if (first_country == nullptr || second_country == nullptr ||
+            first_country->hidden || second_country->hidden) {
+            continue;
+        }
         std::int64_t first_manpower = 0;
         std::int64_t second_manpower = 0;
         for (const auto& [army_id, army] : state_->armies()) {

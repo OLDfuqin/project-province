@@ -42,44 +42,113 @@ func _ready() -> void:
     _initialize_view()
 
 
-func load_map_geometry(path: String) -> bool:
+func load_grid_layout(path: String) -> bool:
     _geometry_error = ""
     var file := FileAccess.open(path, FileAccess.READ)
     if file == null:
-        _geometry_error = "Cannot open map geometry: %s" % path
+        _geometry_error = "Cannot open grid map layout: %s" % path
         return false
     var document = JSON.parse_string(file.get_as_text())
     if not document is Dictionary:
-        _geometry_error = "Map geometry root must be an object"
+        _geometry_error = "Grid map layout root must be an object"
         return false
-    if int(document.get("schema_version", 0)) != 2:
-        _geometry_error = "Unsupported map geometry schema version"
+    if int(document.get("schema_version", 0)) != 1 or \
+            String(document.get("layout_id", "")) != "generated_grid_v1":
+        _geometry_error = "Unsupported grid map layout"
         return false
-    var size_data: Array = document.get("map_size", [])
-    if size_data.size() != 2 or float(size_data[0]) <= 0 or float(size_data[1]) <= 0:
-        _geometry_error = "Map geometry requires a positive map_size"
+    var width := int(document.get("width", 0))
+    var height := int(document.get("height", 0))
+    var cell_size := int(document.get("cell_size", 0))
+    if width != 9 or height != 9 or cell_size <= 0:
+        _geometry_error = "Grid map layout requires a 9x9 positive-cell grid"
         return false
 
     var loaded_polygons: Dictionary = {}
-    for entry: Dictionary in document.get("provinces", []):
-        var province_id: String = entry.get("id", "")
-        var points_data: Array = entry.get("polygon", [])
-        if province_id.is_empty() or loaded_polygons.has(province_id) or points_data.size() < 3:
-            _geometry_error = "Invalid or duplicate province geometry: %s" % province_id
+    var capital_by_cell: Dictionary = {}
+    var capital_groups: Dictionary = {}
+    var countries: Array = document.get("countries", [])
+    if countries.size() != 4:
+        _geometry_error = "Grid map layout requires four countries"
+        return false
+    for entry: Dictionary in countries:
+        var country_id := String(entry.get("id", ""))
+        var capital_cells: Array = entry.get("capital_cells", [])
+        if country_id.is_empty() or capital_cells.size() != 4:
+            _geometry_error = "Invalid capital layout for %s" % country_id
             return false
-        var polygon := PackedVector2Array()
-        for coordinates: Array in points_data:
+        var capital_id := "capital_%s" % country_id
+        var coordinates_for_capital: Array[Vector2i] = []
+        for coordinates: Array in capital_cells:
             if coordinates.size() != 2:
-                _geometry_error = "Invalid polygon point for province: %s" % province_id
+                _geometry_error = "Invalid capital coordinate for %s" % country_id
                 return false
-            polygon.append(Vector2(float(coordinates[0]), float(coordinates[1])))
-        loaded_polygons[province_id] = polygon
+            var coordinate := Vector2i(int(coordinates[0]), int(coordinates[1]))
+            if coordinate.x < 1 or coordinate.x > width or \
+                    coordinate.y < 1 or coordinate.y > height:
+                _geometry_error = "Capital coordinate is outside the grid"
+                return false
+            var key := "%d_%d" % [coordinate.x, coordinate.y]
+            if capital_by_cell.has(key):
+                _geometry_error = "Capital cells overlap"
+                return false
+            capital_by_cell[key] = capital_id
+            coordinates_for_capital.append(coordinate)
+        capital_groups[capital_id] = coordinates_for_capital
 
-    _map_size = Vector2(float(size_data[0]), float(size_data[1]))
+    for y in range(1, height + 1):
+        for x in range(1, width + 1):
+            var key := "%d_%d" % [x, y]
+            if capital_by_cell.has(key):
+                continue
+            loaded_polygons["cell_%d_%d" % [x, y]] = _grid_rectangle(
+                x, y, x, y, height, cell_size
+            )
+
+    for capital_id: String in capital_groups:
+        var cells: Array[Vector2i] = capital_groups[capital_id]
+        var minimum := cells[0]
+        var maximum := cells[0]
+        for coordinate: Vector2i in cells:
+            minimum.x = mini(minimum.x, coordinate.x)
+            minimum.y = mini(minimum.y, coordinate.y)
+            maximum.x = maxi(maximum.x, coordinate.x)
+            maximum.y = maxi(maximum.y, coordinate.y)
+        if maximum - minimum != Vector2i(1, 1):
+            _geometry_error = "Capital must be a 2x2 square: %s" % capital_id
+            return false
+        loaded_polygons[capital_id] = _grid_rectangle(
+            minimum.x, minimum.y, maximum.x, maximum.y, height, cell_size
+        )
+
+    if loaded_polygons.size() != 69:
+        _geometry_error = "Grid layout did not produce 69 province polygons"
+        return false
+
+    _map_size = Vector2(float(width * cell_size), float(height * cell_size))
     _polygons = loaded_polygons
     _view_initialized = false
     _initialize_view()
     return true
+
+
+func _grid_rectangle(
+        minimum_x: int,
+        minimum_y: int,
+        maximum_x: int,
+        maximum_y: int,
+        height: int,
+        cell_size: int
+) -> PackedVector2Array:
+    var left := float(minimum_x - 1) * cell_size
+    var right := float(maximum_x) * cell_size
+    var top := float(height - maximum_y) * cell_size
+    var bottom := float(height - minimum_y + 1) * cell_size
+    return PackedVector2Array([
+        Vector2(left, top),
+        Vector2(right, top),
+        Vector2(right, bottom),
+        Vector2(left, bottom),
+    ])
 
 
 func geometry_error() -> String:

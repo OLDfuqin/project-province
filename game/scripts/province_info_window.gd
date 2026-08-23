@@ -75,6 +75,8 @@ func _country_name(country_id: String, country_names: Dictionary) -> String:
 
 func _terrain_name(terrain: String) -> String:
     match terrain:
+        "capital":
+            return "首都"
         "mountains":
             return "山地"
         "hills":

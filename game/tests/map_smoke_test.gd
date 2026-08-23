@@ -4,8 +4,8 @@ extends SceneTree
 func _initialize() -> void:
     var map_script := load("res://scripts/province_map.gd")
     var province_map: Control = map_script.new()
-    if not province_map.load_map_geometry("res://data/map_geometry.json") or \
-            province_map.geometry_count() != 32:
+    if not province_map.load_grid_layout("res://data/grid_map_layout.json") or \
+            province_map.geometry_count() != 69:
         push_error("Data-driven map geometry failed to load")
         province_map.free()
         quit(1)
@@ -26,17 +26,12 @@ func _initialize() -> void:
             return
 
     var cases := {
-        Vector2(50, 50): "northreach",
-        Vector2(150, 50): "westmark",
-        Vector2(250, 50): "greenvale",
-        Vector2(350, 50): "sunmeadow",
-        Vector2(450, 50): "blueharbor",
-        Vector2(550, 50): "skyplain",
-        Vector2(650, 50): "goldcoast",
-        Vector2(750, 50): "redpass",
-        Vector2(50, 180): "z_nr_1",
-        Vector2(750, 440): "z_rp_3",
-        Vector2(900, 600): "",
+        Vector2(40, 680): "cell_1_1",
+        Vector2(200, 520): "capital_auroria",
+        Vector2(360, 360): "cell_5_5",
+        Vector2(600, 120): "capital_verdantia",
+        Vector2(680, 40): "cell_9_9",
+        Vector2(900, 900): "",
     }
 
     for point: Vector2 in cases:
@@ -50,9 +45,9 @@ func _initialize() -> void:
             return
 
     province_map.set_roads([
-        {"province_a": "northreach", "province_b": "westmark", "level": "paved"}
+        {"province_a": "capital_auroria", "province_b": "cell_2_1", "level": "paved"}
     ])
-    province_map.set_road_selection("northreach", "westmark")
+    province_map.set_road_selection("capital_auroria", "cell_2_1")
     if province_map.road_count() != 1:
         push_error("Map did not retain road snapshot")
         quit(1)
@@ -61,7 +56,7 @@ func _initialize() -> void:
         {
             "id": "army_1",
             "owner_id": "auroria",
-            "province_id": "northreach",
+            "province_id": "capital_auroria",
             "manpower": 1000,
             "movement_points": 0,
         }
@@ -91,7 +86,7 @@ func _initialize() -> void:
     var single_click := InputEventMouseButton.new()
     single_click.button_index = MOUSE_BUTTON_LEFT
     single_click.pressed = true
-    single_click.position = Vector2(50, 50)
+    single_click.position = Vector2(40, 680)
     province_map._gui_input(single_click)
     province_map._gui_input(single_click)
 
@@ -99,19 +94,19 @@ func _initialize() -> void:
     double_click.button_index = MOUSE_BUTTON_LEFT
     double_click.pressed = true
     double_click.double_click = true
-    double_click.position = Vector2(150, 50)
+    double_click.position = Vector2(200, 520)
     province_map._gui_input(double_click)
 
     var blank_click := InputEventMouseButton.new()
     blank_click.button_index = MOUSE_BUTTON_LEFT
     blank_click.pressed = true
-    blank_click.position = Vector2(900, 600)
+    blank_click.position = Vector2(900, 900)
     province_map._gui_input(blank_click)
 
-    if clicked_ids != ["northreach", "northreach"] or \
-            double_clicked_ids != ["westmark"] or \
+    if clicked_ids != ["cell_1_1", "cell_1_1"] or \
+            double_clicked_ids != ["capital_auroria"] or \
             blank_clicks.size() != 1 or \
-            selected_ids != ["northreach", "northreach", "westmark", ""]:
+            selected_ids != ["cell_1_1", "cell_1_1", "capital_auroria", ""]:
         push_error("Map click signals did not distinguish repeated, double and blank clicks")
         quit(1)
         return

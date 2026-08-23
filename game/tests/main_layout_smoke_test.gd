@@ -100,19 +100,28 @@ func _initialize() -> void:
         "RightPanel/Center/DiplomacyControls/PeacePolicy"
     ) as OptionButton
     var country_list := main_scene.get_node("RightPanel/Center/CountryList")
+    var bridge := main_scene.get_node("SimulationBridge")
     var country_details := main_scene.get_node(
         "RightPanel/Center/CountryDetails"
     ) as Label
     var war_overview := main_scene.get_node(
         "RightPanel/Center/WarOverview"
     ) as Label
-    var first_country_label := country_list.get_child(0) as Label
-    if not first_country_label.text.contains("362500") or \
-            not first_country_label.text.contains("3625"):
-        push_error("Country summary did not display economy and fiscal income")
+    var country_summaries: Array = bridge.get_country_summaries()
+    if country_summaries.size() != 4 or country_list.get_child_count() != 4:
+        push_error("Main UI must expose exactly four playable countries")
         main_scene.free()
         quit(1)
         return
+    for child: Node in country_list.get_children():
+        var country_label := child as Label
+        if country_label.text.contains("中立守军") or \
+                not country_label.text.contains("经济") or \
+                not country_label.text.contains("财政收入"):
+            push_error("Country summary leaked neutral data or omitted economy fields")
+            main_scene.free()
+            quit(1)
+            return
     if peace_policy.get_item_text(0) != "恢复战前边界" or \
             peace_policy.get_item_text(1) != "吞并占领地区" or \
             not (country_list.get_child(0) as Label).text.contains("国库") or \
@@ -153,11 +162,31 @@ func _initialize() -> void:
     var province_summary := main_scene.get_node_or_null(
         "RightPanel/Center/ProvinceSummary"
     ) as Label
-    if province_summary == null or not province_summary.text.contains("可招募士兵"):
+    var province_summaries: Array = bridge.get_province_summaries()
+    var total_population := 0
+    for province: Dictionary in province_summaries:
+        total_population += int(province.get("population", 0))
+    if province_summaries.size() != 69 or province_summary == null or \
+            not province_summary.text.contains("总人口 %d" % total_population) or \
+            not province_summary.text.contains("可招募士兵"):
         push_error("Main UI did not label the recruitable population")
         main_scene.free()
         quit(1)
         return
+
+    var province_map := main_scene.get_node("MapPanel/ProvinceMap")
+    province_map.province_clicked.emit("cell_5_5")
+    await process_frame
+    var info_window := main_scene.get_node(
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceInfoWindow"
+    )
+    if info_window.get_node("ProvinceName").text != "无主地块(5,5)" or \
+            not info_window.get_node("Economy").text.contains("财政收入：0"):
+        push_error("Neutral province details did not show its name and zero fiscal income")
+        main_scene.free()
+        quit(1)
+        return
+    main_scene.get_node("WorkspacePanel/Workspace/TitleBar/Close").pressed.emit()
 
     var initial_right_rect := right_panel.get_global_rect()
     var advance_turn := main_scene.get_node(
@@ -167,7 +196,7 @@ func _initialize() -> void:
     await process_frame
     await process_frame
     var event_log := main_scene.get_node("RightPanel/Center/EventLog") as Label
-    if not event_log.text.contains("14590"):
+    if not event_log.text.contains("财政收入"):
         push_error("Turn report did not display total fiscal income")
         main_scene.free()
         quit(1)
@@ -226,8 +255,7 @@ func _initialize() -> void:
         quit(1)
         return
 
-    var province_map := main_scene.get_node("MapPanel/ProvinceMap")
-    province_map.province_double_clicked.emit("northreach")
+    province_map.province_double_clicked.emit("capital_auroria")
     await process_frame
     var vertical_bar := workspace_scroll.get_v_scroll_bar()
     if vertical_bar.max_value <= vertical_bar.page:

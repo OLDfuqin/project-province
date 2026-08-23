@@ -54,7 +54,7 @@ var map_input_mode := MapInputMode.NORMAL
 var managed_province_id := ""
 
 func _ready() -> void:
-    if not province_map.load_map_geometry("res://data/map_geometry.json"):
+    if not province_map.load_grid_layout("res://data/grid_map_layout.json"):
         $RightPanel/Center/Status.text = "地图加载失败：%s" % province_map.geometry_error()
         push_error(province_map.geometry_error())
         return
