@@ -12,7 +12,8 @@ func _initialize() -> void:
     root.add_child(main_scene)
     await process_frame
     var bridge := main_scene.get_node("SimulationBridge")
-    bridge.research_technology("auroria", "roads")
+    for _level: int in range(3):
+        bridge.research_technology("auroria", "roads")
 
     var road_entry := main_scene.get_node(
         "RightPanel/Center/RoadConstructionEntry"
@@ -42,8 +43,8 @@ func _initialize() -> void:
         return
 
     select_start.pressed.emit()
-    province_map.province_clicked.emit("greenvale")
-    province_map.province_selected.emit("greenvale")
+    province_map.province_clicked.emit("capital_caelus")
+    province_map.province_selected.emit("capital_caelus")
     if main_scene.map_input_mode_name() != "road_start" or \
             not road_window.get_node("Status").text.contains("控制") or \
             not road_window.get_node("StartProvince").text.contains("尚未选择"):
@@ -52,18 +53,18 @@ func _initialize() -> void:
         quit(1)
         return
 
-    province_map.province_clicked.emit("northreach")
-    province_map.province_selected.emit("northreach")
+    province_map.province_clicked.emit("cell_1_1")
+    province_map.province_selected.emit("cell_1_1")
     if main_scene.map_input_mode_name() != "normal" or select_end.disabled or \
-            not road_window.get_node("StartProvince").text.contains("北境"):
+            not road_window.get_node("StartProvince").text.contains("(1,1)"):
         push_error("Controlled road start was not accepted")
         main_scene.free()
         quit(1)
         return
 
     select_end.pressed.emit()
-    province_map.province_clicked.emit("z_nr_2")
-    province_map.province_selected.emit("z_nr_2")
+    province_map.province_clicked.emit("cell_4_4")
+    province_map.province_selected.emit("cell_4_4")
     if main_scene.map_input_mode_name() != "road_end" or \
             not road_window.get_node("Status").text.contains("相邻") or \
             not road_window.get_node("EndProvince").text.contains("尚未选择"):
@@ -72,10 +73,10 @@ func _initialize() -> void:
         quit(1)
         return
 
-    province_map.province_clicked.emit("westmark")
-    province_map.province_selected.emit("westmark")
+    province_map.province_clicked.emit("cell_2_1")
+    province_map.province_selected.emit("cell_2_1")
     if main_scene.map_input_mode_name() != "normal" or build_road.disabled or \
-            not road_window.get_node("EndProvince").text.contains("西境"):
+            not road_window.get_node("EndProvince").text.contains("(2,1)"):
         push_error("Valid road end was not accepted")
         main_scene.free()
         quit(1)
@@ -91,17 +92,17 @@ func _initialize() -> void:
         return
 
     select_start.pressed.emit()
-    province_map.province_clicked.emit("northreach")
-    province_map.province_selected.emit("northreach")
+    province_map.province_clicked.emit("cell_1_1")
+    province_map.province_selected.emit("cell_1_1")
     select_end.pressed.emit()
-    province_map.province_clicked.emit("westmark")
-    province_map.province_selected.emit("westmark")
+    province_map.province_clicked.emit("cell_2_1")
+    province_map.province_selected.emit("cell_2_1")
     build_road.pressed.emit()
 
     var road_built := false
     for road: Dictionary in main_scene.get_node("SimulationBridge").get_road_summaries():
         var endpoints := [String(road.get("province_a", "")), String(road.get("province_b", ""))]
-        if endpoints.has("northreach") and endpoints.has("westmark"):
+        if endpoints.has("cell_1_1") and endpoints.has("cell_2_1"):
             road_built = true
             break
     if not road_built or main_scene.workspace_mode_name() != "road_construction" or \

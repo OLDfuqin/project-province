@@ -43,10 +43,10 @@ func _initialize() -> void:
 			"army_id": "army_1", "casualties": 580,
 			"display_name": "\u5965\u00b7\u7b2c1\u519b",
 			"remaining_manpower": 420, "destroyed": false,
-			"retreat_province": "northreach",
+			"retreat_province": "capital_auroria",
 		}],
 	}
-	var provinces := {"northreach": {"name": "北境"}}
+	var provinces := {"capital_auroria": {"name": "奥罗里亚首都"}}
 	var report := GameText.battle_report(battle, provinces)
 	if not _assert_fragments(report, "Detailed battle report"):
 		return

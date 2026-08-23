@@ -22,7 +22,13 @@ func _initialize() -> void:
         quit(1)
         return
 
-    province_map.province_clicked.emit("northreach")
+    var bridge := main_scene.get_node("SimulationBridge")
+    var capital: Dictionary = {}
+    for province: Dictionary in bridge.get_province_summaries():
+        if province.get("id", "") == "capital_auroria":
+            capital = province
+            break
+    province_map.province_clicked.emit("capital_auroria")
     var province_name := info_window.get_node("ProvinceName") as Label
     var terrain := info_window.get_node("Terrain") as Label
     var ownership := info_window.get_node("Ownership") as Label
@@ -31,16 +37,16 @@ func _initialize() -> void:
     var military := info_window.get_node("Military") as Label
     var roads := info_window.get_node("Roads") as Label
     if main_scene.workspace_mode_name() != "province_info" or \
-            not info_window.visible or province_name.text != "北境" or \
-            not terrain.text.contains("平原") or \
+            not info_window.visible or province_name.text != capital.get("name", "") or \
+            not terrain.text.contains("首都") or \
             not ownership.text.contains("奥罗里亚") or \
-            not population.text.contains("120000") or \
-            not population.text.contains("2000") or \
-            not economy.text.contains("120000") or \
-            not economy.text.ends_with("1200") or \
+            not population.text.contains(str(capital.get("population", -1))) or \
+            not population.text.contains(str(capital.get("recruitable_population", -1))) or \
+            not economy.text.contains(str(capital.get("economy", -1))) or \
+            not economy.text.ends_with(str(capital.get("fiscal_income", -1))) or \
             not military.text.contains("0 支") or \
             not roads.text.contains("暂无道路"):
-        push_error("Province information window did not show the Northreach snapshot")
+        push_error("Province information window did not show the capital snapshot")
         main_scene.free()
         quit(1)
         return
@@ -52,7 +58,7 @@ func _initialize() -> void:
         quit(1)
         return
 
-    province_map.province_clicked.emit("northreach")
+    province_map.province_clicked.emit("capital_auroria")
     var advance_turn := main_scene.get_node(
         "TurnBar/TurnControls/AdvanceTurn"
     ) as Button

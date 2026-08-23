@@ -67,8 +67,8 @@ func _initialize() -> void:
 
     window.display_province(
         {
-            "id": "northreach",
-            "name": "北境",
+            "id": "capital_auroria",
+            "name": "奥罗里亚首都",
             "owner_id": "auroria",
             "population": 120000,
             "recruitable_population": 1000,
@@ -79,7 +79,7 @@ func _initialize() -> void:
             {
                 "id": "army_1",
                 "owner_id": "auroria",
-                "province_id": "northreach",
+                "province_id": "capital_auroria",
                 "manpower": 1000,
                 "movement_points": 3,
                 "formation_number": 1,
@@ -88,7 +88,7 @@ func _initialize() -> void:
             {
                 "id": "army_2",
                 "owner_id": "auroria",
-                "province_id": "northreach",
+                "province_id": "capital_auroria",
                 "manpower": 500,
                 "movement_points": 1,
                 "formation_number": 2,
@@ -97,7 +97,7 @@ func _initialize() -> void:
             {
                 "id": "army_3",
                 "owner_id": "caelus",
-                "province_id": "northreach",
+                "province_id": "capital_auroria",
                 "manpower": 500,
                 "movement_points": 1,
                 "formation_number": 1,

@@ -1,4 +1,5 @@
 #include "province/core/map_scenario_generator.hpp"
+#include "province/core/scenario_loader.hpp"
 
 #include "province/core/country.hpp"
 #include "province/core/game_clock.hpp"
@@ -17,6 +18,7 @@ bool run_map_scenario_generator_tests() {
     using province::core::GridMapLayoutLoader;
     using province::core::MapScenarioGenerator;
     using province::core::ProvinceId;
+    using province::core::ScenarioLoader;
     using province::core::TerrainType;
 
     GameState initial{GameClock{1000, 1}};
@@ -105,6 +107,54 @@ bool run_map_scenario_generator_tests() {
     if (!state.validate().empty()) {
         std::cerr << "Generated scenario failed state validation\n";
         return false;
+    }
+
+    for (std::int32_t sample = 0; sample < 100; ++sample) {
+        const GameState generated = ScenarioLoader::load(
+            "game/data", GameClock{1000, 1}
+        );
+        std::map<CountryId, std::size_t> generated_owners;
+        std::map<ProvinceId, std::size_t> generated_guards;
+        for (const auto& [army_id, army] : generated.armies()) {
+            static_cast<void>(army_id);
+            if (army.owner_id != CountryId{"neutral"}) {
+                std::cerr << "Production-generated map created a non-neutral initial army\n";
+                return false;
+            }
+            ++generated_guards[army.province_id];
+        }
+        for (const auto& [province_id, province] : generated.provinces()) {
+            ++generated_owners[province.owner_id];
+            if (province.population <= 0 || province.population % 10'000 != 0 ||
+                province.base_economy < 0 || province.neighbors.empty()) {
+                std::cerr << "Production-generated province values are invalid\n";
+                return false;
+            }
+            for (const ProvinceId& neighbor : province.neighbors) {
+                if (!generated.are_adjacent(province_id, neighbor)) {
+                    std::cerr << "Production-generated adjacency is not symmetric\n";
+                    return false;
+                }
+            }
+            if (province.owner_id == CountryId{"neutral"} &&
+                (province.recruitable_population != 0 ||
+                 generated_guards[province_id] != 1)) {
+                std::cerr << "Production-generated neutral guard invariant failed\n";
+                return false;
+            }
+        }
+        if (generated.map_layout_id() != "generated_grid_v1" ||
+            generated.country_count() != 5 || generated.province_count() != 69 ||
+            generated.army_count() != 17 ||
+            generated_owners[CountryId{"auroria"}] != 13 ||
+            generated_owners[CountryId{"caelus"}] != 13 ||
+            generated_owners[CountryId{"solmere"}] != 13 ||
+            generated_owners[CountryId{"verdantia"}] != 13 ||
+            generated_owners[CountryId{"neutral"}] != 17 ||
+            !generated.validate().empty()) {
+            std::cerr << "Production-generated scenario invariant failed\n";
+            return false;
+        }
     }
     return true;
 }

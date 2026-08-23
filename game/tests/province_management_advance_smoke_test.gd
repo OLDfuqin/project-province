@@ -29,7 +29,7 @@ func _initialize() -> void:
         "TurnBar/TurnControls/AdvanceTurn"
     ) as Button
 
-    province_map.province_double_clicked.emit("northreach")
+    province_map.province_double_clicked.emit("capital_auroria")
     management.get_node("Recruitment/Open").pressed.emit()
     management.get_node("Recruitment/Amount").value = 1000
     management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
@@ -39,7 +39,7 @@ func _initialize() -> void:
 
     for _month: int in range(3):
         advance_turn.pressed.emit()
-    province_map.province_double_clicked.emit("northreach")
+    province_map.province_double_clicked.emit("capital_auroria")
 
     var select_advance := management.get_node(
         "AdvanceActions/SelectAdvanceTarget"
@@ -51,9 +51,9 @@ func _initialize() -> void:
         _fail(main_scene, "Management page did not enter advance target selection")
         return
 
-    province_map.province_selected.emit("z_wm_1")
+    province_map.province_selected.emit("cell_4_4")
     await process_frame
-    var advance_target_name: String = main_scene.province_by_id["z_wm_1"]["name"]
+    var advance_target_name: String = main_scene.province_by_id["cell_4_4"]["name"]
     if not management.get_node("AdvanceTarget").text.contains(advance_target_name) or \
             not advance_plans.text.contains(army_id):
         _fail(main_scene, "Non-adjacent advance target was not stored and displayed")
@@ -81,21 +81,21 @@ func _initialize() -> void:
 
     advance_plans.meta_clicked.emit("strategy:%s:max" % army_id)
     select_advance.pressed.emit()
-    province_map.province_selected.emit("z_wm_1")
+    province_map.province_selected.emit("cell_4_4")
     await process_frame
     advance_now.pressed.emit()
     await process_frame
     var moved_army := _army(bridge, army_id)
-    if moved_army.is_empty() or moved_army.get("province_id", "") == "northreach":
+    if moved_army.is_empty() or moved_army.get("province_id", "") == "capital_auroria":
         _fail(main_scene, "Immediate automatic advance did not move the army")
         return
 
     var moved_province_id: String = moved_army.get("province_id", "")
     var moved_name: String = main_scene.province_by_id[moved_province_id]["name"]
     select_advance.pressed.emit()
-    province_map.province_selected.emit("northreach")
+    province_map.province_selected.emit("capital_auroria")
     await process_frame
-    province_map.province_double_clicked.emit("northreach")
+    province_map.province_double_clicked.emit("capital_auroria")
     await process_frame
     advance_plans.meta_clicked.emit("select:%s" % army_id)
     await process_frame

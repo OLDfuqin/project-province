@@ -28,6 +28,7 @@ Desktop.ini
 # Local scratch files
 tmp/
 logs/
+*.log
 .worktrees/
 .layout-stage/
 .verify-*.log

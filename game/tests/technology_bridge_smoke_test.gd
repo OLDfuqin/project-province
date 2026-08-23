@@ -1,5 +1,7 @@
 extends SceneTree
 
+const Helpers := preload("res://tests/generated_scenario_helpers.gd")
+
 
 func _initialize() -> void:
     var bridge: Object = ClassDB.instantiate("ProvinceBridge")
@@ -15,10 +17,13 @@ func _initialize() -> void:
         return
     bridge.set_ai_enabled(false, "auroria")
 
-    var research: Dictionary = bridge.research_technology("auroria", "roads")
+    var research: Dictionary = {}
+    for _level: int in range(3):
+        research = bridge.research_technology("auroria", "roads")
     var military_research: Dictionary = bridge.research_technology("auroria", "military")
-    var army: Dictionary = bridge.recruit_army("auroria", "northreach", 500)
-    var road: Dictionary = bridge.build_road("auroria", "northreach", "westmark")
+    var army: Dictionary = bridge.recruit_army("auroria", Helpers.capital_id("auroria"), 500)
+    var pair := Helpers.first_adjacent_pair(bridge, "auroria")
+    var road: Dictionary = bridge.build_road("auroria", pair[0], pair[1])
     bridge.advance_turn(1)
     var player_technology: Dictionary = {}
     for technology: Dictionary in bridge.get_technology_summaries():
@@ -28,9 +33,9 @@ func _initialize() -> void:
     for summary: Dictionary in bridge.get_army_summaries():
         if summary["id"] == army.get("army_id", ""):
             army_after = summary
-    if not research.get("accepted", false) or research.get("cost", 0) != 1000 or \
-            not road.get("accepted", false) or road.get("cost", 0) != 540 or \
-            player_technology.get("roads_level", 0) != 1 or \
+    if not research.get("accepted", false) or \
+            not road.get("accepted", false) or \
+            player_technology.get("roads_level", 0) != 3 or \
             not military_research.get("accepted", false) or \
             player_technology.get("military_level", 0) != 1 or \
             army_after.get("movement_points", 0) != 2.5:

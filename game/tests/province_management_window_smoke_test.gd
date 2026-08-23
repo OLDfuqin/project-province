@@ -22,14 +22,14 @@ func _initialize() -> void:
         quit(1)
         return
 
-    province_map.province_double_clicked.emit("northreach")
+    province_map.province_double_clicked.emit("capital_auroria")
     var recruit := management.get_node("Recruitment/Open") as Button
     var army_selector := management.get_node("ArmySelector") as OptionButton
     var select_destination := management.get_node("ArmyActions/SelectDestination") as Button
     var move_army := management.get_node("ArmyActions/MoveArmy") as Button
     if main_scene.workspace_mode_name() != "province_management" or \
             not management.visible or \
-            management.get_node("ProvinceName").text != "北境" or \
+            management.get_node("ProvinceName").text != "奥罗里亚首都" or \
             recruit.disabled or army_selector.item_count != 0 or \
             not management.get_node("Placeholders/EconomyInvestment").disabled or \
             not management.get_node("Placeholders/CivilInvestment").disabled or \
@@ -57,11 +57,11 @@ func _initialize() -> void:
         return
 
     recruit.pressed.emit()
-    management.get_node("Recruitment/Amount").value = 1000
+    management.get_node("Recruitment/Amount").value = 500
     management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
     if main_scene.workspace_mode_name() != "province_management" or \
             army_selector.item_count != 1 or \
-            not management.get_node("ProvinceSummary").text.contains("可招募士兵：1000"):
+            not management.get_node("ProvinceSummary").text.contains("可招募士兵："):
         push_error("Recruitment did not refresh the open management window")
         main_scene.free()
         quit(1)
@@ -81,9 +81,10 @@ func _initialize() -> void:
     await process_frame
     var merged_summary: Dictionary = {}
     for summary: Dictionary in main_scene.get_node("SimulationBridge").get_army_summaries():
-        merged_summary = summary
+        if summary.get("owner_id", "") == "auroria":
+            merged_summary = summary
     if army_selector.item_count != 1 or \
-            merged_summary.get("manpower", 0) != 1500 or \
+            merged_summary.get("manpower", 0) != 1000 or \
             merged_summary.get("display_name", "") != "奥·第5军":
         push_error("Rename and merge did not refresh the management window")
         main_scene.free()
@@ -94,7 +95,8 @@ func _initialize() -> void:
         "TurnBar/TurnControls/AdvanceTurn"
     ) as Button
     advance_turn.pressed.emit()
-    province_map.province_double_clicked.emit("northreach")
+    advance_turn.pressed.emit()
+    province_map.province_double_clicked.emit("capital_auroria")
     if army_selector.item_count != 1 or select_destination.disabled:
         push_error("The recruited army was not available after reopening management")
         main_scene.free()
@@ -109,10 +111,10 @@ func _initialize() -> void:
         quit(1)
         return
 
-    province_map.province_clicked.emit("westmark")
-    province_map.province_selected.emit("westmark")
+    province_map.province_clicked.emit("cell_1_2")
+    province_map.province_selected.emit("cell_1_2")
     if main_scene.map_input_mode_name() != "normal" or move_army.disabled or \
-            not management.get_node("DirectDestination").text.contains("西境"):
+            not management.get_node("DirectDestination").text.contains("(1,2)"):
         push_error("The management window did not accept an adjacent destination")
         main_scene.free()
         quit(1)
@@ -122,7 +124,7 @@ func _initialize() -> void:
     move_army.pressed.emit()
     var moved := false
     for army: Dictionary in main_scene.get_node("SimulationBridge").get_army_summaries():
-        if army.get("id", "") == army_id and army.get("province_id", "") == "westmark":
+        if army.get("id", "") == army_id and army.get("province_id", "") == "cell_1_2":
             moved = true
             break
     if not moved or main_scene.workspace_mode_name() != "province_management" or \

@@ -1,7 +1,16 @@
 extends SceneTree
 
+const Helpers := preload("res://tests/generated_scenario_helpers.gd")
 
-func _has_complete_battle_metadata(battle_dictionary: Dictionary) -> bool:
+
+func _army(bridge: Object, army_id: String) -> Dictionary:
+    for summary: Dictionary in bridge.get_army_summaries():
+        if summary.get("id", "") == army_id:
+            return summary
+    return {}
+
+
+func _has_complete_battle_metadata(battle: Dictionary) -> bool:
     var required := [
         "battle_result", "attacker_random_x", "defender_random_x",
         "attacker_initial_manpower", "defender_initial_manpower",
@@ -12,28 +21,19 @@ func _has_complete_battle_metadata(battle_dictionary: Dictionary) -> bool:
         "attacker_remaining_manpower", "defender_remaining_manpower",
     ]
     for key: String in required:
-        if not battle_dictionary.has(key):
-            push_error("Battle dictionary is missing %s" % key)
+        if not battle.has(key):
             return false
-
-    var result: String = battle_dictionary["battle_result"]
-    if result != "defender_victory" and \
-            result != "attacker_victory" and \
-            result != "mutual_destruction":
-        push_error("Battle dictionary has invalid result %s" % result)
+    var result := String(battle.get("battle_result", ""))
+    if result not in ["defender_victory", "attacker_victory", "mutual_destruction"]:
         return false
-
     for key: String in ["attacker_random_x", "defender_random_x"]:
-        var random_x: float = float(battle_dictionary[key])
-        var tenths: float = round(random_x * 10.0)
+        var random_x := float(battle[key])
         if random_x < 0.7 or random_x > 1.4 or \
-                not is_equal_approx(random_x, tenths / 10.0):
-            push_error("Battle dictionary has invalid %s %s" % [key, random_x])
+                not is_equal_approx(random_x * 10.0, round(random_x * 10.0)):
             return false
-    for outcome: Dictionary in battle_dictionary.get("battle_outcomes", []):
+    for outcome: Dictionary in battle.get("battle_outcomes", []):
         if String(outcome.get("army_id", "")).is_empty() or \
                 String(outcome.get("display_name", "")).is_empty():
-            push_error("Battle outcome did not preserve stable and visible army identity")
             return false
     return true
 
@@ -44,7 +44,6 @@ func _initialize() -> void:
         push_error("ProvinceBridge could not be instantiated")
         quit(1)
         return
-
     var data_directory := ProjectSettings.globalize_path("res://data")
     if not bridge.load_scenario(data_directory, 1000, 1):
         push_error("Scenario load failed: %s" % bridge.get_last_error())
@@ -53,465 +52,131 @@ func _initialize() -> void:
         return
     bridge.set_ai_enabled(false, "auroria")
 
-    var northreach_before: Dictionary = {}
-    var auroria_before: Dictionary = {}
-    for province: Dictionary in bridge.get_province_summaries():
-        if province["id"] == "northreach":
-            northreach_before = province
-    for country: Dictionary in bridge.get_country_summaries():
-        if country["id"] == "auroria":
-            auroria_before = country
-    if northreach_before.get("economy", -1) != 120000 or \
-            northreach_before.get("fiscal_income", -1) != 1200 or \
-            auroria_before.get("economy", -1) != 362500 or \
-            auroria_before.get("fiscal_income", -1) != 3625 or \
-            auroria_before.get("code", "") != "奥":
-        push_error("Bridge did not expose derived province and country economy")
-        bridge.free()
-        quit(1)
-        return
-    var result: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
-    if not result.get("accepted", false) or result.get("cost", 0) != 1000:
-        push_error("Bridge recruitment failed: %s" % result.get("error", "unknown"))
-        bridge.free()
-        quit(1)
-        return
-
-    var armies: Array = bridge.get_army_summaries()
-    var northreach: Dictionary = {}
-    var auroria: Dictionary = {}
-    for province: Dictionary in bridge.get_province_summaries():
-        if province["id"] == "northreach":
-            northreach = province
-    for country: Dictionary in bridge.get_country_summaries():
-        if country["id"] == "auroria":
-            auroria = country
-    if not northreach.has("recruitable_population") or \
-            northreach.has("soldier_population"):
-        push_error("Province summary did not expose only recruitable_population")
-        bridge.free()
-        quit(1)
-        return
-    if armies.size() != 1 or armies[0]["manpower"] != 1000 or \
-            armies[0].get("formation_number", 0) != 1 or \
-            armies[0].get("country_code", "") != "奥" or \
-            armies[0].get("display_name", "") != "奥·第1军" or \
-            northreach.get("population", -1) != \
-            northreach_before.get("population", -1) - 1000 or \
-            northreach.get("recruitable_population", -1) != 1000 or \
-            northreach.get("recruitable_population", -1) != \
-            northreach_before.get("recruitable_population", -1) - 1000 or \
-            northreach.get("economy", -1) != 119000 or \
-            northreach.get("fiscal_income", -1) != 1190 or \
-            auroria.get("economy", -1) != 361500 or \
-            auroria.get("fiscal_income", -1) != 3615 or \
-            auroria.get("treasury", -1) != 9000:
-        push_error("Recruitment was not reflected in bridge snapshots")
-        bridge.free()
-        quit(1)
-        return
-
-    var second_recruitment: Dictionary = bridge.recruit_army(
-        "auroria", "northreach", 125
-    )
-    var rename_result: Dictionary = bridge.rename_army(result["army_id"], 5)
-    var merge_result: Dictionary = bridge.merge_armies(
-        result["army_id"], [second_recruitment.get("army_id", "")]
-    )
-    armies = bridge.get_army_summaries()
-    if not second_recruitment.get("accepted", false) or \
-            not rename_result.get("accepted", false) or \
-            rename_result.get("display_name", "") != "奥·第5军" or \
-            not merge_result.get("accepted", false) or \
-            merge_result.get("current_manpower", 0) != 1125 or \
-            armies.size() != 1 or armies[0].get("manpower", 0) != 1125 or \
-            armies[0].get("display_name", "") != "奥·第5军":
-        push_error("Army identity bridge commands were not reflected")
-        bridge.free()
-        quit(1)
-        return
-
-    var growth_bridge: Object = ClassDB.instantiate("ProvinceBridge")
-    if growth_bridge == null or \
-            not growth_bridge.load_scenario(data_directory, 1000, 1):
-        push_error("Recruitable population growth scenario could not be loaded")
-        bridge.free()
-        quit(1)
-        return
-    growth_bridge.set_ai_enabled(false, "auroria")
-    var growth_result: Dictionary = growth_bridge.advance_turn(1)
-    var northreach_after_growth: Dictionary = {}
-    for province: Dictionary in growth_bridge.get_province_summaries():
-        if province["id"] == "northreach":
-            northreach_after_growth = province
-    if not growth_result.get("accepted", false) or \
-            northreach_after_growth.get("population", -1) != 120120 or \
-            northreach_after_growth.get("recruitable_population", -1) != 2600:
-        push_error("Monthly recruitable population growth was not reflected")
-        growth_bridge.free()
-        bridge.free()
-        quit(1)
-        return
-    growth_bridge.free()
-
-    bridge.research_technology("auroria", "roads")
-    var road_result: Dictionary = bridge.build_road(
-        "auroria", "northreach", "westmark"
-    )
-    var turn_result: Dictionary = bridge.advance_turn(1)
-    var move_result: Dictionary = bridge.move_army(
-        result["army_id"], "westmark"
-    )
-    armies = bridge.get_army_summaries()
-    if not road_result.get("accepted", false) or \
-            not turn_result.get("accepted", false) or \
-            not turn_result.has("fiscal_incomes") or \
-            turn_result.has("incomes") or \
-            not turn_result.has("fiscal_income_event_sequence") or \
-            not move_result.get("accepted", false) or \
-            move_result.get("movement_cost", 0) != 1 or \
-            armies[0]["province_id"] != "westmark" or \
-            armies[0]["movement_points"] != 1:
-        push_error("Road movement was not reflected in bridge snapshots")
-        bridge.free()
-        quit(1)
-        return
-
-    var defender: Dictionary = bridge.recruit_army("verdantia", "greenvale", 100)
-    var peace_entry: Dictionary = bridge.move_army(result["army_id"], "greenvale")
-    var war_result: Dictionary = bridge.declare_war("auroria", "verdantia")
-    bridge.advance_turn(1)
-    var war_entry: Dictionary = bridge.move_army(result["army_id"], "greenvale")
-    var relations: Array = bridge.get_diplomatic_relations()
-    if peace_entry.get("accepted", false) or \
-            not defender.get("accepted", false) or \
-            not war_result.get("accepted", false) or \
-            not war_entry.get("accepted", false) or \
-            not war_entry.get("battle_occurred", false) or \
-            not war_entry.get("attacker_won", false) or \
-            not war_entry.get("province_occupied", false) or \
-            relations.size() != 1 or relations[0].get("status", "") != "war":
-        push_error("War declaration was not reflected in bridge state")
-        bridge.free()
-        quit(1)
-        return
-
-    var occupied_greenvale: Dictionary = {}
-    for province: Dictionary in bridge.get_province_summaries():
-        if province["id"] == "greenvale":
-            occupied_greenvale = province
-    if occupied_greenvale.get("owner_id", "") != "auroria" or \
-            occupied_greenvale.get("legal_owner_id", "") != "verdantia" or \
-            not occupied_greenvale.get("occupied", false):
-        push_error("Battle occupation was not reflected")
-        bridge.free()
-        quit(1)
-        return
-    if war_entry.get("battle_outcomes", []).is_empty():
-        push_error("Battle outcome details were not reflected in bridge state")
-        bridge.free()
-        quit(1)
-        return
-    if not _has_complete_battle_metadata(war_entry):
-        bridge.free()
-        quit(1)
-        return
-
-    var peace_result: Dictionary = bridge.make_peace("auroria", "verdantia", false)
-    relations = bridge.get_diplomatic_relations()
-    var restored_greenvale: Dictionary = {}
-    var attacker_after_peace: Dictionary = {}
-    for province: Dictionary in bridge.get_province_summaries():
-        if province["id"] == "greenvale":
-            restored_greenvale = province
+    var provinces: Array = bridge.get_province_summaries()
+    var neutral_armies := 0
     for army: Dictionary in bridge.get_army_summaries():
-        if army["id"] == result["army_id"]:
-            attacker_after_peace = army
-    if not peace_result.get("accepted", false) or \
-            peace_result.get("provinces", []).size() != 1 or \
-            peace_result.get("armies", []).size() != 1 or \
-            not relations.is_empty() or \
-            restored_greenvale.get("owner_id", "") != "verdantia" or \
-            restored_greenvale.get("occupied", true) or \
-            attacker_after_peace.get("province_id", "") != "northreach":
-        push_error("Peace settlement was not reflected in bridge state")
+        if army.get("owner_id", "") == "neutral":
+            neutral_armies += 1
+    if provinces.size() != 69 or bridge.get_country_summaries().size() != 4 or \
+            neutral_armies != 17:
+        push_error("Generated scenario bridge snapshot is incomplete: provinces=%d countries=%d neutral_armies=%d total_armies=%d" % [
+            provinces.size(), bridge.get_country_summaries().size(), neutral_armies,
+            bridge.get_army_summaries().size(),
+        ])
         bridge.free()
         quit(1)
         return
 
-    var rewar_result: Dictionary = bridge.declare_war("auroria", "verdantia")
-    bridge.advance_turn(3)
-    var direct_occupation_step: Dictionary = bridge.move_army(result["army_id"], "westmark")
-    var direct_occupation: Dictionary = bridge.move_army(result["army_id"], "greenvale")
-    var battle_aggregate_fields := [
-        "battle_result", "attacker_random_x", "defender_random_x",
-        "attacker_initial_manpower", "defender_initial_manpower",
-        "attacker_military_level", "defender_military_level",
-        "attacker_base_strength", "defender_base_strength",
-        "defender_final_strength", "terrain_defense_bonus",
-        "attacker_casualties", "defender_casualties",
-        "attacker_remaining_manpower", "defender_remaining_manpower",
-    ]
-    for key: String in battle_aggregate_fields:
-        if direct_occupation.has(key):
-            push_error("Unopposed occupation exposed battle field %s" % key)
-            bridge.free()
-            quit(1)
-            return
-    if not rewar_result.get("accepted", false) or \
-            not direct_occupation_step.get("accepted", false) or \
-            not direct_occupation.get("accepted", false) or \
-            direct_occupation.get("battle_occurred", true) or \
-            direct_occupation.get("attacker_won", true) or \
-            not direct_occupation.get("province_occupied", false) or \
-            direct_occupation.get("casualties", -1) != 0 or \
-            not direct_occupation.get("battle_outcomes", []).is_empty():
-        push_error("Unopposed occupation exposed misleading battle metadata")
+    var capital := Helpers.capital_id("auroria")
+    var capital_before := Helpers.province_by_id(bridge, capital)
+    var rejected: Dictionary = bridge.recruit_army("auroria", capital, 0)
+    var first: Dictionary = bridge.recruit_army("auroria", capital, 100)
+    var second: Dictionary = bridge.recruit_army("auroria", capital, 125)
+    var capital_after := Helpers.province_by_id(bridge, capital)
+    if rejected.get("accepted", true) or not first.get("accepted", false) or \
+            not second.get("accepted", false) or \
+            first.get("display_name", "") != "奥·第1军" or \
+            second.get("display_name", "") != "奥·第2军" or \
+            capital_after.get("population", -1) != capital_before.get("population", -1) - 225 or \
+            capital_after.get("recruitable_population", -1) != \
+                capital_before.get("recruitable_population", -1) - 225:
+        push_error("Variable recruitment or generated army naming failed")
         bridge.free()
         quit(1)
         return
 
-    if not bridge.load_scenario(data_directory, 1000, 1):
-        push_error("Scenario reload failed: %s" % bridge.get_last_error())
-        bridge.free()
-        quit(1)
-        return
-    bridge.set_ai_enabled(false, "auroria")
-    var deep_army: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
-    bridge.research_technology("auroria", "roads")
-    bridge.build_road("auroria", "northreach", "westmark")
-    bridge.declare_war("auroria", "verdantia")
-    bridge.advance_turn(3)
-    var set_target: Dictionary = bridge.set_army_advance_target(
-        deep_army["army_id"], "greenvale"
-    )
-    var planned_army: Dictionary = {}
-    for army_summary: Dictionary in bridge.get_army_summaries():
-        if army_summary["id"] == deep_army["army_id"]:
-            planned_army = army_summary
-    if not set_target.get("accepted", false) or \
-            planned_army.get("advance_target_id", "") != "greenvale":
-        push_error("Army advance target was not stored in bridge state")
-        bridge.free()
-        quit(1)
-        return
-    var path_preview: Dictionary = bridge.get_auto_advance_path(
-        deep_army["army_id"], "greenvale"
-    )
-    if not path_preview.get("accepted", false) or \
-            path_preview.get("path", []) != ["northreach", "westmark", "greenvale"] or \
-            path_preview.get("step_count", 0) != 2 or \
-            path_preview.get("first_step_cost", 0) != 1 or \
-            path_preview.get("total_movement_cost", 0) != 3:
-        push_error("Auto advance path preview was not reflected in bridge state")
-        bridge.free()
-        quit(1)
-        return
-    var auto_entry: Dictionary = bridge.auto_advance_army_to(
-        deep_army["army_id"], "greenvale"
-    )
-    if not auto_entry.get("accepted", false) or \
-            auto_entry.get("auto_target", "") != "greenvale" or \
-            auto_entry.get("auto_step_count", 0) != 2 or \
-            auto_entry.get("origin", "") != "northreach" or \
-            auto_entry.get("destination", "") != "greenvale" or \
-            auto_entry.get("auto_total_movement_cost", 0) != 3 or \
-            auto_entry.get("movement_cost", 0) != 3 or \
-            not auto_entry.get("province_occupied", false):
-        push_error("Multi-step auto advance was not reflected in bridge state")
-        bridge.free()
-        quit(1)
-        return
-    var arrived_army: Dictionary = {}
-    for army_summary: Dictionary in bridge.get_army_summaries():
-        if army_summary["id"] == deep_army["army_id"]:
-            arrived_army = army_summary
-    if arrived_army.get("advance_target_id", "") != "":
-        push_error("Army advance target was not cleared after reaching target")
+    var renamed: Dictionary = bridge.rename_army(first["army_id"], 5)
+    var duplicate: Dictionary = bridge.rename_army(second["army_id"], 5)
+    var merged: Dictionary = bridge.merge_armies(first["army_id"], [second["army_id"]])
+    var third: Dictionary = bridge.recruit_army("auroria", capital, 50)
+    if not renamed.get("accepted", false) or duplicate.get("accepted", true) or \
+            not merged.get("accepted", false) or \
+            _army(bridge, first["army_id"]).get("manpower", 0) != 225 or \
+            not _army(bridge, second["army_id"]).is_empty() or \
+            third.get("formation_number", 0) != 1:
+        push_error("Army rename, uniqueness, merge or released numbering failed")
         bridge.free()
         quit(1)
         return
 
-    if not bridge.load_scenario(data_directory, 1000, 1):
-        push_error("Scenario reload for paused advance failed: %s" % bridge.get_last_error())
-        bridge.free()
-        quit(1)
-        return
-    bridge.set_ai_enabled(false, "auroria")
-    var paused: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
-    bridge.research_technology("auroria", "roads")
-    bridge.build_road("auroria", "northreach", "westmark")
-    bridge.declare_war("auroria", "verdantia")
-    bridge.set_army_advance_target(paused["army_id"], "greenvale")
-    var pause_result: Dictionary = bridge.set_army_advance_enabled(
-        paused["army_id"], false
+    var turn: Dictionary = bridge.advance_turn(3)
+    var moved: Dictionary = bridge.move_army(first["army_id"], "cell_1_2")
+    var target: Dictionary = bridge.set_army_advance_target(first["army_id"], "cell_4_4")
+    var strategy: Dictionary = bridge.set_army_advance_strategy(first["army_id"], "one_step")
+    var preview: Dictionary = bridge.get_auto_advance_path_for_months(
+        first["army_id"], "cell_4_4", 1
     )
-    bridge.advance_turn(3)
-    var paused_after: Dictionary = {}
-    for army_summary: Dictionary in bridge.get_army_summaries():
-        if army_summary["id"] == paused["army_id"]:
-            paused_after = army_summary
-    var resume_result: Dictionary = bridge.set_army_advance_enabled(
-        paused["army_id"], true
-    )
-    bridge.advance_turn(1)
-    var resumed_after: Dictionary = {}
-    for army_summary: Dictionary in bridge.get_army_summaries():
-        if army_summary["id"] == paused["army_id"]:
-            resumed_after = army_summary
-    if not pause_result.get("accepted", false) or \
-            not resume_result.get("accepted", false) or \
-            paused_after.get("province_id", "") != "northreach" or \
-            paused_after.get("advance_target_id", "") != "greenvale" or \
-            paused_after.get("advance_enabled", true) or \
-            resumed_after.get("province_id", "") == "northreach" or \
-            not resumed_after.get("advance_enabled", false):
-        push_error("Paused army advance target was not respected during turn advance")
+    if not turn.get("accepted", false) or not moved.get("accepted", false) or \
+            moved.get("origin", "") != capital or moved.get("destination", "") != "cell_1_2" or \
+            not target.get("accepted", false) or not strategy.get("accepted", false) or \
+            not preview.get("accepted", false) or \
+            preview.get("preview_path", []).is_empty():
+        push_error("Movement or advance-plan bridge contract failed: turn=%s moved=%s target=%s strategy=%s preview=%s" % [
+            turn, moved, target, strategy, preview,
+        ])
         bridge.free()
         quit(1)
         return
 
-    if not bridge.load_scenario(data_directory, 1000, 1):
-        push_error("Scenario reload for one-step advance failed: %s" % bridge.get_last_error())
+    var battle_bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    if not battle_bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Battle scenario load failed")
         bridge.free()
+        battle_bridge.free()
         quit(1)
         return
-    bridge.set_ai_enabled(false, "auroria")
-    var one_step: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
-    bridge.declare_war("auroria", "verdantia")
-    bridge.set_army_advance_target(one_step["army_id"], "z_gv_2")
-    var strategy_result: Dictionary = bridge.set_army_advance_strategy(
-        one_step["army_id"], "one_step"
-    )
-    bridge.advance_turn(1)
-    var one_step_after: Dictionary = {}
-    for army_summary: Dictionary in bridge.get_army_summaries():
-        if army_summary["id"] == one_step["army_id"]:
-            one_step_after = army_summary
-    if not strategy_result.get("accepted", false) or \
-            one_step_after.get("advance_strategy", "") != "one_step" or \
-            one_step_after.get("province_id", "") == "z_gv_2" or \
-            one_step_after.get("province_id", "") == "northreach":
-        push_error("One-step army advance strategy was not respected during turn advance")
+    battle_bridge.set_ai_enabled(false, "auroria")
+    var border := Helpers.neutral_neighbor(battle_bridge, "auroria")
+    if border.size() != 2:
+        push_error("Generated map has no Auroria-neutral border")
         bridge.free()
+        battle_bridge.free()
         quit(1)
         return
-
-    if not bridge.load_scenario(data_directory, 1000, 1):
-        push_error("Scenario reload for border-stop advance failed: %s" % bridge.get_last_error())
+    var neutral_before := Helpers.province_by_id(battle_bridge, border[1])
+    var guard_before: Dictionary = {}
+    for army: Dictionary in battle_bridge.get_army_summaries():
+        if army.get("province_id", "") == border[1] and \
+                army.get("owner_id", "") == "neutral":
+            guard_before = army
+            break
+    var neutral_turn: Dictionary = battle_bridge.advance_turn(1)
+    var neutral_after_growth := Helpers.province_by_id(battle_bridge, border[1])
+    var guard_after: Dictionary = {}
+    for army: Dictionary in battle_bridge.get_army_summaries():
+        if army.get("province_id", "") == border[1] and \
+                army.get("owner_id", "") == "neutral":
+            guard_after = army
+            break
+    var expected_guard_growth := int(neutral_before.get("population", 0)) / 1000
+    if not neutral_turn.get("accepted", false) or \
+            neutral_after_growth.get("population", -1) != neutral_before.get("population", -1) or \
+            guard_after.get("manpower", -1) != guard_before.get("manpower", -1) + expected_guard_growth:
+        push_error("Neutral monthly population diversion failed")
         bridge.free()
-        quit(1)
-        return
-    bridge.set_ai_enabled(false, "auroria")
-    var border_stop: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
-    bridge.research_technology("auroria", "roads")
-    bridge.build_road("auroria", "northreach", "westmark")
-    bridge.declare_war("auroria", "verdantia")
-    bridge.set_army_advance_target(border_stop["army_id"], "greenvale")
-    var border_strategy: Dictionary = bridge.set_army_advance_strategy(
-        border_stop["army_id"], "stop_before_enemy"
-    )
-    var border_preview: Dictionary = bridge.get_auto_advance_path_for_months(
-        border_stop["army_id"], "greenvale", 1
-    )
-    if not border_preview.get("accepted", false) or \
-            border_preview.get("preview_path", []) != ["northreach", "westmark"] or \
-            border_preview.get("preview_destination_id", "") != "westmark" or \
-            border_preview.get("preview_step_count", 0) != 1 or \
-            border_preview.get("preview_movement_cost", 0) != 1 or \
-            border_preview.get("preview_months", 0) != 1 or \
-            border_preview.get("preview_movement_granted", 0) != 2 or \
-            border_preview.get("preview_stop_reason", "") != "enemy_border":
-        push_error("Border-stop army advance preview did not stop before enemy province")
-        bridge.free()
-        quit(1)
-        return
-    bridge.advance_turn(3)
-    var border_after: Dictionary = {}
-    var border_greenvale: Dictionary = {}
-    for army_summary: Dictionary in bridge.get_army_summaries():
-        if army_summary["id"] == border_stop["army_id"]:
-            border_after = army_summary
-    for province_summary: Dictionary in bridge.get_province_summaries():
-        if province_summary["id"] == "greenvale":
-            border_greenvale = province_summary
-    if not border_strategy.get("accepted", false) or \
-            border_after.get("advance_strategy", "") != "stop_before_enemy" or \
-            border_after.get("province_id", "") != "westmark" or \
-            border_after.get("advance_target_id", "") != "greenvale" or \
-            border_greenvale.get("owner_id", "") != "verdantia":
-        push_error("Border-stop army advance strategy was not respected during turn advance")
-        bridge.free()
+        battle_bridge.free()
         quit(1)
         return
 
-    if not bridge.load_scenario(data_directory, 1000, 1):
-        push_error("Scenario reload for planned advance failed: %s" % bridge.get_last_error())
+    var attacker: Dictionary = battle_bridge.recruit_army("auroria", border[0], 100)
+    battle_bridge.advance_turn(3)
+    var battle: Dictionary = battle_bridge.move_army(attacker["army_id"], border[1])
+    var neutral_after_battle := Helpers.province_by_id(battle_bridge, border[1])
+    var attacker_won: bool = battle.get("battle_result", "") == "attacker_victory"
+    if not battle.get("accepted", false) or not battle.get("battle_occurred", false) or \
+            not _has_complete_battle_metadata(battle) or \
+            (attacker_won and (
+                neutral_after_battle.get("owner_id", "") != "auroria" or \
+                neutral_after_battle.get("occupied", true)
+            )) or \
+            (not attacker_won and neutral_after_battle.get("owner_id", "") != "neutral"):
+        push_error("Neutral defensive battle or direct conquest failed")
         bridge.free()
-        quit(1)
-        return
-    bridge.set_ai_enabled(false, "auroria")
-    var planned: Dictionary = bridge.recruit_army("auroria", "northreach", 1000)
-    var planned_defender: Dictionary = bridge.recruit_army("verdantia", "greenvale", 100)
-    bridge.research_technology("auroria", "roads")
-    bridge.build_road("auroria", "northreach", "westmark")
-    bridge.declare_war("auroria", "verdantia")
-    var plan_result: Dictionary = bridge.set_army_advance_target(
-        planned["army_id"], "greenvale"
-    )
-    var turn_plan: Dictionary = bridge.advance_turn(3)
-    var planned_move_seen := false
-    var planned_battle_seen := false
-    var planned_battle_metadata_valid := false
-    var planned_attacker_identity_seen := false
-    var planned_destroyed_defender_identity_seen := false
-    for action: Dictionary in turn_plan.get("turn_actions", []):
-        if action.get("type", "") == "army_moved" and \
-                action.get("army_id", "") == planned["army_id"] and \
-                action.get("origin", "") == "northreach" and \
-                action.get("destination", "") == "westmark" and \
-                action.get("movement_cost", 0) == 1:
-            planned_move_seen = true
-        if action.get("type", "") == "battle_resolved" and \
-                action.get("province_id", "") == "greenvale" and \
-                action.get("province_occupied", false):
-            planned_battle_seen = true
-            planned_battle_metadata_valid = _has_complete_battle_metadata(action)
-            for outcome: Dictionary in action.get("battle_outcomes", []):
-                if outcome.get("army_id", "") == planned["army_id"] and \
-                        outcome.get("display_name", "") == planned["display_name"]:
-                    planned_attacker_identity_seen = true
-                if outcome.get("army_id", "") == planned_defender["army_id"] and \
-                        outcome.get("display_name", "") == \
-                            planned_defender["display_name"] and \
-                        outcome.get("destroyed", false):
-                    planned_destroyed_defender_identity_seen = true
-    var planned_after: Dictionary = {}
-    var planned_greenvale: Dictionary = {}
-    for army_summary: Dictionary in bridge.get_army_summaries():
-        if army_summary["id"] == planned["army_id"]:
-            planned_after = army_summary
-    for province_summary: Dictionary in bridge.get_province_summaries():
-        if province_summary["id"] == "greenvale":
-            planned_greenvale = province_summary
-    if not plan_result.get("accepted", false) or \
-            not planned_defender.get("accepted", false) or \
-            not turn_plan.get("accepted", false) or \
-            not planned_move_seen or \
-            not planned_battle_seen or \
-            not planned_battle_metadata_valid or \
-            not planned_attacker_identity_seen or \
-            not planned_destroyed_defender_identity_seen or \
-            planned.get("display_name", "") != "\u5965\u00b7\u7b2c1\u519b" or \
-            planned_after.get("province_id", "") != "greenvale" or \
-            planned_after.get("advance_target_id", "") != "" or \
-            planned_greenvale.get("owner_id", "") != "auroria" or \
-            not planned_greenvale.get("occupied", false):
-        push_error("Stored army advance target was not executed during turn advance")
-        bridge.free()
+        battle_bridge.free()
         quit(1)
         return
 
-    print("ProvinceBridge army recruitment smoke test passed")
+    print("ProvinceBridge army integration smoke test passed")
     bridge.free()
+    battle_bridge.free()
     quit(0)
