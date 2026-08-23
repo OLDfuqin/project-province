@@ -69,9 +69,10 @@ C++ 模拟核心
 | --- | --- | --- |
 | `stable_id.hpp` | 仅头文件 | 定义国家、地区、军队的强类型稳定字符串 ID，避免不同 ID 混用。 |
 | `country.hpp` | 仅头文件 | 定义国家状态，例如名称、单字代号、国库和控制信息所需的国家数据。 |
-| `province.hpp` | 仅头文件 | 定义地区状态，包括归属、控制、人口、可招募士兵、地形和经济等。 |
+| `province.hpp` | 仅头文件 | 定义地区状态，包括归属、控制、人口、可招募士兵、基础经济、地形和邻接。 |
 | `army.hpp` | 仅头文件 | 定义军队状态，包括所有者、本国编制编号、位置、兵力、移动点和自动推进计划。 |
-| `terrain.hpp` | 仅头文件 | 定义平原、森林、丘陵、山地四类地形。 |
+| `terrain.hpp` | 仅头文件 | 定义平原、森林、丘陵、山地、首都五类地形及经济、移动、道路和防守参数。 |
+| `data_load_error.hpp` | 仅头文件 | 定义共享JSON数据加载异常，避免布局加载器依赖完整剧本加载器。 |
 | `diplomacy.hpp` | 仅头文件 | 定义外交状态、和平结算策略和无序国家关系键。 |
 | `technology.hpp` | 仅头文件 | 定义经济0–3级、军事0–8级、道路0–4级科技分支及国家科技等级。 |
 | `road.hpp` | `road.cpp` | 定义道路等级、无序地区连接键，以及道路字符串转换等基础逻辑。 |
@@ -92,7 +93,7 @@ C++ 模拟核心
 
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
-| `economy_system.hpp` | `economy_system.cpp` | 按人口、经济科技和地形计算地区经济，汇总国家财政收入并执行月度入账。 |
+| `economy_system.hpp` | `economy_system.cpp` | 按已保存的地区基础经济和控制国经济科技计算最终经济，汇总普通国家财政收入并执行月度入账。 |
 | `population_system.hpp` | `population_system.cpp` | 执行月度人口与可招募士兵增长、上限和向下取整规则。 |
 | `technology_system.hpp` | `technology_system.cpp` | 校验研究条件、扣除费用并提升经济、军事或道路科技。 |
 
@@ -112,8 +113,11 @@ C++ 模拟核心
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
 | `ai_system.hpp` | `ai_system.cpp` | 为非玩家国家选择研究、征兵、宣战和军队行动等决策。 |
-| `scenario_loader.hpp` | `scenario_loader.cpp` | 读取并校验 `game/data/` JSON，创建新游戏初始状态。 |
-| `save_game.hpp` | `save_game.cpp` | 序列化完整运行时状态，校验存档 schema，并从存档恢复游戏。 |
+| `grid_map_layout.hpp` | `grid_map_layout.cpp` | 读取并严格校验共享9×9布局、四国放置区和2×2首都源格。 |
+| `map_cell_generator.hpp` | `map_cell_generator.cpp` | 按蛇形顺序、邻格权重、森林覆盖和离散人口规则生成81个随机原始格。 |
+| `map_scenario_generator.hpp` | `map_scenario_generator.cpp` | 把原始格组装为69地区场景，合并首都、推导邻接并创建隐藏中立国和17支守军。 |
+| `scenario_loader.hpp` | `scenario_loader.cpp` | 读取四国和共享布局；注入正式或测试随机源并创建新游戏状态。 |
+| `save_game.hpp` | `save_game.cpp` | 以严格schema 6序列化完整随机地图状态和布局ID，并从存档恢复游戏。 |
 
 ## 4. Godot 桥接层：`bridge/`
 
@@ -145,11 +149,10 @@ C++ 模拟核心
 | --- | --- |
 | `schema_version.json` | 声明当前剧本 JSON 的 schema 版本，供加载器拒绝不兼容数据。 |
 | `countries.json` | 四个国家的新游戏初始信息，例如稳定 ID、中文名、颜色和初始国库。 |
-| `provinces.json` | 地区 ID、名称、所有者、控制者、人口、可招募士兵、地形和相邻关系。 |
-| `map_geometry.json` | 地区 ID 到扁平多边形坐标的映射，只决定地图形状与点击区域。 |
+| `grid_map_layout.json` | 共享地图布局：9×9尺寸、80像素格边长、四国角落范围和四组2×2首都源格。C++生成场景，Godot生成多边形。 |
 | `technologies.json` | 各国家经济、军事和道路科技的初始等级。 |
 
-数据约束由 `scenario_loader` 负责。修改 ID 时，必须同步检查国家、地区相邻关系、地图形状、科技和测试中的引用。
+固定地区文件 `provinces.json` 和固定几何文件 `map_geometry.json` 已移除。数据约束由 `scenario_loader`、`GridMapLayoutLoader` 和场景生成器共同负责。修改布局时，必须同步检查生成器、动态地图几何、存档布局ID和测试。
 
 ### 5.3 场景：`game/scenes/`
 
@@ -167,7 +170,7 @@ C++ 模拟核心
 | 文件 | 用途 |
 | --- | --- |
 | `main.gd` | 主界面协调器；连接节点信号，切换功能窗口和地图输入模式，调用桥接 API，刷新日期、国家、外交、科技、地图和行动报告。 |
-| `province_map.gd` | `ProvinceMap` 自绘地图控件；加载多边形、缩放拖动、命中测试，并绘制国家颜色、道路、军队、前线和推进路径。 |
+| `province_map.gd` | `ProvinceMap` 自绘地图控件；从共享布局动态生成65个单格与4个首都多边形，执行缩放拖动、命中测试，并绘制国家颜色、道路、军队、前线和推进路径。 |
 | `province_info_window.gd` | 把地区、国家、军队和道路查询结果格式化为单击地区的只读信息。 |
 | `province_management_window.gd` | 管理双击地区窗口的显示状态，发出自定义数量征兵、军队更名、多选合并、移动、自动推进、清除计划和科技操作信号。 |
 | `road_construction_window.gd` | 管理修路窗口的起终点选择流程、预计费用、提示文字和重置状态。 |
@@ -203,6 +206,11 @@ C++ 模拟核心
 | `core_smoke_test.cpp` | 核心测试程序入口及综合规则测试，覆盖剧本、回合、经济、人口、道路、征兵、移动、战争、和平和科技。 |
 | `ai_smoke_test.cpp` | AI 决策、目标选择、寻路和回合行动测试。 |
 | `save_game_smoke_test.cpp` | 存档 schema、序列化/反序列化和状态往返一致性测试。 |
+| `grid_map_layout_test.cpp` | 验证布局schema、尺寸、四国范围、首都源格和非法布局拒绝规则。 |
+| `map_cell_generator_test.cpp` | 用固定随机索引验证蛇形顺序、相邻概率边界、森林覆盖、人口集合和基础经济。 |
+| `map_scenario_generator_test.cpp` | 验证69地区、四首都、17无主地区/守军、邻接和100次正式随机场景不变量。 |
+| `neutral_population_test.cpp` | 验证无主地区人口不增加、理论增长全部加入唯一守军且中立国不能主动操作。 |
+| `neutral_combat_test.cpp` | 验证普通国家与中立国天然敌对、守军战斗和胜利后的直接法理征服。 |
 | `smoke_test_groups.hpp` | 声明拆分后的测试组函数，使单个测试程序统一调用各测试文件。 |
 
 运行 `scripts/build.cmd` 会构建并执行 `build/bin/province_core_tests.exe`。
@@ -224,6 +232,7 @@ C++ 模拟核心
 | `province_management_window_smoke_test.gd` | 验证管理窗口与主场景之间的地区选择和操作集成。 |
 | `province_management_advance_smoke_test.gd` | 验证管理窗口中的自动推进目标、策略和计划操作。 |
 | `road_construction_window_smoke_test.gd` | 验证修路窗口的起点、终点、重置和完成后状态流程。 |
+| `generated_scenario_helpers.gd` | 为随机场景测试按稳定ID选择首都、受控地区、相邻端点和无主邻格，避免依赖已删除的固定地区ID。 |
 
 Godot 测试是独立脚本，通常使用控制台版 Godot 以 `--headless --script` 运行。修改桥接 DLL 后，应先完成构建，再顺序运行相关 Godot 测试，避免加载旧 DLL。
 
@@ -293,9 +302,9 @@ Godot 测试是独立脚本，通常使用控制台版 Godot 以 `--headless --s
 | 新增 Godot 查询/API | `province_bridge.hpp/.cpp` | `province_bridge_bindings.cpp` 和桥接测试 |
 | 修改主页面布局 | `main.tscn`、必要时 `main.gd` | `main_layout_smoke_test.gd` 和不同窗口尺寸 |
 | 修改地区弹窗 | 对应 `scenes/ui/*.tscn` 与同名脚本 | 组件测试、主场景集成测试和滚动边界 |
-| 修改地图绘制或交互 | `province_map.gd` | `map_geometry.json`、地图测试和输入模式 |
+| 修改地图绘制或交互 | `province_map.gd` | `grid_map_layout.json`、C++布局加载器、地图测试和输入模式 |
 | 修改展示文字 | `game_text_formatter.gd` 或相应窗口脚本 | 不在格式化器中复制规则公式 |
-| 修改剧本初值 | `game/data/*.json` | schema、交叉 ID、加载测试和地图覆盖 |
+| 修改四国或地图布局 | `countries.json`、`grid_map_layout.json` | schema、布局/单格/场景生成测试、动态地图覆盖和存档兼容性 |
 | 修改存档字段 | `save_game.*` | 存档 schema、往返测试、旧存档兼容策略 |
 | 升级 Godot/GDExtension | `godot-cpp`、`.gdextension`、工具脚本 | 清洁构建和全部 Godot 集成测试 |
 
