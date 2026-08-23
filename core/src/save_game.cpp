@@ -51,25 +51,6 @@ std::string join_issues(const std::vector<std::string>& issues) {
     return message.str();
 }
 
-std::string legacy_country_code(const CountryId& country_id) {
-    if (country_id == CountryId{"auroria"}) {
-        return "\xE5\xA5\xA5";
-    }
-    if (country_id == CountryId{"verdantia"}) {
-        return "\xE7\xBB\xB4";
-    }
-    if (country_id == CountryId{"caelus"}) {
-        return "\xE5\x87\xAF";
-    }
-    if (country_id == CountryId{"solmere"}) {
-        return "\xE7\xB4\xA2";
-    }
-    throw SaveGameError{
-        "schema 3 save contains a country without a known code: " +
-        country_id.value()
-    };
-}
-
 } // namespace
 
 SaveGameError::SaveGameError(const std::string& message) : std::runtime_error{message} {}
@@ -84,8 +65,12 @@ void SaveGameSerializer::save(
     if (!issues.empty()) {
         throw SaveGameError{join_issues(issues)};
     }
+    if (state.map_layout_id() != "generated_grid_v1") {
+        throw SaveGameError{"only generated_grid_v1 states can be saved"};
+    }
     Json document{
         {"schema_version", schema_version},
+        {"map_layout_id", state.map_layout_id()},
         {"clock", {{"year", state.clock().year()}, {"month", state.clock().month()}}},
         {"next_event_sequence", next_event_sequence},
         {"human_country_id", human_country_id.has_value()
@@ -108,6 +93,7 @@ void SaveGameSerializer::save(
             {"code", country.code},
             {"color_rgb", country.color_rgb},
             {"treasury", country.treasury},
+            {"hidden", country.hidden},
         });
     }
     for (const auto& [province_id, province] : state.provinces_) {
@@ -121,6 +107,7 @@ void SaveGameSerializer::save(
             {"owner_id", province.owner_id.value()},
             {"population", province.population},
             {"recruitable_population", province.recruitable_population},
+            {"base_economy", province.base_economy},
             {"neighbors", std::move(neighbors)},
             {"population_growth_remainder", province.population_growth_remainder},
             {"terrain", terrain_name(province.terrain)},
@@ -212,17 +199,23 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
     try {
         const Json document = Json::parse(stream);
         const std::int32_t version = document.at("schema_version").get<std::int32_t>();
-        if (version != 3 && version != 4 && version != schema_version) {
+        if (version != schema_version) {
             throw SaveGameError{
-                "unsupported save schema version " + std::to_string(version) +
-                "; expected 3, 4 or " + std::to_string(schema_version)
+                "old 32-province save is incompatible; expected schema " +
+                std::to_string(schema_version)
             };
+        }
+        const std::string map_layout_id =
+            document.at("map_layout_id").get<std::string>();
+        if (map_layout_id != "generated_grid_v1") {
+            throw SaveGameError{"save map layout is incompatible with generated_grid_v1"};
         }
         const Json& clock = document.at("clock");
         GameState state{GameClock{
             clock.at("year").get<std::int32_t>(),
             clock.at("month").get<std::int32_t>(),
         }};
+        state.map_layout_id_ = map_layout_id;
         for (const Json& entry : document.at("countries")) {
             const CountryId country_id{entry.at("id").get<std::string>()};
             state.add_country(Country{
@@ -230,9 +223,8 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                 entry.at("name").get<std::string>(),
                 entry.at("color_rgb").get<std::uint32_t>(),
                 entry.at("treasury").get<std::int64_t>(),
-                version == 3
-                    ? legacy_country_code(country_id)
-                    : entry.at("code").get<std::string>(),
+                entry.at("code").get<std::string>(),
+                entry.at("hidden").get<bool>(),
             });
         }
         for (const Json& entry : document.at("provinces")) {
@@ -242,9 +234,8 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
             }
             const std::int64_t population = entry.at("population").get<std::int64_t>();
             const TerrainType terrain = terrain_from_string(entry.value("terrain", "plains"));
-            const std::int64_t percent = terrain_economy_percent(terrain);
-            const std::int64_t base_economy = (population / 100) * percent +
-                (population % 100) * percent / 100;
+            const std::int64_t base_economy =
+                entry.at("base_economy").get<std::int64_t>();
             state.add_province(Province{
                 ProvinceId{entry.at("id").get<std::string>()},
                 entry.at("name").get<std::string>(),
@@ -271,9 +262,8 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
             if (entry.contains("advance_target")) {
                 advance_target.emplace(entry.at("advance_target").get<std::string>());
             }
-            const std::int64_t movement_points_half = version == schema_version
-                ? entry.at("movement_points_half").get<std::int64_t>()
-                : entry.at("movement_points").get<std::int64_t>() * 2;
+            const std::int64_t movement_points_half =
+                entry.at("movement_points_half").get<std::int64_t>();
             if (movement_points_half < 0 || movement_points_half >
                 std::numeric_limits<std::int32_t>::max()) {
                 throw SaveGameError{"army movement points are out of range"};
@@ -289,9 +279,7 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
                     std::move(advance_target),
                     entry.value("advance_enabled", true),
                     entry.value("advance_strategy", std::string{"max"}),
-                    version == 3
-                        ? state.next_formation_number(owner_id)
-                        : entry.at("formation_number").get<std::int64_t>(),
+                    entry.at("formation_number").get<std::int64_t>(),
                 }
             );
             static_cast<void>(iterator);

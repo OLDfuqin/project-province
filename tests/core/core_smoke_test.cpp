@@ -31,7 +31,7 @@ province::core::GameState generated_state(province::core::GameClock clock) {
 
 } // namespace
 
-int main() {
+int run_smoke_tests() {
     using namespace province::core;
 
     if (!run_battle_calculator_tests() || !run_grid_map_layout_tests() ||
@@ -150,4 +150,13 @@ int main() {
     }
     std::cout << "Project Province core 0.1.0-dev smoke test passed\n";
     return 0;
+}
+
+int main() {
+    try {
+        return run_smoke_tests();
+    } catch (const std::exception& error) {
+        std::cerr << "Unhandled smoke-test exception: " << error.what() << "\n";
+        return 1;
+    }
 }

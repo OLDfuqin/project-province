@@ -1,54 +1,100 @@
 #include "smoke_test_groups.hpp"
 
-#include "province/core/game_clock.hpp"
-#include "province/core/game_state.hpp"
 #include "province/core/save_game.hpp"
+#include "province/core/scenario_loader.hpp"
 
+#include <nlohmann/json.hpp>
+
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
+
+namespace {
+
+using Json = nlohmann::json;
+
+bool rejected(const Json& document, const std::string& suffix) {
+    const auto path = std::filesystem::temp_directory_path() /
+        ("province-invalid-save-" + suffix + ".json");
+    {
+        std::ofstream stream{path};
+        stream << document.dump(2);
+    }
+    try {
+        [[maybe_unused]] const auto loaded = province::core::SaveGameSerializer::load(path);
+    } catch (const province::core::SaveGameError&) {
+        std::filesystem::remove(path);
+        return true;
+    }
+    std::filesystem::remove(path);
+    return false;
+}
+
+} // namespace
 
 bool run_save_game_smoke_tests() {
     using namespace province::core;
 
-    GameState state{GameClock{1200, 6}};
-    state.add_country(Country{CountryId{"alpha"}, "Alpha", 0xAA0000, 5'000, "A"});
-    state.add_country(Country{CountryId{"beta"}, "Beta", 0x0000AA, 5'000, "B"});
-    state.add_province(Province{
-        ProvinceId{"alpha_home"}, "Alpha Home", CountryId{"alpha"},
-        100'000, 1'000, 100'000, {ProvinceId{"beta_home"}}, 0, TerrainType::plains,
-    });
-    state.add_province(Province{
-        ProvinceId{"beta_home"}, "Beta Home", CountryId{"beta"},
-        80'000, 800, 72'000, {ProvinceId{"alpha_home"}}, 0, TerrainType::hills,
-    });
-    const ArmyId army_id = state.create_army(
-        CountryId{"alpha"}, ProvinceId{"alpha_home"}, 500
+    GameState state = ScenarioLoader::load(
+        "game/data",
+        GameClock{1200, 6},
+        [](const std::uint32_t) { return std::uint32_t{0}; }
     );
-    state.find_army(army_id)->movement_points = 5;
-    state.find_army(army_id)->formation_number = 4;
-    state.set_road_level(
-        ProvinceId{"alpha_home"}, ProvinceId{"beta_home"}, RoadLevel::paved
-    );
-    state.set_diplomatic_status(
-        CountryId{"alpha"}, CountryId{"beta"}, DiplomaticStatus::war
-    );
-
     const auto path = std::filesystem::temp_directory_path() /
-        "province-schema5-smoke.json";
-    SaveGameSerializer::save(path, state, 7, CountryId{"alpha"});
-    const LoadedGame loaded = SaveGameSerializer::load(path);
-    std::filesystem::remove(path);
+        "province-schema6-smoke.json";
+    SaveGameSerializer::save(path, state, 7, CountryId{"auroria"});
 
-    const Army* loaded_army = loaded.state.find_army(army_id);
-    const Province* loaded_hills = loaded.state.find_province(ProvinceId{"beta_home"});
+    std::ifstream stream{path};
+    const Json document = Json::parse(stream);
+    stream.close();
+    bool found_hidden = false;
+    bool every_base = true;
+    for (const Json& country : document.at("countries")) {
+        if (country.at("id") == "neutral") {
+            found_hidden = country.at("hidden").get<bool>();
+        }
+    }
+    for (const Json& province : document.at("provinces")) {
+        every_base = every_base && province.contains("base_economy");
+    }
+    if (document.at("schema_version") != 6 ||
+        document.at("map_layout_id") != "generated_grid_v1" ||
+        document.at("countries").size() != 5 || document.at("provinces").size() != 69 ||
+        document.at("armies").size() != 17 || !found_hidden || !every_base) {
+        std::cerr << "Schema 6 did not persist generated-map fields\n";
+        std::filesystem::remove(path);
+        return false;
+    }
+
+    LoadedGame loaded{GameState{GameClock{1, 1}}, 1, std::nullopt};
+    try {
+        loaded = SaveGameSerializer::load(path);
+    } catch (const SaveGameError& error) {
+        std::cerr << "Schema 6 load failed: " << error.what() << "\n";
+        std::filesystem::remove(path);
+        return false;
+    }
+    std::filesystem::remove(path);
+    const Province* capital = loaded.state.find_province(ProvinceId{"capital_auroria"});
     if (loaded.next_event_sequence != 7 || !loaded.human_country_id.has_value() ||
-        *loaded.human_country_id != CountryId{"alpha"} || loaded_army == nullptr ||
-        loaded_army->movement_points != 5 || loaded_army->formation_number != 4 ||
-        loaded_hills == nullptr || loaded_hills->base_economy != 72'000 ||
-        loaded.state.road_level(ProvinceId{"alpha_home"}, ProvinceId{"beta_home"}) !=
-            RoadLevel::paved ||
-        !loaded.state.are_at_war(CountryId{"alpha"}, CountryId{"beta"})) {
-        std::cerr << "Schema 5 save round trip failed\n";
+        *loaded.human_country_id != CountryId{"auroria"} ||
+        loaded.state.map_layout_id() != "generated_grid_v1" ||
+        loaded.state.province_count() != 69 || loaded.state.army_count() != 17 ||
+        loaded.state.find_country(CountryId{"neutral"}) == nullptr ||
+        !loaded.state.find_country(CountryId{"neutral"})->hidden || capital == nullptr ||
+        capital->terrain != TerrainType::capital || capital->base_economy != 360'000) {
+        std::cerr << "Schema 6 generated map round trip failed\n";
+        return false;
+    }
+
+    Json legacy = document;
+    legacy["schema_version"] = 5;
+    Json wrong_layout = document;
+    wrong_layout["map_layout_id"] = "different_layout";
+    if (!rejected(legacy, "legacy") || !rejected(wrong_layout, "layout")) {
+        std::cerr << "Incompatible generated-map save was accepted\n";
         return false;
     }
     return true;
