@@ -1,7 +1,13 @@
 class_name ProvinceMap
 extends Control
 
-const GameText := preload("res://scripts/ui/game_text_formatter.gd")
+const CITY_ICON := preload("res://assets/maps/icons/city.png")
+const CAPITAL_ICON := preload("res://assets/maps/icons/capital.png")
+const PLAINS_ICON := preload("res://assets/maps/icons/terrain_plains.png")
+const FOREST_ICON := preload("res://assets/maps/icons/terrain_forest.png")
+const HILLS_ICON := preload("res://assets/maps/icons/terrain_hills.png")
+const MOUNTAINS_ICON := preload("res://assets/maps/icons/terrain_mountains.png")
+const ARMY_ICON := preload("res://assets/maps/icons/army.png")
 
 signal province_hovered(province_id: String)
 signal province_selected(province_id: String)
@@ -13,6 +19,7 @@ const MIN_ZOOM := 0.35
 const MAX_ZOOM := 3.0
 
 var _map_size := Vector2(800.0, 500.0)
+var _cell_size := 80.0
 var _polygons: Dictionary = {}
 var _geometry_error := ""
 var _province_data: Dictionary = {}
@@ -124,6 +131,7 @@ func load_grid_layout(path: String) -> bool:
         _geometry_error = "Grid layout did not produce 69 province polygons"
         return false
 
+    _cell_size = float(cell_size)
     _map_size = Vector2(float(width * cell_size), float(height * cell_size))
     _polygons = loaded_polygons
     _view_initialized = false
@@ -243,6 +251,102 @@ func army_count() -> int:
     return _armies.size()
 
 
+func icon_layout_for_province(province_id: String) -> Dictionary:
+    if not _polygons.has(province_id):
+        return {}
+    var province_armies: Array = []
+    for army: Dictionary in _armies:
+        if String(army.get("province_id", "")) == province_id:
+            province_armies.append(army)
+    province_armies.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+        return String(left.get("id", "")) < String(right.get("id", ""))
+    )
+    return _icon_layout(province_id, province_armies)
+
+
+func _icon_layout(province_id: String, province_armies: Array) -> Dictionary:
+    var province: Dictionary = _province_data.get(province_id, {})
+    var bounds := _polygon_bounds(_polygons[province_id])
+    var is_capital := province_id.begins_with("capital_") or \
+            String(province.get("terrain", "")) == "capital"
+    var city_size := _cell_size * (0.3 if is_capital else 0.2)
+    var result := {
+        "city_kind": "capital" if is_capital else "city",
+        "city_rect": Rect2(
+            bounds.get_center() - Vector2.ONE * city_size * 0.5,
+            Vector2.ONE * city_size
+        ),
+        "army_rects": [],
+        "army_ids": [],
+        "overflow_count": 0,
+    }
+    if not is_capital:
+        result["terrain_kind"] = String(province.get("terrain", "plains"))
+        result["terrain_rect"] = Rect2(
+            bounds.position,
+            Vector2.ONE * _cell_size * 0.2
+        )
+
+    var icon_size := Vector2(_cell_size * 0.1, _cell_size * 0.2)
+    var columns := 3
+    var rows := maxi(1, int(floor(bounds.size.y / icon_size.y)))
+    var capacity := columns * rows
+    var visible_count := province_armies.size()
+    if visible_count > capacity:
+        visible_count = capacity - 1
+        result["overflow_count"] = province_armies.size() - visible_count
+    var strip_left := bounds.end.x - icon_size.x * columns
+    for index: int in range(visible_count):
+        var rect := Rect2(
+            Vector2(
+                strip_left + float(index % columns) * icon_size.x,
+                bounds.position.y + float(index / columns) * icon_size.y
+            ),
+            icon_size
+        )
+        result["army_rects"].append(rect)
+        result["army_ids"].append(String(province_armies[index].get("id", "")))
+    if int(result["overflow_count"]) > 0:
+        var overflow_index := capacity - 1
+        result["overflow_rect"] = Rect2(
+            Vector2(
+                strip_left + float(overflow_index % columns) * icon_size.x,
+                bounds.position.y + float(overflow_index / columns) * icon_size.y
+            ),
+            icon_size
+        )
+    return result
+
+
+func _all_icon_layouts() -> Dictionary:
+    var armies_by_province: Dictionary = {}
+    for army: Dictionary in _armies:
+        var province_id := String(army.get("province_id", ""))
+        if not armies_by_province.has(province_id):
+            armies_by_province[province_id] = []
+        armies_by_province[province_id].append(army)
+    for province_id: String in armies_by_province:
+        armies_by_province[province_id].sort_custom(
+            func(left: Dictionary, right: Dictionary) -> bool:
+                return String(left.get("id", "")) < String(right.get("id", ""))
+        )
+    var layouts: Dictionary = {}
+    for province_id: String in _polygons:
+        layouts[province_id] = _icon_layout(
+            province_id,
+            armies_by_province.get(province_id, [])
+        )
+    return layouts
+
+
+func _terrain_icon(terrain: String) -> Texture2D:
+    match terrain:
+        "forest": return FOREST_ICON
+        "hills": return HILLS_ICON
+        "mountains": return MOUNTAINS_ICON
+        _: return PLAINS_ICON
+
+
 func _blocked_auto_advance_province() -> String:
     if _auto_advance_path.size() < 2:
         return ""
@@ -316,6 +420,7 @@ func _initialize_view() -> void:
 func _draw() -> void:
     draw_rect(Rect2(Vector2.ZERO, size), Color("182235"))
     draw_set_transform(_pan, 0.0, Vector2.ONE * _zoom)
+    var icon_layouts := _all_icon_layouts()
 
     for province_id: String in _polygons:
         var polygon: PackedVector2Array = _polygons[province_id]
@@ -345,24 +450,16 @@ func _draw() -> void:
         draw_polyline(outline, outline_color, outline_width / _zoom, true)
 
         if not province.is_empty():
-            var center := _polygon_center(polygon)
-            var name: String = province.get("name", province_id)
-            var label_size := 12
-            var text_size := ThemeDB.fallback_font.get_string_size(
-                name,
-                HORIZONTAL_ALIGNMENT_LEFT,
-                -1,
-                label_size
-            )
-            draw_string(
-                ThemeDB.fallback_font,
-                center - Vector2(text_size.x * 0.5, -text_size.y * 0.25),
-                name,
-                HORIZONTAL_ALIGNMENT_LEFT,
-                -1,
-                label_size,
-                Color.WHITE
-            )
+            var icon_layout: Dictionary = icon_layouts[province_id]
+            var city_texture: Texture2D = CAPITAL_ICON \
+                    if icon_layout["city_kind"] == "capital" else CITY_ICON
+            draw_texture_rect(city_texture, icon_layout["city_rect"], false)
+            if icon_layout.has("terrain_rect"):
+                draw_texture_rect(
+                    _terrain_icon(icon_layout["terrain_kind"]),
+                    icon_layout["terrain_rect"],
+                    false
+                )
 
     for road: Dictionary in _roads:
         var province_a: String = road.get("province_a", "")
@@ -421,42 +518,23 @@ func _draw() -> void:
             draw_circle(blocked_center, 9.0 / _zoom, Color("ff4d4d"))
             draw_arc(blocked_center, 13.0 / _zoom, 0.0, TAU, 24, Color("ffd6d6"), 3.0 / _zoom, true)
 
-    var armies_by_province: Dictionary = {}
-    for army: Dictionary in _armies:
-        var province_id: String = army.get("province_id", "")
-        var aggregate: Dictionary = armies_by_province.get(
-            province_id,
-            {"manpower": 0, "movement_points": 0.0}
-        )
-        aggregate["manpower"] += int(army.get("manpower", 0))
-        aggregate["movement_points"] += float(army.get("movement_points", 0))
-        armies_by_province[province_id] = aggregate
-    for province_id: String in armies_by_province:
-        if not _polygons.has(province_id):
-            continue
-        var center := _polygon_center(_polygons[province_id])
-        var radius := 22.0 / _zoom
-        draw_circle(center, radius, Color("202938"))
-        draw_arc(center, radius, 0.0, TAU, 24, Color("f7f1d0"), 3.0 / _zoom, true)
-        var army_data: Dictionary = armies_by_province[province_id]
-        var manpower_text := "%d · 移%s" % [
-            army_data["manpower"], GameText.movement_points(army_data["movement_points"])
-        ]
-        var text_size := ThemeDB.fallback_font.get_string_size(
-            manpower_text,
-            HORIZONTAL_ALIGNMENT_LEFT,
-            -1,
-            14
-        )
-        draw_string(
-            ThemeDB.fallback_font,
-            center - Vector2(text_size.x * 0.5, -text_size.y * 0.25),
-            manpower_text,
-            HORIZONTAL_ALIGNMENT_LEFT,
-            -1,
-            14,
-            Color.WHITE
-        )
+    for province_id: String in _polygons:
+        var icon_layout: Dictionary = icon_layouts[province_id]
+        for army_rect: Rect2 in icon_layout.get("army_rects", []):
+            draw_texture_rect(ARMY_ICON, army_rect, false)
+        var overflow_count := int(icon_layout.get("overflow_count", 0))
+        if overflow_count > 0:
+            var overflow_rect: Rect2 = icon_layout["overflow_rect"]
+            draw_rect(overflow_rect, Color(0.05, 0.08, 0.12, 0.92), true)
+            draw_string(
+                ThemeDB.fallback_font,
+                overflow_rect.position + Vector2(0.0, overflow_rect.size.y * 0.72),
+                "+%d" % overflow_count,
+                HORIZONTAL_ALIGNMENT_CENTER,
+                overflow_rect.size.x,
+                7,
+                Color.WHITE
+            )
 
     draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
     draw_string(
@@ -516,6 +594,19 @@ func _gui_input(event: InputEvent) -> void:
 func _hit_test(local_position: Vector2) -> String:
     var map_position := (local_position - _pan) / _zoom
     return province_at_map_position(map_position)
+
+
+func _polygon_bounds(polygon: PackedVector2Array) -> Rect2:
+    if polygon.is_empty():
+        return Rect2()
+    var minimum := polygon[0]
+    var maximum := polygon[0]
+    for point: Vector2 in polygon:
+        minimum.x = minf(minimum.x, point.x)
+        minimum.y = minf(minimum.y, point.y)
+        maximum.x = maxf(maximum.x, point.x)
+        maximum.y = maxf(maximum.y, point.y)
+    return Rect2(minimum, maximum - minimum)
 
 
 func _polygon_center(polygon: PackedVector2Array) -> Vector2:

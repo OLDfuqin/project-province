@@ -66,6 +66,77 @@ func _initialize() -> void:
         quit(1)
         return
 
+    province_map.set_scenario_data([
+        {"id": "cell_1_1", "owner_id": "auroria", "terrain": "plains"},
+        {"id": "capital_auroria", "owner_id": "auroria", "terrain": "capital"},
+    ], [
+        {"id": "auroria", "color_rgb": 0xCC4444},
+    ])
+    var ordinary_layout: Dictionary = province_map.icon_layout_for_province("cell_1_1")
+    if ordinary_layout.get("city_kind", "") != "city" or \
+            ordinary_layout.get("city_rect") != Rect2(32, 672, 16, 16) or \
+            ordinary_layout.get("terrain_kind", "") != "plains" or \
+            ordinary_layout.get("terrain_rect") != Rect2(0, 640, 16, 16) or \
+            ordinary_layout.get("army_rects", []) != [] or \
+            int(ordinary_layout.get("overflow_count", -1)) != 0:
+        push_error("Ordinary province icon layout is incorrect: %s" % ordinary_layout)
+        quit(1)
+        return
+
+    var capital_layout: Dictionary = province_map.icon_layout_for_province("capital_auroria")
+    if capital_layout.get("city_kind", "") != "capital" or \
+            capital_layout.get("city_rect") != Rect2(148, 548, 24, 24) or \
+            capital_layout.has("terrain_kind") or capital_layout.has("terrain_rect"):
+        push_error("Capital icon layout is incorrect: %s" % capital_layout)
+        quit(1)
+        return
+
+    var crowded_armies: Array = []
+    for index: int in range(18, 0, -1):
+        crowded_armies.append({
+            "id": "army_%02d" % index,
+            "owner_id": "auroria",
+            "province_id": "cell_1_1",
+            "manpower": 100,
+            "movement_points": 0,
+        })
+    province_map.set_armies(crowded_armies)
+    ordinary_layout = province_map.icon_layout_for_province("cell_1_1")
+    var army_rects: Array = ordinary_layout.get("army_rects", [])
+    if army_rects.size() != 14 or \
+            army_rects[0] != Rect2(56, 640, 8, 16) or \
+            army_rects[1] != Rect2(64, 640, 8, 16) or \
+            army_rects[2] != Rect2(72, 640, 8, 16) or \
+            army_rects[3] != Rect2(56, 656, 8, 16) or \
+            ordinary_layout.get("overflow_rect") != Rect2(72, 704, 8, 16) or \
+            int(ordinary_layout.get("overflow_count", 0)) != 4 or \
+            ordinary_layout.get("army_ids", []) != [
+                "army_01", "army_02", "army_03", "army_04", "army_05", "army_06",
+                "army_07", "army_08", "army_09", "army_10", "army_11", "army_12",
+                "army_13", "army_14",
+            ]:
+        push_error("Army icon layout, sorting or overflow is incorrect: %s" % ordinary_layout)
+        quit(1)
+        return
+
+    var capital_armies: Array = []
+    for index: int in range(32, 0, -1):
+        capital_armies.append({
+            "id": "capital_army_%02d" % index,
+            "owner_id": "auroria",
+            "province_id": "capital_auroria",
+            "manpower": 100,
+            "movement_points": 0,
+        })
+    province_map.set_armies(capital_armies)
+    capital_layout = province_map.icon_layout_for_province("capital_auroria")
+    if capital_layout.get("army_rects", []).size() != 29 or \
+            capital_layout.get("overflow_rect") != Rect2(232, 624, 8, 16) or \
+            int(capital_layout.get("overflow_count", 0)) != 3:
+        push_error("Capital army icon capacity is incorrect: %s" % capital_layout)
+        quit(1)
+        return
+
     var clicked_ids: Array[String] = []
     var double_clicked_ids: Array[String] = []
     var selected_ids: Array[String] = []
