@@ -115,9 +115,17 @@ int run_smoke_tests() {
         }
     }
     if (fiscal_event_index == turn.events.size() ||
-        maintenance_event_index != fiscal_event_index + 1) {
+        maintenance_event_index != fiscal_event_index + 1 ||
+        turn.events[maintenance_event_index].sequence !=
+            turn.events[fiscal_event_index].sequence + 1) {
         std::cerr << "Monthly maintenance event did not follow fiscal income\n";
         return 1;
+    }
+    for (std::size_t index = 1; index < turn.events.size(); ++index) {
+        if (turn.events[index].sequence != turn.events[index - 1].sequence + 1) {
+            std::cerr << "Monthly turn events were not emitted in sequence order\n";
+            return 1;
+        }
     }
     const CommandResult movement = processor.execute(
         state, MoveArmyCommand{army_id, city_id}
@@ -141,14 +149,24 @@ int run_smoke_tests() {
     }
 
     GameState technology_state = generated_state(GameClock{1000, 1});
+    technology_state.find_country(CountryId{"auroria"})->treasury = 20'000;
     CommandProcessor technology_processor;
     const CommandResult research = technology_processor.execute(
         technology_state,
         ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::economy}
     );
-    if (TechnologySystem::research_cost(0) != 5'000 || !research.accepted ||
+    const CommandResult second_research = technology_processor.execute(
+        technology_state,
+        ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::economy}
+    );
+    if (TechnologySystem::research_cost(0) != 5'000 ||
+        TechnologySystem::research_cost(1) != 10'000 || !research.accepted ||
         std::get<TechnologyResearchResult>(research.events.front().payload).cost != 5'000 ||
-        technology_state.find_technology(CountryId{"auroria"})->economy_level != 1) {
+        !second_research.accepted ||
+        std::get<TechnologyResearchResult>(second_research.events.front().payload).cost !=
+            10'000 ||
+        technology_state.find_technology(CountryId{"auroria"})->economy_level != 2 ||
+        technology_state.find_country(CountryId{"auroria"})->treasury != 5'000) {
         std::cerr << "Generated country technology research failed\n";
         return 1;
     }

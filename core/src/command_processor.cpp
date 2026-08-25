@@ -482,15 +482,15 @@ CommandResult CommandProcessor::execute_advance_turn(
         GameEventType::fiscal_income_resolved,
         FiscalIncomeResolvedEvent{command.months, std::move(fiscal_incomes)},
     };
-    GameEvent population_event{
-        next_event_sequence_++,
-        GameEventType::population_resolved,
-        PopulationResolvedEvent{command.months, std::move(changes)},
-    };
     GameEvent maintenance_event{
         next_event_sequence_++,
         GameEventType::maintenance_resolved,
         MaintenanceResolvedEvent{command.months, std::move(maintenance_charges)},
+    };
+    GameEvent population_event{
+        next_event_sequence_++,
+        GameEventType::population_resolved,
+        PopulationResolvedEvent{command.months, std::move(changes)},
     };
     GameEvent date_event{
         next_event_sequence_++,
