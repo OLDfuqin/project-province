@@ -20,7 +20,7 @@ struct TechnologyResearchResult final {
 
 class TechnologySystem final {
 public:
-    static constexpr std::int64_t base_research_cost = 1'000;
+    static constexpr std::int64_t base_research_cost = 5'000;
 
     [[nodiscard]] static constexpr std::int32_t maximum_level(
         TechnologyTrack track

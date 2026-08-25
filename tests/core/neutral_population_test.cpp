@@ -1,4 +1,5 @@
 #include "province/core/economy_system.hpp"
+#include "province/core/maintenance_system.hpp"
 #include "province/core/population_system.hpp"
 #include "province/core/scenario_loader.hpp"
 #include "smoke_test_groups.hpp"
@@ -84,6 +85,43 @@ bool run_neutral_population_tests() {
             std::cerr << "Neutral fiscal report entry was exposed\n";
             return false;
         }
+    }
+
+    GameState maintenance_state{GameClock{1000, 1}};
+    maintenance_state.add_country(
+        Country{CountryId{"test"}, "Test", 0, 1, "TST", false}
+    );
+    maintenance_state.add_country(
+        Country{CountryId{"neutral"}, "Neutral", 0, 7, "NEU", true}
+    );
+    maintenance_state.add_province(
+        Province{
+            ProvinceId{"test_plains"}, "Test Plains", CountryId{"test"},
+            100, 0, 100, {}, 0, TerrainType::plains,
+        }
+    );
+    maintenance_state.add_province(
+        Province{
+            ProvinceId{"neutral_plains"}, "Neutral Plains", CountryId{"neutral"},
+            100, 0, 100, {}, 0, TerrainType::plains,
+        }
+    );
+    [[maybe_unused]] const ArmyId first_test_army =
+        maintenance_state.create_army(CountryId{"test"}, ProvinceId{"test_plains"}, 5);
+    [[maybe_unused]] const ArmyId second_test_army =
+        maintenance_state.create_army(CountryId{"test"}, ProvinceId{"test_plains"}, 4);
+    [[maybe_unused]] const ArmyId neutral_army = maintenance_state.create_army(
+        CountryId{"neutral"}, ProvinceId{"neutral_plains"}, 100
+    );
+    const MonthlyMaintenanceReport maintenance =
+        MaintenanceSystem{}.resolve_month(maintenance_state);
+    if (maintenance.charges.size() != 1 ||
+        maintenance.charges.front().country_id != CountryId{"test"} ||
+        maintenance.charges.front().amount != 4 ||
+        maintenance_state.find_country(CountryId{"test"})->treasury != -3 ||
+        maintenance_state.find_country(CountryId{"neutral"})->treasury != 7) {
+        std::cerr << "Monthly army maintenance did not charge normal-country debt only\n";
+        return false;
     }
     return true;
 }

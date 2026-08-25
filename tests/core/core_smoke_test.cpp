@@ -10,10 +10,12 @@
 #include "province/core/scenario_loader.hpp"
 #include "province/core/stable_id.hpp"
 #include "province/core/terrain.hpp"
+#include "province/core/technology_system.hpp"
 #include "province/core/version.hpp"
 #include "smoke_test_groups.hpp"
 
 #include <cstdint>
+#include <cstddef>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -87,7 +89,8 @@ int run_smoke_tests() {
     if (!recruitment.accepted || recruitment.events.size() != 1 || capital == nullptr ||
         auroria == nullptr || capital->population != 359'000 ||
         capital->recruitable_population != 2'600 || capital->base_economy != 359'000 ||
-        auroria->treasury != 9'000) {
+        auroria->treasury != 6'000 ||
+        std::get<ArmyRecruitedEvent>(recruitment.events.front().payload).cost != 4'000) {
         std::cerr << "Generated capital recruitment failed\n";
         return 1;
     }
@@ -99,6 +102,21 @@ int run_smoke_tests() {
     if (!turn.accepted || army == nullptr ||
         army->movement_points != MovementSystem::base_monthly_movement_points_half) {
         std::cerr << "Generated army did not receive monthly movement points\n";
+        return 1;
+    }
+    std::size_t fiscal_event_index = turn.events.size();
+    std::size_t maintenance_event_index = turn.events.size();
+    for (std::size_t index = 0; index < turn.events.size(); ++index) {
+        if (turn.events[index].type == GameEventType::fiscal_income_resolved) {
+            fiscal_event_index = index;
+        }
+        if (turn.events[index].type == GameEventType::maintenance_resolved) {
+            maintenance_event_index = index;
+        }
+    }
+    if (fiscal_event_index == turn.events.size() ||
+        maintenance_event_index != fiscal_event_index + 1) {
+        std::cerr << "Monthly maintenance event did not follow fiscal income\n";
         return 1;
     }
     const CommandResult movement = processor.execute(
@@ -128,10 +146,19 @@ int run_smoke_tests() {
         technology_state,
         ResearchTechnologyCommand{CountryId{"auroria"}, TechnologyTrack::economy}
     );
-    if (!research.accepted ||
+    if (TechnologySystem::research_cost(0) != 5'000 || !research.accepted ||
+        std::get<TechnologyResearchResult>(research.events.front().payload).cost != 5'000 ||
         technology_state.find_technology(CountryId{"auroria"})->economy_level != 1) {
         std::cerr << "Generated country technology research failed\n";
         return 1;
+    }
+
+    for (const std::int32_t unsupported_months : {0, 2, 3, 6, 12}) {
+        GameState turn_state = generated_state(GameClock{1000, 1});
+        if (processor.execute(turn_state, AdvanceTurnCommand{unsupported_months}).accepted) {
+            std::cerr << "Advance turn accepted a non-monthly duration\n";
+            return 1;
+        }
     }
 
     if (RoadSystem::required_roads_level(TerrainType::capital, TerrainType::plains) != 1 ||

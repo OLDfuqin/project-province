@@ -34,7 +34,7 @@ struct ArmyMergeResult final {
 
 class ArmySystem final {
 public:
-    static constexpr std::int64_t recruitment_cost_per_soldier = 1;
+    static constexpr std::int64_t recruitment_cost_per_soldier = 4;
 
     [[nodiscard]] ArmyRecruitResult recruit(
         GameState& state,

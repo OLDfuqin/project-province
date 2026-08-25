@@ -1,6 +1,6 @@
 #include "province/core/command_processor.hpp"
+#include "province/core/maintenance_system.hpp"
 
-#include <array>
 #include <map>
 #include <stdexcept>
 #include <type_traits>
@@ -316,13 +316,7 @@ CommandResult CommandProcessor::execute_move_army(
 }
 
 bool CommandProcessor::is_supported_turn_length(const std::int32_t months) noexcept {
-    constexpr std::array supported_lengths{1, 3, 6, 12};
-    for (const std::int32_t supported : supported_lengths) {
-        if (months == supported) {
-            return true;
-        }
-    }
-    return false;
+    return months == 1;
 }
 
 CommandResult CommandProcessor::execute_advance_turn(
@@ -332,7 +326,7 @@ CommandResult CommandProcessor::execute_advance_turn(
     if (!is_supported_turn_length(command.months)) {
         return CommandResult{
             false,
-            "turn length must be one of 1, 3, 6 or 12 months",
+            "turn length must be exactly 1 month",
             {},
         };
     }
@@ -341,6 +335,7 @@ CommandResult CommandProcessor::execute_advance_turn(
     const std::int32_t previous_month = state.clock().month();
     GameState working_state = state;
     std::map<CountryId, std::int64_t> total_income;
+    std::map<CountryId, std::int64_t> total_maintenance;
     std::map<ProvinceId, ProvincePopulationChange> population_changes;
     std::map<ArmyId, ArmyMovementGrant> movement_grants;
     std::vector<GameEvent> ai_events;
@@ -351,6 +346,11 @@ CommandResult CommandProcessor::execute_advance_turn(
         const MonthlyFiscalReport monthly_report = economy_system_.resolve_month(working_state);
         for (const CountryFiscalIncome& income : monthly_report.fiscal_incomes) {
             total_income[income.country_id] += income.amount;
+        }
+        const MonthlyMaintenanceReport maintenance_report =
+            MaintenanceSystem{}.resolve_month(working_state);
+        for (const CountryMaintenanceCharge& charge : maintenance_report.charges) {
+            total_maintenance[charge.country_id] += charge.amount;
         }
         const MonthlyPopulationReport population_report =
             population_system_.resolve_month(working_state);
@@ -459,6 +459,11 @@ CommandResult CommandProcessor::execute_advance_turn(
     for (const auto& [country_id, amount] : total_income) {
         fiscal_incomes.push_back(CountryFiscalIncome{country_id, amount});
     }
+    std::vector<CountryMaintenanceCharge> maintenance_charges;
+    maintenance_charges.reserve(total_maintenance.size());
+    for (const auto& [country_id, amount] : total_maintenance) {
+        maintenance_charges.push_back(CountryMaintenanceCharge{country_id, amount});
+    }
     std::vector<ProvincePopulationChange> changes;
     changes.reserve(population_changes.size());
     for (const auto& [province_id, change] : population_changes) {
@@ -482,6 +487,11 @@ CommandResult CommandProcessor::execute_advance_turn(
         GameEventType::population_resolved,
         PopulationResolvedEvent{command.months, std::move(changes)},
     };
+    GameEvent maintenance_event{
+        next_event_sequence_++,
+        GameEventType::maintenance_resolved,
+        MaintenanceResolvedEvent{command.months, std::move(maintenance_charges)},
+    };
     GameEvent date_event{
         next_event_sequence_++,
         GameEventType::movement_points_granted,
@@ -500,6 +510,7 @@ CommandResult CommandProcessor::execute_advance_turn(
     };
 
     ai_events.push_back(std::move(fiscal_income_event));
+    ai_events.push_back(std::move(maintenance_event));
     ai_events.push_back(std::move(population_event));
     ai_events.push_back(std::move(date_event));
     ai_events.push_back(std::move(turn_event));

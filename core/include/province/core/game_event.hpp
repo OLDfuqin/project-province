@@ -3,6 +3,7 @@
 #include "province/core/army.hpp"
 #include "province/core/battle_system.hpp"
 #include "province/core/economy_system.hpp"
+#include "province/core/maintenance_system.hpp"
 #include "province/core/population_system.hpp"
 #include "province/core/movement_system.hpp"
 #include "province/core/peace_system.hpp"
@@ -16,6 +17,7 @@ namespace province::core {
 
 enum class GameEventType : std::uint8_t {
     fiscal_income_resolved,
+    maintenance_resolved,
     population_resolved,
     army_recruited,
     army_renamed,
@@ -46,6 +48,11 @@ struct TurnAdvancedEvent final {
 struct FiscalIncomeResolvedEvent final {
     std::int32_t elapsed_months{};
     std::vector<CountryFiscalIncome> fiscal_incomes;
+};
+
+struct MaintenanceResolvedEvent final {
+    std::int32_t elapsed_months{};
+    std::vector<CountryMaintenanceCharge> charges;
 };
 
 struct PopulationResolvedEvent final {
@@ -100,6 +107,7 @@ struct MovementPointsGrantedEvent final {
 using GameEventPayload =
     std::variant<
         FiscalIncomeResolvedEvent,
+        MaintenanceResolvedEvent,
         PopulationResolvedEvent,
         ArmyRecruitedEvent,
         ArmyRenamedEvent,
