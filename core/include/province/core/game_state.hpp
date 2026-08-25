@@ -4,6 +4,7 @@
 #include "province/core/country.hpp"
 #include "province/core/diplomacy.hpp"
 #include "province/core/game_clock.hpp"
+#include "province/core/game_order.hpp"
 #include "province/core/province.hpp"
 #include "province/core/road.hpp"
 #include "province/core/technology.hpp"
@@ -18,6 +19,7 @@ namespace province::core {
 
 class SaveGameSerializer;
 class MapScenarioGenerator;
+class OrderSystem;
 
 class GameState final {
 public:
@@ -98,11 +100,13 @@ public:
         DiplomaticStatus status
     );
     [[nodiscard]] const std::map<CountryRelationKey, DiplomaticStatus>& relations() const noexcept;
+    [[nodiscard]] const std::map<OrderId, GameOrder>& orders() const noexcept;
     [[nodiscard]] std::vector<std::string> validate() const;
 
 private:
     friend class SaveGameSerializer;
     friend class MapScenarioGenerator;
+    friend class OrderSystem;
     GameClock clock_;
     std::string map_layout_id_;
     std::map<CountryId, Country> countries_;
@@ -112,7 +116,9 @@ private:
     std::map<ArmyId, Army> armies_;
     std::map<ProvinceId, CountryId> occupations_;
     std::map<CountryRelationKey, DiplomaticStatus> relations_;
+    std::map<OrderId, GameOrder> orders_;
     std::uint64_t next_army_sequence_{1};
+    std::uint64_t next_order_sequence_{1};
 };
 
 } // namespace province::core

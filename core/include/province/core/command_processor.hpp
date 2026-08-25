@@ -10,6 +10,7 @@
 #include "province/core/population_system.hpp"
 #include "province/core/peace_system.hpp"
 #include "province/core/movement_system.hpp"
+#include "province/core/order_system.hpp"
 #include "province/core/road_system.hpp"
 #include "province/core/technology_system.hpp"
 
@@ -77,6 +78,10 @@ private:
         GameState& state,
         const ResearchTechnologyCommand& command
     );
+    [[nodiscard]] CommandResult execute_cancel_order(
+        GameState& state,
+        const CancelOrderCommand& command
+    );
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;
@@ -88,6 +93,7 @@ private:
     PeaceSystem peace_system_;
     AiSystem ai_system_;
     TechnologySystem technology_system_;
+    OrderSystem order_system_;
     std::optional<CountryId> human_country_id_;
 };
 

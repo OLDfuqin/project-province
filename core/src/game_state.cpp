@@ -5,6 +5,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace province::core {
@@ -347,6 +348,10 @@ const std::map<CountryRelationKey, DiplomaticStatus>& GameState::relations() con
     return relations_;
 }
 
+const std::map<OrderId, GameOrder>& GameState::orders() const noexcept {
+    return orders_;
+}
+
 std::vector<std::string> GameState::validate() const {
     std::vector<std::string> issues;
 
@@ -440,6 +445,99 @@ std::vector<std::string> GameState::validate() const {
     for (const auto& [province_id, controller_id] : occupations_) {
         if (!provinces_.contains(province_id) || !countries_.contains(controller_id)) {
             issues.push_back("occupation references an unknown province or country");
+        }
+    }
+    std::set<ArmyId> ordered_armies;
+    std::set<CountryId> researching_countries;
+    std::set<ProvinceConnectionKey> ordered_roads;
+    std::map<ProvinceId, CountryId> attack_locks;
+    std::map<ProvinceId, std::int64_t> reserved_population;
+    for (const auto& [id, order] : orders_) {
+        if (id != order_id(order)) {
+            issues.push_back("order map key does not match its stored order ID");
+        }
+        std::visit([&](const auto& typed_order) {
+            using OrderType = std::decay_t<decltype(typed_order)>;
+            if constexpr (std::is_same_v<OrderType, ArmyActionOrder>) {
+                const Army* army = find_army(typed_order.army_id);
+                if (army == nullptr || !countries_.contains(typed_order.country_id)) {
+                    issues.push_back("army action order references an unknown army or country");
+                } else if (army->owner_id != typed_order.country_id) {
+                    issues.push_back("army action order country does not own its army");
+                }
+                if (!ordered_armies.insert(typed_order.army_id).second) {
+                    issues.push_back("army has more than one action order");
+                }
+                if (typed_order.path.size() < 2 ||
+                    typed_order.path.front() != typed_order.origin ||
+                    typed_order.path.back() != typed_order.destination) {
+                    issues.push_back("army action order has an invalid stored path");
+                } else {
+                    for (std::size_t index = 1; index < typed_order.path.size(); ++index) {
+                        if (!are_adjacent(typed_order.path[index - 1], typed_order.path[index])) {
+                            issues.push_back("army action order path is not continuous");
+                            break;
+                        }
+                    }
+                }
+                if (typed_order.reserved_movement_half <= 0) {
+                    issues.push_back("army action order has invalid reserved movement");
+                }
+                if (typed_order.is_attack) {
+                    const auto [lock, inserted] = attack_locks.emplace(
+                        typed_order.destination, typed_order.country_id
+                    );
+                    if (!inserted && lock->second != typed_order.country_id) {
+                        issues.push_back("attack target is locked by more than one country");
+                    }
+                }
+            } else if constexpr (std::is_same_v<OrderType, RecruitmentOrder>) {
+                if (!countries_.contains(typed_order.country_id) ||
+                    !provinces_.contains(typed_order.province_id)) {
+                    issues.push_back("recruitment order references an unknown country or province");
+                }
+                if (typed_order.manpower <= 0 || typed_order.paid_cost <= 0 ||
+                    typed_order.remaining_months != 1) {
+                    issues.push_back("recruitment order has invalid reservation values");
+                } else {
+                    reserved_population[typed_order.province_id] += typed_order.manpower;
+                }
+            } else if constexpr (std::is_same_v<OrderType, RoadConstructionOrder>) {
+                if (!countries_.contains(typed_order.country_id) ||
+                    !provinces_.contains(typed_order.province_a) ||
+                    !provinces_.contains(typed_order.province_b)) {
+                    issues.push_back("road construction order references unknown state");
+                }
+                if (!ordered_roads.insert(
+                        ProvinceConnectionKey{typed_order.province_a, typed_order.province_b}
+                    ).second) {
+                    issues.push_back("road connection has more than one construction order");
+                }
+                if (typed_order.paid_cost <= 0 || typed_order.remaining_months != 1) {
+                    issues.push_back("road construction order has invalid reservation values");
+                }
+            } else if constexpr (std::is_same_v<OrderType, ResearchOrder>) {
+                if (!countries_.contains(typed_order.country_id)) {
+                    issues.push_back("research order references an unknown country");
+                }
+                if (!researching_countries.insert(typed_order.country_id).second) {
+                    issues.push_back("country has more than one research order");
+                }
+                if (typed_order.previous_level < 0 ||
+                    typed_order.target_level != typed_order.previous_level + 1 ||
+                    typed_order.target_level > CountryTechnology::maximum_level(typed_order.track) ||
+                    typed_order.paid_cost <= 0 || typed_order.remaining_months <= 0 ||
+                    typed_order.remaining_months > typed_order.target_level + 1) {
+                    issues.push_back("research order has invalid progress or reservation values");
+                }
+            }
+        }, order);
+    }
+    for (const auto& [province_id, reserved] : reserved_population) {
+        const Province* province = find_province(province_id);
+        if (province != nullptr &&
+            (reserved > province->population || reserved > province->recruitable_population)) {
+            issues.push_back("recruitment orders over-reserve province population");
         }
     }
     return issues;

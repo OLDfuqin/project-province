@@ -61,6 +61,8 @@ CommandResult CommandProcessor::execute(GameState& state, const GameCommand& com
                 return execute_make_peace(state, concrete_command);
             } else if constexpr (std::is_same_v<CommandType, ResearchTechnologyCommand>) {
                 return execute_research_technology(state, concrete_command);
+            } else if constexpr (std::is_same_v<CommandType, CancelOrderCommand>) {
+                return execute_cancel_order(state, concrete_command);
             }
         },
         command
@@ -126,21 +128,33 @@ CommandResult CommandProcessor::execute_research_technology(
     GameState& state,
     const ResearchTechnologyCommand& command
 ) {
-    GameState working_state = state;
-    TechnologyResearchResult research = technology_system_.research(
-        working_state,
+    const OrderOperationResult queued = order_system_.queue_research(
+        state,
         command.country_id,
         command.track
     );
-    if (!research.accepted) {
-        return {false, research.error, {}};
+    if (!queued.accepted || !queued.order_id.has_value()) {
+        return {false, queued.error, {}};
     }
     GameEvent event{
         next_event_sequence_++,
-        GameEventType::technology_researched,
-        research,
+        GameEventType::order_created,
+        OrderCreatedEvent{*queued.order_id},
     };
-    state = std::move(working_state);
+    return {true, {}, {std::move(event)}};
+}
+
+CommandResult CommandProcessor::execute_cancel_order(
+    GameState& state,
+    const CancelOrderCommand& command
+) {
+    const OrderOperationResult cancelled = order_system_.cancel(state, command.order_id);
+    if (!cancelled.accepted) return {false, cancelled.error, {}};
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::order_cancelled,
+        OrderCancelledEvent{command.order_id},
+    };
     return {true, {}, {std::move(event)}};
 }
 
@@ -207,29 +221,21 @@ CommandResult CommandProcessor::execute_build_road(
     GameState& state,
     const BuildRoadCommand& command
 ) {
-    GameState working_state = state;
-    const RoadBuildResult build = road_system_.build_paved_road(
-        working_state,
+    const OrderOperationResult queued = order_system_.queue_road_construction(
+        state,
         command.country_id,
         command.province_a,
         command.province_b
     );
-    if (!build.accepted) {
-        return {false, build.error, {}};
+    if (!queued.accepted || !queued.order_id.has_value()) {
+        return {false, queued.error, {}};
     }
 
     GameEvent event{
         next_event_sequence_++,
-        GameEventType::road_built,
-        RoadBuiltEvent{
-            command.country_id,
-            command.province_a,
-            command.province_b,
-            RoadLevel::paved,
-            build.cost,
-        },
+        GameEventType::order_created,
+        OrderCreatedEvent{*queued.order_id},
     };
-    state = std::move(working_state);
     return {true, {}, {std::move(event)}};
 }
 
@@ -237,29 +243,21 @@ CommandResult CommandProcessor::execute_recruit_army(
     GameState& state,
     const RecruitArmyCommand& command
 ) {
-    GameState working_state = state;
-    const ArmyRecruitResult recruit = army_system_.recruit(
-        working_state,
+    const OrderOperationResult queued = order_system_.queue_recruitment(
+        state,
         command.country_id,
         command.province_id,
         command.manpower
     );
-    if (!recruit.accepted || !recruit.army_id.has_value()) {
-        return {false, recruit.error, {}};
+    if (!queued.accepted || !queued.order_id.has_value()) {
+        return {false, queued.error, {}};
     }
 
     GameEvent event{
         next_event_sequence_++,
-        GameEventType::army_recruited,
-        ArmyRecruitedEvent{
-            *recruit.army_id,
-            command.country_id,
-            command.province_id,
-            command.manpower,
-            recruit.cost,
-        },
+        GameEventType::order_created,
+        OrderCreatedEvent{*queued.order_id},
     };
-    state = std::move(working_state);
     return {true, {}, {std::move(event)}};
 }
 

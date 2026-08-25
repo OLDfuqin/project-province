@@ -3,6 +3,7 @@
 #include "province/core/army.hpp"
 #include "province/core/battle_system.hpp"
 #include "province/core/economy_system.hpp"
+#include "province/core/game_order.hpp"
 #include "province/core/maintenance_system.hpp"
 #include "province/core/population_system.hpp"
 #include "province/core/movement_system.hpp"
@@ -29,7 +30,17 @@ enum class GameEventType : std::uint8_t {
     war_declared,
     peace_made,
     technology_researched,
+    order_created,
+    order_cancelled,
     turn_advanced,
+};
+
+struct OrderCreatedEvent final {
+    OrderId order_id;
+};
+
+struct OrderCancelledEvent final {
+    OrderId order_id;
 };
 
 struct WarDeclaredEvent final {
@@ -119,7 +130,9 @@ using GameEventPayload =
         TurnAdvancedEvent,
         WarDeclaredEvent,
         PeaceSettlementResult,
-        TechnologyResearchResult
+        TechnologyResearchResult,
+        OrderCreatedEvent,
+        OrderCancelledEvent
     >;
 
 struct GameEvent final {

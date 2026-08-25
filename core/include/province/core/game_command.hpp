@@ -1,6 +1,7 @@
 #pragma once
 
 #include "province/core/stable_id.hpp"
+#include "province/core/game_order.hpp"
 #include "province/core/diplomacy.hpp"
 #include "province/core/technology.hpp"
 
@@ -57,6 +58,10 @@ struct ResearchTechnologyCommand final {
     TechnologyTrack track{TechnologyTrack::economy};
 };
 
+struct CancelOrderCommand final {
+    OrderId order_id;
+};
+
 using GameCommand =
     std::variant<
         AdvanceTurnCommand,
@@ -67,7 +72,8 @@ using GameCommand =
         MoveArmyCommand,
         DeclareWarCommand,
         MakePeaceCommand,
-        ResearchTechnologyCommand
+        ResearchTechnologyCommand,
+        CancelOrderCommand
     >;
 
 } // namespace province::core

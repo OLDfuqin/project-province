@@ -8,3 +8,4 @@
 [[nodiscard]] bool run_neutral_combat_tests();
 [[nodiscard]] bool run_ai_smoke_tests();
 [[nodiscard]] bool run_save_game_smoke_tests();
+[[nodiscard]] bool run_order_system_tests();

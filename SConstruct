@@ -16,7 +16,18 @@ core_library = env.StaticLibrary(target="build/lib/province_core", source=core_s
 
 test_program = env.Program(
     target="build/bin/province_core_tests",
-    source=Glob("build/obj/tests/core/*.cpp"),
+    source=[
+        "build/obj/tests/core/ai_smoke_test.cpp",
+        "build/obj/tests/core/battle_calculator_test.cpp",
+        "build/obj/tests/core/core_smoke_test.cpp",
+        "build/obj/tests/core/grid_map_layout_test.cpp",
+        "build/obj/tests/core/map_cell_generator_test.cpp",
+        "build/obj/tests/core/map_scenario_generator_test.cpp",
+        "build/obj/tests/core/neutral_combat_test.cpp",
+        "build/obj/tests/core/neutral_population_test.cpp",
+        "build/obj/tests/core/order_system_test.cpp",
+        "build/obj/tests/core/save_game_smoke_test.cpp",
+    ],
     LIBS=[core_library],
 )
 

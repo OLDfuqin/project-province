@@ -36,6 +36,7 @@ province::core::GameState generated_state(province::core::GameClock clock) {
 int run_smoke_tests() {
     using namespace province::core;
 
+    if (!run_order_system_tests()) return 1;
     if (!run_battle_calculator_tests() || !run_grid_map_layout_tests() ||
         !run_map_cell_generator_tests() || !run_map_scenario_generator_tests()) {
         return 1;
@@ -87,16 +88,23 @@ int run_smoke_tests() {
     const Province* capital = state.find_province(capital_id);
     const Country* auroria = state.find_country(CountryId{"auroria"});
     if (!recruitment.accepted || recruitment.events.size() != 1 || capital == nullptr ||
-        auroria == nullptr || capital->population != 359'000 ||
-        capital->recruitable_population != 2'600 || capital->base_economy != 359'000 ||
-        auroria->treasury != 6'000 ||
-        std::get<ArmyRecruitedEvent>(recruitment.events.front().payload).cost != 4'000) {
-        std::cerr << "Generated capital recruitment failed\n";
+        auroria == nullptr || capital->population != 360'000 ||
+        capital->recruitable_population != 3'600 || capital->base_economy != 360'000 ||
+        auroria->treasury != 6'000 || state.army_count() != 17 ||
+        recruitment.events.front().type != GameEventType::order_created) {
+        std::cerr << "Generated capital recruitment order failed\n";
         return 1;
     }
-    const ArmyId army_id = std::get<ArmyRecruitedEvent>(
-        recruitment.events.front().payload
-    ).army_id;
+    const OrderId recruitment_id =
+        std::get<OrderCreatedEvent>(recruitment.events.front().payload).order_id;
+    const auto* recruitment_order =
+        std::get_if<RecruitmentOrder>(&state.orders().at(recruitment_id));
+    if (recruitment_order == nullptr || recruitment_order->paid_cost != 4'000 ||
+        recruitment_order->manpower != 1'000) {
+        std::cerr << "Generated recruitment order lost reservation data\n";
+        return 1;
+    }
+    const ArmyId army_id = state.create_army(CountryId{"auroria"}, capital_id, 1'000);
     const CommandResult turn = processor.execute(state, AdvanceTurnCommand{1});
     const Army* army = state.find_army(army_id);
     if (!turn.accepted || army == nullptr ||
@@ -142,11 +150,14 @@ int run_smoke_tests() {
         road_state,
         BuildRoadCommand{CountryId{"auroria"}, capital_id, city_id}
     );
-    if (!road.accepted || road_state.road_level(capital_id, city_id) != RoadLevel::paved ||
-        std::get<RoadBuiltEvent>(road.events.front().payload).cost != 540) {
-        std::cerr << "Capital road construction failed\n";
+    if (!road.accepted || road_state.road_level(capital_id, city_id) != RoadLevel::none ||
+        road.events.front().type != GameEventType::order_created) {
+        std::cerr << "Capital road construction order failed\n";
         return 1;
     }
+    const OrderId road_id = std::get<OrderCreatedEvent>(road.events.front().payload).order_id;
+    const auto* road_order = std::get_if<RoadConstructionOrder>(&road_state.orders().at(road_id));
+    if (road_order == nullptr || road_order->paid_cost != 540) return 1;
 
     GameState technology_state = generated_state(GameClock{1000, 1});
     technology_state.find_country(CountryId{"auroria"})->treasury = 20'000;
@@ -161,15 +172,19 @@ int run_smoke_tests() {
     );
     if (TechnologySystem::research_cost(0) != 5'000 ||
         TechnologySystem::research_cost(1) != 10'000 || !research.accepted ||
-        std::get<TechnologyResearchResult>(research.events.front().payload).cost != 5'000 ||
-        !second_research.accepted ||
-        std::get<TechnologyResearchResult>(second_research.events.front().payload).cost !=
-            10'000 ||
-        technology_state.find_technology(CountryId{"auroria"})->economy_level != 2 ||
-        technology_state.find_country(CountryId{"auroria"})->treasury != 5'000) {
-        std::cerr << "Generated country technology research failed\n";
+        research.events.front().type != GameEventType::order_created ||
+        second_research.accepted ||
+        technology_state.find_technology(CountryId{"auroria"})->economy_level != 0 ||
+        technology_state.find_country(CountryId{"auroria"})->treasury != 15'000) {
+        std::cerr << "Generated country technology research order failed\n";
         return 1;
     }
+    const OrderId research_id =
+        std::get<OrderCreatedEvent>(research.events.front().payload).order_id;
+    const auto* research_order =
+        std::get_if<ResearchOrder>(&technology_state.orders().at(research_id));
+    if (research_order == nullptr || research_order->paid_cost != 5'000 ||
+        research_order->remaining_months != 2) return 1;
 
     for (const std::int32_t unsupported_months : {0, 2, 3, 6, 12}) {
         GameState turn_state = generated_state(GameClock{1000, 1});
