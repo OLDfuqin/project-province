@@ -312,48 +312,49 @@ ProportionalShare proportional_share(
     };
 }
 
-std::vector<DefenderBattleLoss> allocate_defender_losses(
-    const std::vector<DefenderBattleInput>& defenders,
+template <typename Input, typename Loss>
+std::vector<Loss> allocate_losses(
+    const std::vector<Input>& participants,
     const std::int64_t total_manpower,
     const std::int64_t total_casualties
 ) {
-    std::vector<DefenderBattleLoss> losses;
-    losses.reserve(defenders.size());
+    std::vector<Loss> losses;
+    losses.reserve(participants.size());
     std::vector<std::int64_t> remainders;
-    remainders.reserve(defenders.size());
+    remainders.reserve(participants.size());
 
     std::int64_t assigned_casualties = 0;
-    for (const DefenderBattleInput& defender : defenders) {
+    for (const Input& participant : participants) {
         const ProportionalShare share = proportional_share(
             total_casualties,
-            defender.manpower,
+            participant.manpower,
             total_manpower
         );
         losses.push_back({
-            defender.army_id,
+            participant.army_id,
             share.quotient,
-            defender.manpower - share.quotient,
+            participant.manpower - share.quotient,
         });
         remainders.push_back(share.remainder);
         assigned_casualties += share.quotient;
     }
 
-    std::vector<std::size_t> remainder_order(defenders.size());
+    std::vector<std::size_t> remainder_order(participants.size());
     std::iota(remainder_order.begin(), remainder_order.end(), std::size_t{0});
     std::sort(
         remainder_order.begin(),
         remainder_order.end(),
-        [&remainders, &defenders](const std::size_t left, const std::size_t right) {
+        [&remainders, &participants](const std::size_t left, const std::size_t right) {
             if (remainders[left] != remainders[right]) {
                 return remainders[left] > remainders[right];
             }
-            return defenders[left].army_id < defenders[right].army_id;
+            return participants[left].army_id < participants[right].army_id;
         }
     );
 
     const std::int64_t unassigned = total_casualties - assigned_casualties;
     for (std::int64_t index = 0; index < unassigned; ++index) {
-        DefenderBattleLoss& loss = losses[remainder_order[static_cast<std::size_t>(index)]];
+        Loss& loss = losses[remainder_order[static_cast<std::size_t>(index)]];
         ++loss.casualties;
         --loss.remaining_manpower;
     }
@@ -363,8 +364,8 @@ std::vector<DefenderBattleLoss> allocate_defender_losses(
 } // namespace
 
 BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& input) {
-    if (input.attacker_manpower <= 0) {
-        throw std::invalid_argument{"attacker manpower must be positive"};
+    if (input.attackers.empty()) {
+        throw std::invalid_argument{"battle requires at least one attacker"};
     }
     if (input.defenders.empty()) {
         throw std::invalid_argument{"battle requires at least one defender"};
@@ -376,15 +377,30 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
         throw std::invalid_argument{"terrain defense bonus must be 0, 10, 20, 30, or 50"};
     }
 
-    std::set<ArmyId> defender_ids;
+    std::set<ArmyId> army_ids;
+    std::int64_t attacker_manpower = 0;
+    for (const AttackerBattleInput& attacker : input.attackers) {
+        if (attacker.manpower <= 0) {
+            throw std::invalid_argument{"attacker manpower must be positive"};
+        }
+        if (!army_ids.insert(attacker.army_id).second) {
+            throw std::invalid_argument{"attacker army IDs must be unique"};
+        }
+        attacker_manpower = checked_add(
+            attacker_manpower,
+            attacker.manpower,
+            "total attacker manpower exceeds int64 range"
+        );
+    }
+
     std::int64_t defender_manpower = 0;
     for (const DefenderBattleInput& defender : input.defenders) {
         if (defender.manpower <= 0) {
             throw std::invalid_argument{"defender manpower must be positive"};
         }
         validate_level(defender.military_level);
-        if (!defender_ids.insert(defender.army_id).second) {
-            throw std::invalid_argument{"defender army IDs must be unique"};
+        if (!army_ids.insert(defender.army_id).second) {
+            throw std::invalid_argument{"battle army IDs must be unique"};
         }
         defender_manpower = checked_add(
             defender_manpower,
@@ -395,19 +411,19 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
 
     const std::int32_t defender_military_level =
         exact_weighted_level(input.defenders, defender_manpower);
-    const std::int64_t lesser = std::min(input.attacker_manpower, defender_manpower);
-    const std::int64_t greater = std::max(input.attacker_manpower, defender_manpower);
+    const std::int64_t lesser = std::min(attacker_manpower, defender_manpower);
+    const std::int64_t greater = std::max(attacker_manpower, defender_manpower);
     const std::int64_t attacker_base_strength = effective_strength(
         lesser,
         greater,
-        input.attacker_manpower > defender_manpower,
+        attacker_manpower > defender_manpower,
         input.attacker_random_tenths,
         input.attacker_military_level
     );
     const std::int64_t defender_base_strength = effective_strength(
         lesser,
         greater,
-        defender_manpower > input.attacker_manpower,
+        defender_manpower > attacker_manpower,
         input.defender_random_tenths,
         defender_military_level
     );
@@ -419,7 +435,7 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
     );
 
     const std::int64_t attacker_casualties = std::min(
-        input.attacker_manpower,
+        attacker_manpower,
         std::max<std::int64_t>(1, defender_final_strength / 2)
     );
     const std::int64_t defender_casualties = std::min(
@@ -427,7 +443,7 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
         std::max<std::int64_t>(1, attacker_base_strength / 2)
     );
     const std::int64_t attacker_remaining =
-        input.attacker_manpower - attacker_casualties;
+        attacker_manpower - attacker_casualties;
     const std::int64_t defender_remaining = defender_manpower - defender_casualties;
 
     BattleResultType result = BattleResultType::defender_victory;
@@ -441,7 +457,7 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
         result,
         input.attacker_random_tenths,
         input.defender_random_tenths,
-        input.attacker_manpower,
+        attacker_manpower,
         defender_manpower,
         input.attacker_military_level,
         defender_military_level,
@@ -453,7 +469,12 @@ BattleCalculation BattleCalculator::calculate(const BattleCalculationInput& inpu
         defender_casualties,
         attacker_remaining,
         defender_remaining,
-        allocate_defender_losses(
+        allocate_losses<AttackerBattleInput, AttackerBattleLoss>(
+            input.attackers,
+            attacker_manpower,
+            attacker_casualties
+        ),
+        allocate_losses<DefenderBattleInput, DefenderBattleLoss>(
             input.defenders,
             defender_manpower,
             defender_casualties

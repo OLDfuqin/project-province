@@ -13,6 +13,17 @@ enum class BattleResultType : std::uint8_t {
     mutual_destruction,
 };
 
+struct AttackerBattleInput final {
+    ArmyId army_id;
+    std::int64_t manpower{};
+};
+
+struct AttackerBattleLoss final {
+    ArmyId army_id;
+    std::int64_t casualties{};
+    std::int64_t remaining_manpower{};
+};
+
 struct DefenderBattleInput final {
     ArmyId army_id;
     CountryId country_id;
@@ -27,7 +38,7 @@ struct DefenderBattleLoss final {
 };
 
 struct BattleCalculationInput final {
-    std::int64_t attacker_manpower{};
+    std::vector<AttackerBattleInput> attackers;
     std::int32_t attacker_military_level{};
     std::vector<DefenderBattleInput> defenders;
     std::int32_t terrain_defense_bonus{};
@@ -51,6 +62,7 @@ struct BattleCalculation final {
     std::int64_t defender_casualties{};
     std::int64_t attacker_remaining_manpower{};
     std::int64_t defender_remaining_manpower{};
+    std::vector<AttackerBattleLoss> attacker_losses;
     std::vector<DefenderBattleLoss> defender_losses;
 };
 

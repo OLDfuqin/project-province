@@ -5,6 +5,7 @@
 #include "province/core/scenario_loader.hpp"
 #include "smoke_test_groups.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -79,9 +80,29 @@ bool run_neutral_combat_tests() {
         std::cerr << "Neutral attack order lost its attack classification\n";
         return false;
     }
+    const ArmyId conquered_guard = guard_id(conquest, target);
+    const CommandResult conquest_advanced = conquest_processor.execute(
+        conquest, AdvanceTurnCommand{1}
+    );
+    const auto conquest_battle = std::find_if(
+        conquest_advanced.events.begin(), conquest_advanced.events.end(),
+        [](const GameEvent& event) { return event.type == GameEventType::battle_resolved; }
+    );
+    if (!conquest_advanced.accepted || conquest_battle == conquest_advanced.events.end() ||
+        conquest.find_army(conquered_guard) != nullptr ||
+        conquest.find_army(attacker) == nullptr ||
+        conquest.find_army(attacker)->province_id != target ||
+        conquest.find_province(target)->owner_id != auroria ||
+        conquest.controller_of(target) != auroria || !conquest.orders().empty()) {
+        std::cerr << "Monthly neutral combat did not conquer and consume its attack order\n";
+        return false;
+    }
 
     GameState mutual = state();
-    mutual.find_army(guard_id(mutual, target))->manpower = 1;
+    mutual.find_province(target)->population = 0;
+    mutual.find_province(target)->population_growth_remainder = 0;
+    const ArmyId mutual_guard = guard_id(mutual, target);
+    mutual.find_army(mutual_guard)->manpower = 1;
     const ArmyId mutual_attacker = mutual.create_army(auroria, origin, 1);
     mutual.find_army(mutual_attacker)->movement_points = 12;
     CommandProcessor mutual_processor{rolls({7, 7})};
@@ -92,6 +113,16 @@ bool run_neutral_combat_tests() {
         mutual.find_army(mutual_attacker) == nullptr ||
         mutual.find_army(mutual_attacker)->province_id != origin) {
         std::cerr << "Queued mutual-destruction attack resolved before combat phase\n";
+        return false;
+    }
+    const CommandResult mutual_advanced = mutual_processor.execute(
+        mutual, AdvanceTurnCommand{1}
+    );
+    if (!mutual_advanced.accepted ||
+        mutual.find_army(mutual_attacker) != nullptr ||
+        mutual.find_army(mutual_guard) != nullptr ||
+        mutual.find_province(target)->owner_id != neutral || !mutual.orders().empty()) {
+        std::cerr << "Monthly neutral mutual destruction was not resolved\n";
         return false;
     }
     GameState passive = state();
@@ -107,6 +138,8 @@ bool run_neutral_combat_tests() {
 
     GameState empty = state();
     empty.remove_army(guard_id(empty, target));
+    empty.find_province(target)->population = 0;
+    empty.find_province(target)->population_growth_remainder = 0;
     const ArmyId unopposed = empty.create_army(auroria, origin, 100);
     empty.find_army(unopposed)->movement_points = 12;
     const CommandResult entered = CommandProcessor{}.execute(
@@ -116,6 +149,20 @@ bool run_neutral_combat_tests() {
         empty.occupations().contains(target) ||
         empty.find_army(unopposed)->province_id != origin || empty.orders().size() != 1) {
         std::cerr << "Unopposed neutral attack did not wait for combat phase\n";
+        return false;
+    }
+    const CommandResult empty_advanced = CommandProcessor{}.execute(
+        empty, AdvanceTurnCommand{1}
+    );
+    const auto occupation_battle = std::find_if(
+        empty_advanced.events.begin(), empty_advanced.events.end(),
+        [](const GameEvent& event) { return event.type == GameEventType::battle_resolved; }
+    );
+    if (!empty_advanced.accepted || occupation_battle == empty_advanced.events.end() ||
+        empty.find_province(target)->owner_id != auroria ||
+        empty.find_army(unopposed) == nullptr ||
+        empty.find_army(unopposed)->province_id != target || !empty.orders().empty()) {
+        std::cerr << "Unopposed neutral attack did not occupy during monthly combat\n";
         return false;
     }
     return true;

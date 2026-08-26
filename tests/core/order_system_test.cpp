@@ -8,8 +8,13 @@
 #include "province/core/road_system.hpp"
 #include "smoke_test_groups.hpp"
 
+#include <algorithm>
 #include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -42,6 +47,64 @@ GameState order_state() {
     state.set_diplomatic_status(CountryId{"alpha"}, CountryId{"beta"}, DiplomaticStatus::war);
     state.set_diplomatic_status(CountryId{"gamma"}, CountryId{"beta"}, DiplomaticStatus::war);
     return state;
+}
+
+BattleSystem::RandomRoll fixed_rolls(std::initializer_list<std::int32_t> values) {
+    auto data = std::make_shared<std::vector<std::int32_t>>(values);
+    auto index = std::make_shared<std::size_t>(0);
+    return [data, index]() {
+        if (*index >= data->size()) throw std::logic_error{"fixed roll exhausted"};
+        return data->at((*index)++);
+    };
+}
+
+GameState grouped_combat_state() {
+    GameState state{GameClock{1000, 1}};
+    const CountryId alpha{"alpha"};
+    const CountryId beta{"beta"};
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const ProvinceId target{"target"};
+    const ProvinceId beta_safe{"beta_safe"};
+    const ProvinceId beta_rear{"beta_rear"};
+    state.add_country(Country{alpha, "Alpha", 0, 100'000, "ALP", false});
+    state.add_country(Country{beta, "Beta", 0, 100'000, "BET", false});
+    state.add_province(Province{
+        alpha_a, "Alpha A", alpha, 10'000, 5'000, 10'000,
+        {alpha_b}, 0, TerrainType::plains,
+    });
+    state.add_province(Province{
+        alpha_b, "Alpha B", alpha, 10'000, 5'000, 10'000,
+        {alpha_a, target}, 0, TerrainType::plains,
+    });
+    state.add_province(Province{
+        target, "Target", beta, 10'000, 5'000, 10'000,
+        {alpha_b, beta_rear, beta_safe}, 0, TerrainType::plains,
+    });
+    state.add_province(Province{
+        beta_safe, "Beta Safe", beta, 10'000, 5'000, 10'000,
+        {target}, 0, TerrainType::plains,
+    });
+    state.add_province(Province{
+        beta_rear, "Beta Rear", beta, 10'000, 5'000, 10'000,
+        {target}, 0, TerrainType::plains,
+    });
+    state.set_diplomatic_status(alpha, beta, DiplomaticStatus::war);
+    return state;
+}
+
+const ArmyBattleOutcome* find_outcome(
+    const BattleResolution& battle,
+    const ArmyId& army_id
+) {
+    const auto found = std::find_if(
+        battle.armies.begin(),
+        battle.armies.end(),
+        [&army_id](const ArmyBattleOutcome& outcome) {
+            return outcome.army_id == army_id;
+        }
+    );
+    return found == battle.armies.end() ? nullptr : &*found;
 }
 
 bool test_attack_target_country_lock() {
@@ -417,14 +480,10 @@ bool test_monthly_grant_respects_reserved_movement() {
         system.queue_army_action(state, army_id, {alpha_a, alpha_b, beta_a}, true);
     if (!queued.accepted || state.find_army(army_id)->movement_points != 0) return false;
     if (!processor.execute(state, AdvanceTurnCommand{1}).accepted ||
-        state.find_army(army_id)->movement_points != 0) {
+        state.find_army(army_id)->movement_points != 0 ||
+        state.find_army(army_id)->province_id != beta_a ||
+        !state.orders().empty()) {
         std::cerr << "Monthly grant refilled movement already held by an action order\n";
-        return false;
-    }
-    if (!system.cancel(state, *queued.order_id).accepted ||
-        state.find_army(army_id)->movement_points !=
-            MovementSystem::maximum_movement_points_half(0)) {
-        std::cerr << "Cancelling after a monthly grant minted movement points\n";
         return false;
     }
     return true;
@@ -556,6 +615,147 @@ bool test_monthly_leaves_hostile_attack_for_combat_phase() {
     if (!report.movements.empty() || !report.refunds.empty() ||
         state.find_army(army_id)->province_id != alpha_a || state.orders().size() != 1) {
         std::cerr << "Movement phase executed an attack reserved for combat resolution\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_monthly_groups_attackers_after_defensive_movement() {
+    GameState state = grouped_combat_state();
+    OrderSystem orders;
+    const CountryId alpha{"alpha"};
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const ProvinceId target{"target"};
+    const ProvinceId beta_safe{"beta_safe"};
+    const ProvinceId beta_rear{"beta_rear"};
+    const ArmyId attacker_a = state.create_army(alpha, alpha_a, 10);
+    const ArmyId attacker_b = state.create_army(alpha, alpha_b, 10);
+    const ArmyId withdrawing = state.create_army(CountryId{"beta"}, target, 5);
+    const ArmyId stationary = state.create_army(CountryId{"beta"}, target, 10);
+    const ArmyId arriving = state.create_army(CountryId{"beta"}, beta_rear, 10);
+    const std::string attacker_a_name = state.army_display_name(attacker_a);
+    const std::string attacker_b_name = state.army_display_name(attacker_b);
+    state.find_army(attacker_a)->movement_points = 12;
+    state.find_army(attacker_b)->movement_points = 8;
+    state.find_army(attacker_a)->advance_target = target;
+    state.find_army(attacker_b)->advance_target = target;
+    state.find_army(withdrawing)->movement_points = 4;
+    state.find_army(arriving)->movement_points = 4;
+
+    if (!orders.queue_army_action(
+            state, attacker_a, {alpha_a, alpha_b, target}, true
+        ).accepted ||
+        !orders.queue_army_action(
+            state, attacker_b, {alpha_b, target}, true
+        ).accepted ||
+        !orders.queue_army_action(
+            state, withdrawing, {target, beta_safe}, false
+        ).accepted ||
+        !orders.queue_army_action(
+            state, arriving, {beta_rear, target}, false
+        ).accepted) {
+        std::cerr << "Grouped monthly combat fixture orders were rejected\n";
+        return false;
+    }
+
+    MonthlyOrderSystem monthly;
+    const MonthlyOrderMovementReport movement = monthly.resolve_movement(state);
+    if (movement.movements.size() != 2 || state.find_army(withdrawing)->province_id != beta_safe ||
+        state.find_army(arriving)->province_id != target || state.orders().size() != 2) {
+        std::cerr << "Ordinary arrivals and withdrawals did not resolve before combat\n";
+        return false;
+    }
+    state.find_army(arriving)->movement_points = -2;
+
+    const MonthlyOrderCombatReport combat = monthly.resolve_combat(
+        state,
+        BattleSystem{fixed_rolls({7, 14})}
+    );
+    if (combat.battles.size() != 1 || !combat.refunds.empty() ||
+        !state.orders().empty()) {
+        std::cerr << "Grouped attack orders were not consumed as one battle\n";
+        return false;
+    }
+    const BattleResolution& battle = combat.battles.front();
+    const ArmyBattleOutcome* attacker_a_outcome = find_outcome(battle, attacker_a);
+    const ArmyBattleOutcome* attacker_b_outcome = find_outcome(battle, attacker_b);
+    if (!battle.occurred || battle.result != BattleResultType::defender_victory ||
+        battle.attacker_initial_manpower != 20 || battle.defender_initial_manpower != 20 ||
+        battle.attacker_casualties != 14 || battle.defender_casualties != 7 ||
+        attacker_a_outcome == nullptr || attacker_b_outcome == nullptr ||
+        attacker_a_outcome->display_name != attacker_a_name ||
+        attacker_b_outcome->display_name != attacker_b_name ||
+        attacker_a_outcome->retreat_province != alpha_a ||
+        attacker_b_outcome->retreat_province != alpha_b ||
+        state.find_army(attacker_a)->province_id != alpha_a ||
+        state.find_army(attacker_b)->province_id != alpha_b ||
+        state.find_army(attacker_a)->advance_target != target ||
+        state.find_army(attacker_b)->advance_target != target) {
+        std::cerr << "Same-country attackers did not combine and retreat to their own origins\n";
+        return false;
+    }
+    if (find_outcome(battle, withdrawing) != nullptr ||
+        find_outcome(battle, stationary) == nullptr ||
+        find_outcome(battle, arriving) == nullptr ||
+        state.find_army(withdrawing)->province_id != beta_safe ||
+        state.find_army(stationary)->movement_points != -2 ||
+        state.find_army(arriving)->movement_points != -2) {
+        std::cerr << "Defensive movement or per-defender movement debt was incorrect\n";
+        return false;
+    }
+    [[maybe_unused]] const MonthlyMovementReport debt_repayment =
+        MovementSystem{}.grant_monthly_points(state);
+    if (state.find_army(stationary)->movement_points != 2 ||
+        state.find_army(arriving)->movement_points != 2) {
+        std::cerr << "The next movement grant did not repay defensive movement debt first\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_monthly_unopposed_group_occupies_and_reports_every_attacker() {
+    GameState state = grouped_combat_state();
+    OrderSystem orders;
+    const CountryId alpha{"alpha"};
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const ProvinceId target{"target"};
+    const ArmyId attacker_a = state.create_army(alpha, alpha_a, 100);
+    const ArmyId attacker_b = state.create_army(alpha, alpha_b, 200);
+    state.find_army(attacker_a)->movement_points = 12;
+    state.find_army(attacker_b)->movement_points = 8;
+    if (!orders.queue_army_action(
+            state, attacker_a, {alpha_a, alpha_b, target}, true
+        ).accepted ||
+        !orders.queue_army_action(
+            state, attacker_b, {alpha_b, target}, true
+        ).accepted) {
+        return false;
+    }
+
+    CommandProcessor processor{fixed_rolls({})};
+    const CommandResult advanced = processor.execute(
+        state,
+        AdvanceTurnCommand{1}
+    );
+    const auto battle_event = std::find_if(
+        advanced.events.begin(),
+        advanced.events.end(),
+        [](const GameEvent& event) {
+            return event.type == GameEventType::battle_resolved;
+        }
+    );
+    if (!advanced.accepted || battle_event == advanced.events.end()) return false;
+    const BattleResolution& battle = std::get<BattleResolution>(battle_event->payload);
+    if (battle.occurred || !battle.attacker_won || !battle.province_occupied ||
+        battle.attacker_initial_manpower != 300 || battle.attacker_remaining_manpower != 300 ||
+        battle.armies.size() != 2 || find_outcome(battle, attacker_a) == nullptr ||
+        find_outcome(battle, attacker_b) == nullptr ||
+        state.find_army(attacker_a)->province_id != target ||
+        state.find_army(attacker_b)->province_id != target ||
+        state.controller_of(target) != alpha || !state.orders().empty()) {
+        std::cerr << "Unopposed grouped attack did not occupy or preserve every attacker result\n";
         return false;
     }
     return true;
@@ -731,6 +931,8 @@ bool run_order_system_tests() {
         test_monthly_converts_friendly_attack_to_ordinary_movement() &&
         test_monthly_cancels_ordinary_move_that_becomes_hostile() &&
         test_monthly_leaves_hostile_attack_for_combat_phase() &&
+        test_monthly_groups_attackers_after_defensive_movement() &&
+        test_monthly_unopposed_group_occupies_and_reports_every_attacker() &&
         test_advance_turn_resolves_queued_ordinary_movement() &&
         test_auto_advance_queues_at_most_one_next_month_step() &&
         test_pending_action_blocks_immediate_move_but_allows_rename() &&

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "province/core/battle_system.hpp"
 #include "province/core/game_state.hpp"
 
 #include <cstdint>
@@ -30,9 +31,18 @@ struct MonthlyOrderMovementReport final {
     std::vector<RefundedArmyAction> refunds;
 };
 
+struct MonthlyOrderCombatReport final {
+    std::vector<BattleResolution> battles;
+    std::vector<RefundedArmyAction> refunds;
+};
+
 class MonthlyOrderSystem final {
 public:
     [[nodiscard]] MonthlyOrderMovementReport resolve_movement(GameState& state) const;
+    [[nodiscard]] MonthlyOrderCombatReport resolve_combat(
+        GameState& state,
+        const BattleSystem& battle_system
+    ) const;
 };
 
 } // namespace province::core

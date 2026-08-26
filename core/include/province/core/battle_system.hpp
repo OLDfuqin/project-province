@@ -20,6 +20,11 @@ struct ArmyBattleOutcome final {
     bool destroyed{};
 };
 
+struct AttackingArmyEntry final {
+    ArmyId army_id;
+    ProvinceId origin;
+};
+
 struct BattleResolution final {
     bool occurred{};
     ProvinceId province_id;
@@ -55,6 +60,10 @@ public:
         GameState& state,
         const ArmyId& attacker_army_id,
         const ProvinceId& attacker_origin
+    ) const;
+    [[nodiscard]] BattleResolution resolve_group(
+        GameState& state,
+        std::vector<AttackingArmyEntry> attackers
     ) const;
 
 private:

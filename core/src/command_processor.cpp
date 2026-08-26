@@ -381,6 +381,23 @@ CommandResult CommandProcessor::execute_advance_turn(
             });
         }
 
+        const MonthlyOrderCombatReport order_combat_report =
+            monthly_order_system_.resolve_combat(working_state, battle_system_);
+        for (const BattleResolution& battle : order_combat_report.battles) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::battle_resolved,
+                battle,
+            });
+        }
+        for (const RefundedArmyAction& refund : order_combat_report.refunds) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::order_cancelled,
+                OrderCancelledEvent{refund.order_id},
+            });
+        }
+
         std::vector<ArmyId> planned_armies;
         planned_armies.reserve(working_state.army_count());
         for (const auto& [army_id, army] : working_state.armies()) {

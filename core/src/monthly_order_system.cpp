@@ -3,6 +3,7 @@
 #include "province/core/movement_system.hpp"
 
 #include <limits>
+#include <map>
 #include <optional>
 #include <stdexcept>
 
@@ -150,6 +151,115 @@ MonthlyOrderMovementReport MonthlyOrderSystem::resolve_movement(GameState& state
             converted_from_attack,
         });
         state.orders_.erase(found);
+    }
+    return report;
+}
+
+MonthlyOrderCombatReport MonthlyOrderSystem::resolve_combat(
+    GameState& state,
+    const BattleSystem& battle_system
+) const {
+    MonthlyOrderCombatReport report;
+    using AttackGroupKey = std::pair<CountryId, ProvinceId>;
+    std::map<AttackGroupKey, std::vector<ArmyActionOrder>> groups;
+
+    std::vector<OrderId> action_ids;
+    action_ids.reserve(state.orders_.size());
+    for (const auto& [id, order] : state.orders_) {
+        const auto* action = std::get_if<ArmyActionOrder>(&order);
+        if (action != nullptr && action->is_attack) {
+            action_ids.push_back(id);
+        }
+    }
+
+    for (const OrderId& id : action_ids) {
+        const auto found = state.orders_.find(id);
+        if (found == state.orders_.end()) {
+            continue;
+        }
+        const auto* stored = std::get_if<ArmyActionOrder>(&found->second);
+        if (stored == nullptr || !stored->is_attack) {
+            continue;
+        }
+        const ArmyActionOrder order = *stored;
+        Army* army = state.find_army(order.army_id);
+        std::optional<std::string> error = invalid_path_reason(state, order, army);
+        if (!error.has_value() && !state.are_hostile(
+                order.country_id,
+                state.controller_of(order.destination)
+            )) {
+            error = "attack target is no longer hostile";
+        }
+        if (error.has_value()) {
+            if (army != nullptr) {
+                add_refund(*army, order.reserved_movement_half);
+            }
+            report.refunds.push_back({
+                id,
+                order.army_id,
+                army == nullptr ? 0 : order.reserved_movement_half,
+                *error,
+            });
+            state.orders_.erase(found);
+            continue;
+        }
+        groups[{order.country_id, order.destination}].push_back(order);
+    }
+
+    for (const auto& [key, group_orders] : groups) {
+        std::vector<AttackingArmyEntry> attackers;
+        attackers.reserve(group_orders.size());
+        std::vector<OrderId> consumed_orders;
+        consumed_orders.reserve(group_orders.size());
+
+        for (const ArmyActionOrder& order : group_orders) {
+            const auto found = state.orders_.find(order.id);
+            if (found == state.orders_.end()) {
+                continue;
+            }
+            Army* army = state.find_army(order.army_id);
+            std::optional<std::string> error = invalid_path_reason(state, order, army);
+            if (!error.has_value() &&
+                (key.first != order.country_id || key.second != order.destination ||
+                 !state.are_hostile(
+                     order.country_id,
+                     state.controller_of(order.destination)
+                 ))) {
+                error = "attack group is no longer valid";
+            }
+            if (error.has_value()) {
+                if (army != nullptr) {
+                    add_refund(*army, order.reserved_movement_half);
+                }
+                report.refunds.push_back({
+                    order.id,
+                    order.army_id,
+                    army == nullptr ? 0 : order.reserved_movement_half,
+                    *error,
+                });
+                state.orders_.erase(found);
+                continue;
+            }
+
+            army->province_id = order.destination;
+            attackers.push_back({order.army_id, order.origin});
+            consumed_orders.push_back(order.id);
+        }
+
+        if (attackers.empty()) {
+            continue;
+        }
+        report.battles.push_back(battle_system.resolve_group(state, attackers));
+        for (const AttackingArmyEntry& entry : attackers) {
+            Army* attacker = state.find_army(entry.army_id);
+            if (attacker != nullptr && attacker->advance_target.has_value() &&
+                attacker->province_id == *attacker->advance_target) {
+                attacker->advance_target.reset();
+            }
+        }
+        for (const OrderId& id : consumed_orders) {
+            state.orders_.erase(id);
+        }
     }
     return report;
 }

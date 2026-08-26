@@ -56,6 +56,20 @@ const province::core::DefenderBattleLoss* find_loss(
     return found == calculation.defender_losses.end() ? nullptr : &*found;
 }
 
+const province::core::AttackerBattleLoss* find_attacker_loss(
+    const province::core::BattleCalculation& calculation,
+    const province::core::ArmyId& army_id
+) {
+    const auto found = std::find_if(
+        calculation.attacker_losses.begin(),
+        calculation.attacker_losses.end(),
+        [&army_id](const province::core::AttackerBattleLoss& loss) {
+            return loss.army_id == army_id;
+        }
+    );
+    return found == calculation.attacker_losses.end() ? nullptr : &*found;
+}
+
 } // namespace
 
 bool run_battle_calculator_tests() {
@@ -67,8 +81,53 @@ bool run_battle_calculator_tests() {
     using province::core::CountryId;
     using province::core::DefenderBattleInput;
 
+    const BattleCalculation grouped_tie = BattleCalculator::calculate({
+        {
+            {ArmyId{"attacker_z"}, 1},
+            {ArmyId{"attacker_a"}, 1},
+        },
+        0,
+        {{ArmyId{"defender"}, CountryId{"solmere"}, 2, 0}},
+        0, 7, 7,
+    });
+    const auto* tied_a = find_attacker_loss(grouped_tie, ArmyId{"attacker_a"});
+    const auto* tied_z = find_attacker_loss(grouped_tie, ArmyId{"attacker_z"});
+    if (!expect(
+            grouped_tie.attacker_initial_manpower == 2 &&
+                grouped_tie.attacker_casualties == 1 &&
+                grouped_tie.attacker_losses.size() == 2 &&
+                tied_a != nullptr && tied_a->casualties == 1 &&
+                tied_a->remaining_manpower == 0 &&
+                tied_z != nullptr && tied_z->casualties == 0 &&
+                tied_z->remaining_manpower == 1,
+            "grouped attacker losses did not use stable IDs to break equal remainders"
+        )) {
+        return false;
+    }
+
+    const BattleCalculation grouped_unequal = BattleCalculator::calculate({
+        {
+            {ArmyId{"attacker_a"}, 2},
+            {ArmyId{"attacker_z"}, 1},
+        },
+        0,
+        {{ArmyId{"defender"}, CountryId{"solmere"}, 3, 0}},
+        0, 7, 14,
+    });
+    const auto* larger = find_attacker_loss(grouped_unequal, ArmyId{"attacker_a"});
+    const auto* smaller = find_attacker_loss(grouped_unequal, ArmyId{"attacker_z"});
+    if (!expect(
+            grouped_unequal.attacker_initial_manpower == 3 &&
+                grouped_unequal.attacker_casualties == 2 &&
+                larger != nullptr && larger->casualties == 1 &&
+                smaller != nullptr && smaller->casualties == 1,
+            "grouped attacker losses did not award the larger fractional remainder"
+        )) {
+        return false;
+    }
+
     const BattleCalculation equal = BattleCalculator::calculate({
-        1'000, 0,
+        {{ArmyId{"attacker"}, 1'000}}, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, 1'000, 0}},
         0, 7, 14,
     });
@@ -92,7 +151,7 @@ bool run_battle_calculator_tests() {
     }
 
     const BattleCalculation larger_attacker = BattleCalculator::calculate({
-        4'000, 2,
+        {{ArmyId{"attacker"}, 4'000}}, 2,
         {{ArmyId{"defender"}, CountryId{"solmere"}, 1'000, 0}},
         0, 10, 10,
     });
@@ -112,7 +171,7 @@ bool run_battle_calculator_tests() {
     }
 
     const BattleCalculation mountain = BattleCalculator::calculate({
-        1'000, 0,
+        {{ArmyId{"attacker"}, 1'000}}, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, 1'000, 0}},
         30, 10, 10,
     });
@@ -126,7 +185,7 @@ bool run_battle_calculator_tests() {
     }
 
     const BattleCalculation weighted = BattleCalculator::calculate({
-        2'000, 0,
+        {{ArmyId{"attacker"}, 2'000}}, 0,
         {
             {ArmyId{"d1"}, CountryId{"solmere"}, 300, 2},
             {ArmyId{"d2"}, CountryId{"verdantia"}, 700, 5},
@@ -143,7 +202,7 @@ bool run_battle_calculator_tests() {
     }
 
     const BattleCalculation remainders = BattleCalculator::calculate({
-        7, 0,
+        {{ArmyId{"attacker"}, 7}}, 0,
         {
             {ArmyId{"army_b"}, CountryId{"solmere"}, 1, 0},
             {ArmyId{"army_a"}, CountryId{"solmere"}, 1, 0},
@@ -168,7 +227,7 @@ bool run_battle_calculator_tests() {
     }
 
     const BattleCalculation unequal_remainders = BattleCalculator::calculate({
-        1'000, 2,
+        {{ArmyId{"attacker"}, 1'000}}, 2,
         {
             {ArmyId{"army_a"}, CountryId{"solmere"}, 500, 1},
             {ArmyId{"army_z"}, CountryId{"verdantia"}, 300, 2},
@@ -196,7 +255,7 @@ bool run_battle_calculator_tests() {
     }
 
     const BattleCalculation mutual = BattleCalculator::calculate({
-        1, 0,
+        {{ArmyId{"attacker"}, 1}}, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, 1, 0}},
         0, 7, 7,
     });
@@ -205,12 +264,12 @@ bool run_battle_calculator_tests() {
         mutual.defender_remaining_manpower != 0) return false;
 
     const BattleCalculationInput valid{
-        1'000, 0,
+        {{ArmyId{"attacker"}, 1'000}}, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, 1'000, 0}},
         0, 10, 10,
     };
     BattleCalculationInput zero_attacker = valid;
-    zero_attacker.attacker_manpower = 0;
+    zero_attacker.attackers.front().manpower = 0;
     BattleCalculationInput empty_defenders = valid;
     empty_defenders.defenders.clear();
     BattleCalculationInput low_attacker_roll = valid;
@@ -261,7 +320,7 @@ bool run_battle_calculator_tests() {
     }
 
     const BattleCalculation large = BattleCalculator::calculate({
-        1'000'000'000'000, 8,
+        {{ArmyId{"attacker"}, 1'000'000'000'000}}, 8,
         {{
             ArmyId{"defender"},
             CountryId{"solmere"},
@@ -282,7 +341,7 @@ bool run_battle_calculator_tests() {
     }
 
     const BattleCalculation weighted_boundary = BattleCalculator::calculate({
-        1, 0,
+        {{ArmyId{"attacker"}, 1}}, 0,
         {
             {ArmyId{"level_3"}, CountryId{"solmere"}, 1, 3},
             {
@@ -303,7 +362,7 @@ bool run_battle_calculator_tests() {
 
     constexpr std::int64_t maximum = std::numeric_limits<std::int64_t>::max();
     const BattleCalculation exact_limit = BattleCalculator::calculate({
-        maximum, 0,
+        {{ArmyId{"attacker"}, maximum}}, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, maximum, 0}},
         0, 10, 10,
     });
@@ -319,7 +378,7 @@ bool run_battle_calculator_tests() {
     constexpr std::int64_t root_quarter = maximum / 4;
     constexpr std::int64_t almost_four_quarters = root_quarter * 4 - 1;
     const BattleCalculation near_integer_strength = BattleCalculator::calculate({
-        almost_four_quarters, 0,
+        {{ArmyId{"attacker"}, almost_four_quarters}}, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, root_quarter, 0}},
         0, 10, 10,
     });
@@ -333,7 +392,7 @@ bool run_battle_calculator_tests() {
     constexpr std::int64_t terrain_base = (maximum / 13) * 10;
     constexpr std::int64_t terrain_expected = (maximum / 13) * 13;
     const BattleCalculation near_limit_terrain = BattleCalculator::calculate({
-        terrain_base, 0,
+        {{ArmyId{"attacker"}, terrain_base}}, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, terrain_base, 0}},
         30, 10, 10,
     });
@@ -346,12 +405,12 @@ bool run_battle_calculator_tests() {
     }
 
     BattleCalculationInput overflowing_strength{
-        maximum, 1,
+        {{ArmyId{"attacker"}, maximum}}, 1,
         {{ArmyId{"defender"}, CountryId{"solmere"}, maximum, 0}},
         0, 10, 10,
     };
     BattleCalculationInput overflowing_terrain{
-        maximum, 0,
+        {{ArmyId{"attacker"}, maximum}}, 0,
         {{ArmyId{"defender"}, CountryId{"solmere"}, maximum, 0}},
         10, 10, 10,
     };
