@@ -410,8 +410,10 @@ std::vector<std::string> GameState::validate() const {
                         .second) {
             issues.push_back("army '" + army_id.value() + "' has a duplicate formation number");
         }
-        if (army.movement_points < 0) {
-            issues.push_back("army '" + army_id.value() + "' has negative movement points");
+        if (army.movement_points < -MovementSystem::movement_point_scale) {
+            issues.push_back(
+                "army '" + army_id.value() + "' has movement points below defensive debt"
+            );
         }
         if (army.advance_target.has_value() &&
             !provinces_.contains(*army.advance_target)) {

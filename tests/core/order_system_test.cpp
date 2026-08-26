@@ -711,6 +711,31 @@ bool test_monthly_groups_attackers_after_defensive_movement() {
         std::cerr << "The next movement grant did not repay defensive movement debt first\n";
         return false;
     }
+    if (!state.validate().empty()) {
+        std::cerr << "Battle-created defensive movement debt did not validate\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_defensive_movement_debt_below_lower_bound_is_invalid() {
+    GameState state = grouped_combat_state();
+    const ArmyId army_id = state.create_army(CountryId{"alpha"}, ProvinceId{"alpha_a"}, 10);
+    state.find_army(army_id)->movement_points =
+        -MovementSystem::movement_point_scale - 1;
+    const std::vector<std::string> issues = state.validate();
+    const auto found = std::find_if(
+        issues.begin(),
+        issues.end(),
+        [&army_id](const std::string& issue) {
+            return issue ==
+                "army '" + army_id.value() + "' has movement points below defensive debt";
+        }
+    );
+    if (found == issues.end()) {
+        std::cerr << "Movement debt below the defensive lower bound was accepted\n";
+        return false;
+    }
     return true;
 }
 
@@ -932,6 +957,7 @@ bool run_order_system_tests() {
         test_monthly_cancels_ordinary_move_that_becomes_hostile() &&
         test_monthly_leaves_hostile_attack_for_combat_phase() &&
         test_monthly_groups_attackers_after_defensive_movement() &&
+        test_defensive_movement_debt_below_lower_bound_is_invalid() &&
         test_monthly_unopposed_group_occupies_and_reports_every_attacker() &&
         test_advance_turn_resolves_queued_ordinary_movement() &&
         test_auto_advance_queues_at_most_one_next_month_step() &&

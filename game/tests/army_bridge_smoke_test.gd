@@ -38,6 +38,43 @@ func _has_complete_battle_metadata(battle: Dictionary) -> bool:
     return true
 
 
+func _find_unopposed_group_target(
+        bridge: Object, attacker_country: String, defender_country: String
+) -> Dictionary:
+    var defending_armies: Dictionary = {}
+    for army: Dictionary in bridge.get_army_summaries():
+        if army.get("owner_id", "") != defender_country:
+            continue
+        var province_id := String(army.get("province_id", ""))
+        defending_armies[province_id] = int(defending_armies.get(province_id, 0)) + 1
+
+    var candidates: Dictionary = {}
+    for province: Dictionary in bridge.get_province_summaries():
+        if province.get("owner_id", "") != attacker_country:
+            continue
+        var origin_id := String(province.get("id", ""))
+        var neighbors: Array = province.get("neighbors", []).duplicate()
+        neighbors.sort()
+        for neighbor: String in neighbors:
+            var target := Helpers.province_by_id(bridge, neighbor)
+            if target.get("owner_id", "") != defender_country or \
+                    target.get("occupied", false) or \
+                    int(defending_armies.get(neighbor, 0)) != 0:
+                continue
+            if not candidates.has(neighbor):
+                candidates[neighbor] = []
+            candidates[neighbor].append(origin_id)
+
+    var targets: Array = candidates.keys()
+    targets.sort()
+    for target_id: String in targets:
+        var origins: Array = candidates[target_id]
+        origins.sort()
+        if origins.size() >= 2:
+            return {"target": target_id, "origins": [origins[0], origins[1]]}
+    return {}
+
+
 func _initialize() -> void:
     var bridge: Object = ClassDB.instantiate("ProvinceBridge")
     if bridge == null:
@@ -176,7 +213,69 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var grouped_bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    if not grouped_bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Grouped battle scenario load failed")
+        bridge.free()
+        battle_bridge.free()
+        grouped_bridge.free()
+        quit(1)
+        return
+    grouped_bridge.set_ai_enabled(false, "auroria")
+    var grouped_target := _find_unopposed_group_target(
+        grouped_bridge, "auroria", "solmere"
+    )
+    if grouped_target.is_empty():
+        push_error("Generated map has no grouped unopposed Auroria-Solmere target")
+        bridge.free()
+        battle_bridge.free()
+        grouped_bridge.free()
+        quit(1)
+        return
+    var grouped_origins: Array = grouped_target.get("origins", [])
+    var grouped_attack_a: Dictionary = grouped_bridge.recruit_army(
+        "auroria", grouped_origins[0], 100
+    )
+    var grouped_attack_b: Dictionary = grouped_bridge.recruit_army(
+        "auroria", grouped_origins[1], 100
+    )
+    grouped_bridge.declare_war("auroria", "solmere")
+    grouped_bridge.advance_turn(3)
+    var queued_a: Dictionary = grouped_bridge.move_army(
+        grouped_attack_a["army_id"], grouped_target["target"]
+    )
+    var queued_b: Dictionary = grouped_bridge.move_army(
+        grouped_attack_b["army_id"], grouped_target["target"]
+    )
+    var grouped_turn: Dictionary = grouped_bridge.advance_turn(1)
+    var grouped_action: Dictionary = {}
+    for action: Dictionary in grouped_turn.get("turn_actions", []):
+        if action.get("type", "") == "battle_resolved" and \
+                action.get("province_id", "") == grouped_target["target"]:
+            grouped_action = action
+            break
+    var grouped_after := Helpers.province_by_id(grouped_bridge, grouped_target["target"])
+    var grouped_outcomes: Array = grouped_action.get("battle_outcomes", [])
+    var grouped_ids: Dictionary = {}
+    for outcome: Dictionary in grouped_outcomes:
+        grouped_ids[String(outcome.get("army_id", ""))] = true
+    if not queued_a.get("accepted", false) or not queued_b.get("accepted", false) or \
+            not grouped_turn.get("accepted", false) or grouped_action.is_empty() or \
+            grouped_action.get("battle_occurred", true) or \
+            not grouped_action.get("province_occupied", false) or \
+            grouped_outcomes.size() != 2 or \
+            not grouped_ids.has(grouped_attack_a["army_id"]) or \
+            not grouped_ids.has(grouped_attack_b["army_id"]) or \
+            grouped_after.get("owner_id", "") != "auroria":
+        push_error("Unopposed grouped occupation did not expose every attacker outcome")
+        bridge.free()
+        battle_bridge.free()
+        grouped_bridge.free()
+        quit(1)
+        return
+
     print("ProvinceBridge army integration smoke test passed")
     bridge.free()
     battle_bridge.free()
+    grouped_bridge.free()
     quit(0)

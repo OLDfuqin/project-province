@@ -1,4 +1,5 @@
 #include "province/core/save_game.hpp"
+#include "province/core/movement_system.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -264,7 +265,8 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
             }
             const std::int64_t movement_points_half =
                 entry.at("movement_points_half").get<std::int64_t>();
-            if (movement_points_half < 0 || movement_points_half >
+            if (movement_points_half < -MovementSystem::movement_point_scale ||
+                movement_points_half >
                 std::numeric_limits<std::int32_t>::max()) {
                 throw SaveGameError{"army movement points are out of range"};
             }

@@ -1,5 +1,6 @@
 #include "smoke_test_groups.hpp"
 
+#include "province/core/movement_system.hpp"
 #include "province/core/save_game.hpp"
 #include "province/core/scenario_loader.hpp"
 
@@ -95,6 +96,41 @@ bool run_save_game_smoke_tests() {
     wrong_layout["map_layout_id"] = "different_layout";
     if (!rejected(legacy, "legacy") || !rejected(wrong_layout, "layout")) {
         std::cerr << "Incompatible generated-map save was accepted\n";
+        return false;
+    }
+
+    GameState debt_state = ScenarioLoader::load(
+        "game/data",
+        GameClock{1200, 6},
+        [](const std::uint32_t) { return std::uint32_t{0}; }
+    );
+    const ArmyId debt_army = debt_state.armies().begin()->first;
+    debt_state.find_army(debt_army)->movement_points =
+        -MovementSystem::movement_point_scale;
+    const auto debt_path = std::filesystem::temp_directory_path() /
+        "province-schema6-defensive-debt.json";
+    SaveGameSerializer::save(debt_path, debt_state, 8, std::nullopt);
+    LoadedGame debt_loaded{GameState{GameClock{1, 1}}, 1, std::nullopt};
+    try {
+        debt_loaded = SaveGameSerializer::load(debt_path);
+    } catch (const SaveGameError& error) {
+        std::cerr << "Defensive debt save/load failed: " << error.what() << "\n";
+        std::filesystem::remove(debt_path);
+        return false;
+    }
+    std::filesystem::remove(debt_path);
+    const Army* loaded_debt_army = debt_loaded.state.find_army(debt_army);
+    if (loaded_debt_army == nullptr ||
+        loaded_debt_army->movement_points != -MovementSystem::movement_point_scale) {
+        std::cerr << "Defensive debt movement points did not round trip\n";
+        return false;
+    }
+
+    Json below_debt = document;
+    below_debt["armies"][0]["movement_points_half"] =
+        -MovementSystem::movement_point_scale - 1;
+    if (!rejected(below_debt, "below-debt")) {
+        std::cerr << "Save load accepted movement below defensive debt\n";
         return false;
     }
     return true;

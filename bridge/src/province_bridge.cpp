@@ -47,26 +47,23 @@ void append_battle_metadata(
     target["battle_occurred"] = battle.occurred;
     target["attacker_won"] = battle.occurred && battle.attacker_won;
     target["province_occupied"] = battle.province_occupied;
-    if (!battle.occurred) {
-        target["casualties"] = 0;
-        target["battle_outcomes"] = godot::Array{};
-        return;
+    if (battle.occurred) {
+        target["battle_result"] = battle_result_name(battle.result);
+        target["attacker_random_x"] = random_tenths_to_display(battle.attacker_random_tenths);
+        target["defender_random_x"] = random_tenths_to_display(battle.defender_random_tenths);
+        target["attacker_initial_manpower"] = battle.attacker_initial_manpower;
+        target["defender_initial_manpower"] = battle.defender_initial_manpower;
+        target["attacker_military_level"] = battle.attacker_military_level;
+        target["defender_military_level"] = battle.defender_military_level;
+        target["attacker_base_strength"] = battle.attacker_base_strength;
+        target["defender_base_strength"] = battle.defender_base_strength;
+        target["defender_final_strength"] = battle.defender_final_strength;
+        target["terrain_defense_bonus"] = battle.terrain_defense_bonus;
+        target["attacker_casualties"] = battle.attacker_casualties;
+        target["defender_casualties"] = battle.defender_casualties;
+        target["attacker_remaining_manpower"] = battle.attacker_remaining_manpower;
+        target["defender_remaining_manpower"] = battle.defender_remaining_manpower;
     }
-    target["battle_result"] = battle_result_name(battle.result);
-    target["attacker_random_x"] = random_tenths_to_display(battle.attacker_random_tenths);
-    target["defender_random_x"] = random_tenths_to_display(battle.defender_random_tenths);
-    target["attacker_initial_manpower"] = battle.attacker_initial_manpower;
-    target["defender_initial_manpower"] = battle.defender_initial_manpower;
-    target["attacker_military_level"] = battle.attacker_military_level;
-    target["defender_military_level"] = battle.defender_military_level;
-    target["attacker_base_strength"] = battle.attacker_base_strength;
-    target["defender_base_strength"] = battle.defender_base_strength;
-    target["defender_final_strength"] = battle.defender_final_strength;
-    target["terrain_defense_bonus"] = battle.terrain_defense_bonus;
-    target["attacker_casualties"] = battle.attacker_casualties;
-    target["defender_casualties"] = battle.defender_casualties;
-    target["attacker_remaining_manpower"] = battle.attacker_remaining_manpower;
-    target["defender_remaining_manpower"] = battle.defender_remaining_manpower;
 
     std::int64_t casualties = 0;
     godot::Array outcomes;
