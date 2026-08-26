@@ -1,4 +1,5 @@
 #include "province/core/game_state.hpp"
+#include "province/core/movement_system.hpp"
 
 #include <algorithm>
 #include <set>
@@ -465,6 +466,9 @@ std::vector<std::string> GameState::validate() const {
                 } else if (army->owner_id != typed_order.country_id) {
                     issues.push_back("army action order country does not own its army");
                 }
+                if (army != nullptr && army->province_id != typed_order.origin) {
+                    issues.push_back("army is not at its action order origin");
+                }
                 if (!ordered_armies.insert(typed_order.army_id).second) {
                     issues.push_back("army has more than one action order");
                 }
@@ -482,6 +486,20 @@ std::vector<std::string> GameState::validate() const {
                 }
                 if (typed_order.reserved_movement_half <= 0) {
                     issues.push_back("army action order has invalid reserved movement");
+                } else if (army != nullptr) {
+                    const CountryTechnology* technology =
+                        find_technology(typed_order.country_id);
+                    if (technology != nullptr &&
+                        (typed_order.reserved_movement_half >
+                            MovementSystem::maximum_movement_points_half(
+                                technology->military_level
+                            ) ||
+                         army->movement_points >
+                            MovementSystem::maximum_movement_points_half(
+                                technology->military_level
+                            ) - typed_order.reserved_movement_half)) {
+                        issues.push_back("army action order exceeds the movement point cap");
+                    }
                 }
                 if (typed_order.is_attack) {
                     const auto [lock, inserted] = attack_locks.emplace(

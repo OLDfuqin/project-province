@@ -5,6 +5,18 @@
 #include <set>
 
 namespace province::core {
+namespace {
+
+bool has_pending_action_order(const GameState& state, const ArmyId& army_id) {
+    for (const auto& [id, order] : state.orders()) {
+        static_cast<void>(id);
+        const auto* action = std::get_if<ArmyActionOrder>(&order);
+        if (action != nullptr && action->army_id == army_id) return true;
+    }
+    return false;
+}
+
+} // namespace
 
 ArmyRecruitResult ArmySystem::recruit(
     GameState& state,
@@ -97,6 +109,9 @@ ArmyMergeResult ArmySystem::merge(
     if (primary == nullptr) {
         return {false, "primary army does not exist", 0, 0, 0};
     }
+    if (has_pending_action_order(state, primary_army_id)) {
+        return {false, "army with a pending action order cannot be merged", 0, 0, 0};
+    }
     if (merged_army_ids.empty()) {
         return {false, "at least one army must be merged", 0, 0, 0};
     }
@@ -114,6 +129,9 @@ ArmyMergeResult ArmySystem::merge(
         const Army* merged = state.find_army(merged_id);
         if (merged == nullptr) {
             return {false, "merged army does not exist", 0, 0, 0};
+        }
+        if (has_pending_action_order(state, merged_id)) {
+            return {false, "army with a pending action order cannot be merged", 0, 0, 0};
         }
         if (merged->owner_id != primary->owner_id) {
             return {false, "armies must belong to the same country", 0, 0, 0};

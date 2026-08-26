@@ -253,11 +253,136 @@ bool test_command_processor_queues_and_cancels_projects() {
     return true;
 }
 
+bool test_monthly_grant_respects_reserved_movement() {
+    GameState state = order_state();
+    CommandProcessor processor;
+    OrderSystem system;
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const ArmyId army_id = state.create_army(CountryId{"alpha"}, alpha_a, 1'000);
+    state.find_army(army_id)->movement_points =
+        MovementSystem::maximum_movement_points_half(0);
+
+    const OrderOperationResult queued =
+        system.queue_army_action(state, army_id, {alpha_a, alpha_b}, false);
+    if (!queued.accepted || state.find_army(army_id)->movement_points != 8) return false;
+    if (!processor.execute(state, AdvanceTurnCommand{1}).accepted ||
+        state.find_army(army_id)->movement_points != 8) {
+        std::cerr << "Monthly grant refilled movement already held by an action order\n";
+        return false;
+    }
+    if (!system.cancel(state, *queued.order_id).accepted ||
+        state.find_army(army_id)->movement_points !=
+            MovementSystem::maximum_movement_points_half(0)) {
+        std::cerr << "Cancelling after a monthly grant minted movement points\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_pending_action_blocks_immediate_move_but_allows_rename() {
+    GameState state = order_state();
+    CommandProcessor processor;
+    OrderSystem system;
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const ArmyId army_id = state.create_army(CountryId{"alpha"}, alpha_a, 1'000);
+    state.find_army(army_id)->movement_points = 12;
+    if (!system.queue_army_action(state, army_id, {alpha_a, alpha_b}, false).accepted) {
+        return false;
+    }
+
+    const CommandResult moved = processor.execute(state, MoveArmyCommand{army_id, alpha_b});
+    if (moved.accepted || state.find_army(army_id)->province_id != alpha_a) {
+        std::cerr << "Army with a pending action order moved immediately\n";
+        return false;
+    }
+    const CommandResult renamed = processor.execute(state, RenameArmyCommand{army_id, 7});
+    if (!renamed.accepted || state.find_army(army_id)->formation_number != 7) {
+        std::cerr << "Pending action order incorrectly blocked army rename\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_pending_action_blocks_manual_merge() {
+    GameState state = order_state();
+    CommandProcessor processor;
+    OrderSystem system;
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const ArmyId primary = state.create_army(CountryId{"alpha"}, alpha_a, 1'000);
+    const ArmyId secondary = state.create_army(CountryId{"alpha"}, alpha_a, 500);
+    state.find_army(primary)->movement_points = 12;
+    if (!system.queue_army_action(state, primary, {alpha_a, alpha_b}, false).accepted) {
+        return false;
+    }
+
+    const CommandResult merge_primary = processor.execute(
+        state, MergeArmiesCommand{primary, {secondary}}
+    );
+    if (merge_primary.accepted || state.find_army(primary) == nullptr ||
+        state.find_army(secondary) == nullptr) {
+        std::cerr << "Pending primary army was manually merged\n";
+        return false;
+    }
+
+    GameState participant_state = order_state();
+    const ArmyId participant_primary =
+        participant_state.create_army(CountryId{"alpha"}, alpha_a, 1'000);
+    const ArmyId ordered_participant =
+        participant_state.create_army(CountryId{"alpha"}, alpha_a, 500);
+    participant_state.find_army(ordered_participant)->movement_points = 12;
+    if (!system.queue_army_action(
+            participant_state, ordered_participant, {alpha_a, alpha_b}, false
+        ).accepted) {
+        return false;
+    }
+    const CommandResult merge_participant = processor.execute(
+        participant_state,
+        MergeArmiesCommand{participant_primary, {ordered_participant}}
+    );
+    if (merge_participant.accepted ||
+        participant_state.find_army(participant_primary) == nullptr ||
+        participant_state.find_army(ordered_participant) == nullptr) {
+        std::cerr << "Pending merge participant was manually merged\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_validate_requires_army_at_order_origin() {
+    GameState state = order_state();
+    OrderSystem system;
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const ArmyId army_id = state.create_army(CountryId{"alpha"}, alpha_a, 1'000);
+    state.find_army(army_id)->movement_points = 12;
+    if (!system.queue_army_action(state, army_id, {alpha_a, alpha_b}, false).accepted) {
+        return false;
+    }
+    state.find_army(army_id)->province_id = alpha_b;
+
+    bool found_origin_issue = false;
+    for (const std::string& issue : state.validate()) {
+        if (issue.find("order origin") != std::string::npos) found_origin_issue = true;
+    }
+    if (!found_origin_issue) {
+        std::cerr << "State validation accepted an army away from its order origin\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool run_order_system_tests() {
     return test_queue_and_cancel_orders() &&
         test_attack_target_country_lock() &&
         test_rejects_debt_and_preserves_state_on_failure() &&
-        test_command_processor_queues_and_cancels_projects();
+        test_command_processor_queues_and_cancels_projects() &&
+        test_monthly_grant_respects_reserved_movement() &&
+        test_pending_action_blocks_immediate_move_but_allows_rename() &&
+        test_pending_action_blocks_manual_merge() &&
+        test_validate_requires_army_at_order_origin();
 }

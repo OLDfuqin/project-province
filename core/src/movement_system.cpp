@@ -5,6 +5,23 @@
 #include <stdexcept>
 
 namespace province::core {
+namespace {
+
+std::int32_t reserved_movement_half(
+    const GameState& state,
+    const ArmyId& army_id
+) noexcept {
+    for (const auto& [id, order] : state.orders()) {
+        static_cast<void>(id);
+        const auto* action = std::get_if<ArmyActionOrder>(&order);
+        if (action != nullptr && action->army_id == army_id) {
+            return action->reserved_movement_half;
+        }
+    }
+    return 0;
+}
+
+} // namespace
 
 MonthlyMovementReport MovementSystem::grant_monthly_points(GameState& state) const {
     MonthlyMovementReport report;
@@ -29,12 +46,14 @@ MonthlyMovementReport MovementSystem::grant_monthly_points(GameState& state) con
         const std::int32_t movement_cap = maximum_movement_points_half(
             technology->military_level
         );
+        const std::int32_t reserved_points = reserved_movement_half(state, army_id);
+        const std::int32_t available_cap = std::max(0, movement_cap - reserved_points);
         if (army_snapshot.movement_points >
             std::numeric_limits<std::int32_t>::max() - granted_points) {
             throw std::overflow_error{"army movement point overflow"};
         }
         army->movement_points = std::min(
-            movement_cap,
+            available_cap,
             army->movement_points + granted_points
         );
         report.grants.push_back(ArmyMovementGrant{
@@ -57,6 +76,15 @@ ArmyMoveResult MovementSystem::move(
         return {false, "army does not exist", destination, destination, 0};
     }
     const ProvinceId origin = army->province_id;
+    if (reserved_movement_half(state, army_id) > 0) {
+        return {
+            false,
+            "army with a pending action order cannot move immediately",
+            origin,
+            destination,
+            0,
+        };
+    }
     const Country* moving_country = state.find_country(army->owner_id);
     if (moving_country == nullptr || moving_country->hidden) {
         return {false, "hidden neutral armies cannot move", origin, destination, 0};
