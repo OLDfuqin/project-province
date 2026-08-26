@@ -69,6 +69,52 @@ void refund_project_cost(
 
 } // namespace
 
+MonthlyOrderDiplomacyReport MonthlyOrderSystem::resolve_diplomacy(
+    GameState& state
+) const {
+    MonthlyOrderDiplomacyReport report;
+    std::vector<OrderId> declaration_ids;
+    for (const auto& [id, order] : state.orders_) {
+        if (std::holds_alternative<WarDeclarationOrder>(order)) {
+            declaration_ids.push_back(id);
+        }
+    }
+
+    for (const OrderId& id : declaration_ids) {
+        const auto found = state.orders_.find(id);
+        if (found == state.orders_.end()) continue;
+        const auto* stored = std::get_if<WarDeclarationOrder>(&found->second);
+        if (stored == nullptr) continue;
+        const WarDeclarationOrder order = *stored;
+        const Country* aggressor = state.find_country(order.country_id);
+        const Country* defender = state.find_country(order.defender_id);
+        std::string error;
+        if (order.country_id == order.defender_id) {
+            error = "a country cannot declare war on itself";
+        } else if (aggressor == nullptr || defender == nullptr) {
+            error = "war declaration references a missing country";
+        } else if (aggressor->hidden || defender->hidden) {
+            error = "hidden neutral country cannot participate in diplomacy";
+        } else if (state.are_at_war(order.country_id, order.defender_id)) {
+            error = "countries are already at war";
+        }
+
+        if (!error.empty()) {
+            report.invalidations.push_back({id, order.country_id, std::move(error)});
+            state.orders_.erase(found);
+            continue;
+        }
+        state.set_diplomatic_status(
+            order.country_id,
+            order.defender_id,
+            DiplomaticStatus::war
+        );
+        report.declarations.push_back({id, order.country_id, order.defender_id});
+        state.orders_.erase(found);
+    }
+    return report;
+}
+
 MonthlyOrderMovementReport MonthlyOrderSystem::resolve_movement(GameState& state) const {
     MonthlyOrderMovementReport report;
     std::vector<OrderId> action_ids;
@@ -287,7 +333,9 @@ MonthlyOrderProjectReport MonthlyOrderSystem::resolve_projects(GameState& state)
     std::vector<OrderId> project_ids;
     project_ids.reserve(state.orders_.size());
     for (const auto& [id, order] : state.orders_) {
-        if (!std::holds_alternative<ArmyActionOrder>(order)) {
+        if (std::holds_alternative<RecruitmentOrder>(order) ||
+            std::holds_alternative<RoadConstructionOrder>(order) ||
+            std::holds_alternative<ResearchOrder>(order)) {
             project_ids.push_back(id);
         }
     }

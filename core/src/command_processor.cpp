@@ -2,27 +2,43 @@
 #include "province/core/maintenance_system.hpp"
 
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <variant>
 
 namespace province::core {
+namespace {
+
+CountryId order_country_id(const GameOrder& order) {
+    return std::visit([](const auto& typed_order) {
+        return typed_order.country_id;
+    }, order);
+}
+
+} // namespace
 
 CommandProcessor::CommandProcessor(BattleSystem::RandomRoll random_roll)
     : battle_system_(std::move(random_roll)) {}
 
 void CommandProcessor::enable_ai(CountryId human_country_id) {
     human_country_id_ = std::move(human_country_id);
+    // Configuration-only restoration assumes persisted state already owns
+    // the correct initial orders and must not queue them a second time.
+    ai_state_initialized_ = true;
 }
 
 void CommandProcessor::enable_ai(GameState& state, CountryId human_country_id) {
-    enable_ai(std::move(human_country_id));
+    if (human_country_id_ == human_country_id && ai_state_initialized_) return;
+    human_country_id_ = std::move(human_country_id);
     static_cast<void>(queue_ai_orders(state));
+    ai_state_initialized_ = true;
 }
 
 void CommandProcessor::disable_ai() noexcept {
     human_country_id_.reset();
+    ai_state_initialized_ = false;
 }
 
 bool CommandProcessor::ai_enabled() const noexcept {
@@ -153,6 +169,11 @@ CommandResult CommandProcessor::execute_cancel_order(
     GameState& state,
     const CancelOrderCommand& command
 ) {
+    const auto found = state.orders().find(command.order_id);
+    if (found != state.orders().end() && human_country_id_.has_value() &&
+        order_country_id(found->second) != *human_country_id_) {
+        return {false, "cannot cancel another country's order", {}};
+    }
     const OrderOperationResult cancelled = order_system_.cancel(state, command.order_id);
     if (!cancelled.accepted) return {false, cancelled.error, {}};
     GameEvent event{
@@ -170,6 +191,14 @@ std::vector<GameEvent> CommandProcessor::queue_ai_orders(GameState& state) {
     const std::vector<AiDecision> decisions =
         ai_system_.plan_month(state, *human_country_id_);
     for (const AiDecision& decision : decisions) {
+        if (const auto* declaration = std::get_if<DeclareWarCommand>(&decision.command)) {
+            static_cast<void>(order_system_.queue_war_declaration(
+                state,
+                declaration->aggressor_id,
+                declaration->defender_id
+            ));
+            continue;
+        }
         const CommandResult result = execute(state, decision.command);
         if (!result.accepted) continue;
         for (const GameEvent& event : result.events) {
@@ -381,6 +410,34 @@ CommandResult CommandProcessor::execute_advance_turn(
             }
         }
 
+        std::set<OrderId> hidden_ai_orders;
+        if (human_country_id_.has_value()) {
+            for (const auto& [order_id, order] : working_state.orders()) {
+                if (order_country_id(order) != *human_country_id_) {
+                    hidden_ai_orders.insert(order_id);
+                }
+            }
+        }
+
+        const MonthlyOrderDiplomacyReport diplomacy_report =
+            monthly_order_system_.resolve_diplomacy(working_state);
+        for (const ResolvedWarDeclaration& declaration : diplomacy_report.declarations) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::war_declared,
+                WarDeclaredEvent{declaration.aggressor_id, declaration.defender_id},
+            });
+        }
+        for (const InvalidatedWarDeclaration& invalidation :
+                diplomacy_report.invalidations) {
+            if (hidden_ai_orders.contains(invalidation.order_id)) continue;
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::order_cancelled,
+                OrderCancelledEvent{invalidation.order_id},
+            });
+        }
+
         const MonthlyOrderMovementReport order_movement_report =
             monthly_order_system_.resolve_movement(working_state);
         for (const ResolvedArmyMovement& movement : order_movement_report.movements) {
@@ -397,6 +454,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             });
         }
         for (const RefundedArmyAction& refund : order_movement_report.refunds) {
+            if (hidden_ai_orders.contains(refund.order_id)) continue;
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::order_cancelled,
@@ -414,6 +472,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             });
         }
         for (const RefundedArmyAction& refund : order_combat_report.refunds) {
+            if (hidden_ai_orders.contains(refund.order_id)) continue;
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::order_cancelled,
@@ -457,6 +516,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             });
         }
         for (const RefundedProjectOrder& refund : project_report.refunds) {
+            if (hidden_ai_orders.contains(refund.order_id)) continue;
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::order_cancelled,
@@ -510,11 +570,16 @@ CommandResult CommandProcessor::execute_advance_turn(
                 MoveArmyCommand{army_id, *next_step}
             );
             if (move_result.accepted) {
-                ai_events.insert(
-                    ai_events.end(),
-                    move_result.events.begin(),
-                    move_result.events.end()
-                );
+                const bool hidden_ai_army = human_country_id_.has_value() &&
+                    army->owner_id != *human_country_id_;
+                for (const GameEvent& event : move_result.events) {
+                    if (hidden_ai_army &&
+                        (event.type == GameEventType::order_created ||
+                         event.type == GameEventType::order_cancelled)) {
+                        continue;
+                    }
+                    ai_events.push_back(event);
+                }
             }
         }
         std::vector<GameEvent> planned_ai_events = queue_ai_orders(working_state);

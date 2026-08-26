@@ -39,6 +39,11 @@ public:
         const CountryId& country_id,
         TechnologyTrack track
     ) const;
+    [[nodiscard]] OrderOperationResult queue_war_declaration(
+        GameState& state,
+        const CountryId& aggressor_id,
+        const CountryId& defender_id
+    ) const;
     [[nodiscard]] OrderOperationResult cancel(
         GameState& state,
         const OrderId& order_id

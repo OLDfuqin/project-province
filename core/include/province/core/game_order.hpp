@@ -51,11 +51,18 @@ struct ResearchOrder final {
     std::int32_t remaining_months{};
 };
 
+struct WarDeclarationOrder final {
+    OrderId id;
+    CountryId country_id;
+    CountryId defender_id;
+};
+
 using GameOrder = std::variant<
     ArmyActionOrder,
     RecruitmentOrder,
     RoadConstructionOrder,
-    ResearchOrder
+    ResearchOrder,
+    WarDeclarationOrder
 >;
 
 [[nodiscard]] inline const OrderId& order_id(const GameOrder& order) noexcept {

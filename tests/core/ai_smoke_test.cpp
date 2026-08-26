@@ -254,6 +254,142 @@ bool test_post_settlement_ai_order_cannot_see_later_human_order() {
     return true;
 }
 
+bool test_ai_non_war_plan_delays_declaration_until_next_month() {
+    GameState state{GameClock{1000, 1}};
+    const CountryId human{"human"};
+    const CountryId ai{"ai"};
+    const ProvinceId human_land{"human_land"};
+    const ProvinceId ai_land{"ai_land"};
+    state.add_country(Country{human, "Human", 0, 0, "HUM", false});
+    state.add_country(Country{ai, "AI", 0, 0, "AIC", false});
+    state.add_province(Province{
+        human_land, "Human Land", human, 10'000, 1'000, 0,
+        {ai_land}, 0, TerrainType::plains,
+    });
+    state.add_province(Province{
+        ai_land, "AI Land", ai, 10'000, 1'000, 0,
+        {human_land}, 0, TerrainType::plains,
+    });
+    static_cast<void>(state.create_army(ai, ai_land, 2'000));
+
+    CommandProcessor processor;
+    processor.enable_ai(state, human);
+    if (state.are_at_war(ai, human) || state.orders().size() != 1 ||
+        !state.validate().empty()) {
+        std::cerr << "AI changed diplomacy immediately while creating its initial plan\n";
+        return false;
+    }
+
+    const CommandResult advanced = processor.execute(state, AdvanceTurnCommand{1});
+    std::size_t declarations = 0;
+    for (const GameEvent& event : advanced.events) {
+        if (event.type != GameEventType::war_declared) continue;
+        const auto& declaration = std::get<WarDeclaredEvent>(event.payload);
+        if (declaration.aggressor_id == ai && declaration.defender_id == human) {
+            ++declarations;
+        }
+    }
+    if (!advanced.accepted || !state.are_at_war(ai, human) || declarations != 1) {
+        std::cerr << "Delayed AI war declaration did not resolve publicly next month\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_invalidated_ai_order_cancellation_remains_hidden() {
+    GameState state{GameClock{1000, 1}};
+    const CountryId human{"human"};
+    const CountryId ai{"ai"};
+    const CountryId defender{"defender"};
+    const ProvinceId ai_land{"ai_land"};
+    const ProvinceId target{"target"};
+    state.add_country(Country{human, "Human", 0, 0, "HUM", false});
+    state.add_country(Country{ai, "AI", 0, 0, "AIC", false});
+    state.add_country(Country{defender, "Defender", 0, 0, "DEF", false});
+    state.add_province(Province{
+        ai_land, "AI Land", ai, 10'000, 1'000, 0,
+        {target}, 0, TerrainType::plains,
+    });
+    state.add_province(Province{
+        target, "Target", defender, 10'000, 1'000, 0,
+        {ai_land}, 0, TerrainType::plains,
+    });
+    state.set_diplomatic_status(ai, defender, DiplomaticStatus::war);
+    const ArmyId army_id = state.create_army(ai, ai_land, 2'000);
+    state.find_army(army_id)->movement_points = 12;
+
+    CommandProcessor processor;
+    processor.enable_ai(state, human);
+    if (state.orders().size() != 1) return false;
+    state.set_diplomatic_status(ai, defender, DiplomaticStatus::peace);
+    const CommandResult advanced = processor.execute(state, AdvanceTurnCommand{1});
+    for (const GameEvent& event : advanced.events) {
+        if (event.type == GameEventType::order_cancelled) {
+            std::cerr << "Invalidated hidden AI order exposed a cancellation event\n";
+            return false;
+        }
+    }
+    return advanced.accepted;
+}
+
+bool test_repeated_stateful_ai_enable_is_idempotent() {
+    GameState state{GameClock{1000, 1}};
+    const CountryId human{"human"};
+    const CountryId ai{"ai"};
+    const ProvinceId ai_land{"ai_land"};
+    state.add_country(Country{human, "Human", 0, 0, "HUM", false});
+    state.add_country(Country{ai, "AI", 0, 10'000, "AIC", false});
+    state.add_province(Province{
+        ai_land, "AI Land", ai, 10'000, 1'000, 0,
+        {}, 0, TerrainType::plains,
+    });
+
+    CommandProcessor processor;
+    processor.enable_ai(state, human);
+    const std::int64_t treasury_after_first_enable = state.find_country(ai)->treasury;
+    processor.enable_ai(state, human);
+    if (state.orders().size() != 1 || treasury_after_first_enable != 8'000 ||
+        state.find_country(ai)->treasury != treasury_after_first_enable) {
+        std::cerr << "Repeated AI enable duplicated its initial plan or prepaid cost\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_ai_auto_advance_order_creation_remains_hidden() {
+    GameState state{GameClock{1000, 1}};
+    const CountryId human{"human"};
+    const CountryId ai{"ai"};
+    const ProvinceId origin{"origin"};
+    const ProvinceId destination{"destination"};
+    state.add_country(Country{human, "Human", 0, 0, "HUM", false});
+    state.add_country(Country{ai, "AI", 0, 0, "AIC", false});
+    state.add_province(Province{
+        origin, "Origin", ai, 10'000, 1'000, 0,
+        {destination}, 0, TerrainType::plains,
+    });
+    state.add_province(Province{
+        destination, "Destination", ai, 10'000, 1'000, 0,
+        {origin}, 0, TerrainType::plains,
+    });
+    const ArmyId army_id = state.create_army(ai, origin, 500);
+    Army* army = state.find_army(army_id);
+    army->movement_points = 12;
+    army->advance_target = destination;
+
+    CommandProcessor processor;
+    processor.enable_ai(human);
+    const CommandResult advanced = processor.execute(state, AdvanceTurnCommand{1});
+    if (!advanced.accepted || state.orders().size() != 1) return false;
+    for (const GameEvent& event : advanced.events) {
+        if (event.type == GameEventType::order_created) {
+            std::cerr << "AI auto-advance exposed its hidden order creation event\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 bool run_ai_smoke_tests() {
@@ -261,5 +397,9 @@ bool run_ai_smoke_tests() {
         test_ai_does_not_propose_unaffordable_recruitment() &&
         test_ai_planning_respects_existing_attack_target_lock() &&
         test_ai_initial_orders_wait_and_execute_next_month() &&
-        test_post_settlement_ai_order_cannot_see_later_human_order();
+        test_post_settlement_ai_order_cannot_see_later_human_order() &&
+        test_ai_non_war_plan_delays_declaration_until_next_month() &&
+        test_invalidated_ai_order_cancellation_remains_hidden() &&
+        test_repeated_stateful_ai_enable_is_idempotent() &&
+        test_ai_auto_advance_order_creation_remains_hidden();
 }

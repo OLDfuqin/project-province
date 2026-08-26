@@ -38,6 +38,23 @@ struct MonthlyOrderCombatReport final {
     std::vector<RefundedArmyAction> refunds;
 };
 
+struct ResolvedWarDeclaration final {
+    OrderId order_id;
+    CountryId aggressor_id;
+    CountryId defender_id;
+};
+
+struct InvalidatedWarDeclaration final {
+    OrderId order_id;
+    CountryId country_id;
+    std::string reason;
+};
+
+struct MonthlyOrderDiplomacyReport final {
+    std::vector<ResolvedWarDeclaration> declarations;
+    std::vector<InvalidatedWarDeclaration> invalidations;
+};
+
 struct CompletedRecruitmentOrder final {
     OrderId order_id;
     ArmyId army_id;
@@ -88,6 +105,9 @@ struct MonthlyArmyConsolidationReport final {
 
 class MonthlyOrderSystem final {
 public:
+    [[nodiscard]] MonthlyOrderDiplomacyReport resolve_diplomacy(
+        GameState& state
+    ) const;
     [[nodiscard]] MonthlyOrderMovementReport resolve_movement(GameState& state) const;
     [[nodiscard]] MonthlyOrderCombatReport resolve_combat(
         GameState& state,

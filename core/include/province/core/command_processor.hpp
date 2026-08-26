@@ -35,7 +35,9 @@ public:
 
     [[nodiscard]] CommandResult execute(GameState& state, const GameCommand& command);
     [[nodiscard]] static bool is_supported_turn_length(std::int32_t months) noexcept;
+    // Restore AI ownership when the loaded GameState already contains its orders.
     void enable_ai(CountryId human_country_id);
+    // Initialize AI ownership for a new scenario and queue its first-month plan.
     void enable_ai(GameState& state, CountryId human_country_id);
     void disable_ai() noexcept;
     [[nodiscard]] bool ai_enabled() const noexcept;
@@ -99,6 +101,7 @@ private:
     TechnologySystem technology_system_;
     OrderSystem order_system_;
     std::optional<CountryId> human_country_id_;
+    bool ai_state_initialized_{};
 };
 
 } // namespace province::core

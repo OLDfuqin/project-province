@@ -49,6 +49,25 @@ bool has_road_order(
     return false;
 }
 
+bool has_war_declaration_order(
+    const GameState& state,
+    const CountryId& country_a,
+    const CountryId& country_b
+) {
+    for (const auto& [id, order] : state.orders()) {
+        static_cast<void>(id);
+        const auto* declaration = std::get_if<WarDeclarationOrder>(&order);
+        if (declaration == nullptr) continue;
+        if ((declaration->country_id == country_a &&
+             declaration->defender_id == country_b) ||
+            (declaration->country_id == country_b &&
+             declaration->defender_id == country_a)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::optional<CountryId> attack_lock_owner(
     const GameState& state,
     const ProvinceId& destination
@@ -287,6 +306,37 @@ OrderOperationResult OrderSystem::queue_research(
     return {true, {}, id};
 }
 
+OrderOperationResult OrderSystem::queue_war_declaration(
+    GameState& state,
+    const CountryId& aggressor_id,
+    const CountryId& defender_id
+) const {
+    if (aggressor_id == defender_id) {
+        return rejected("a country cannot declare war on itself");
+    }
+    const Country* aggressor = state.find_country(aggressor_id);
+    const Country* defender = state.find_country(defender_id);
+    if (aggressor == nullptr) return rejected("aggressor country does not exist");
+    if (defender == nullptr) return rejected("defender country does not exist");
+    if (aggressor->hidden || defender->hidden) {
+        return rejected("hidden neutral country cannot participate in diplomacy");
+    }
+    if (state.are_at_war(aggressor_id, defender_id)) {
+        return rejected("countries are already at war");
+    }
+    if (has_war_declaration_order(state, aggressor_id, defender_id)) {
+        return rejected("countries already have a pending war declaration");
+    }
+
+    const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
+    state.orders_.emplace(
+        id,
+        WarDeclarationOrder{id, aggressor_id, defender_id}
+    );
+    ++state.next_order_sequence_;
+    return {true, {}, id};
+}
+
 OrderOperationResult OrderSystem::cancel(
     GameState& state,
     const OrderId& id
@@ -306,6 +356,8 @@ OrderOperationResult OrderSystem::cancel(
             } else {
                 army->movement_points += order.reserved_movement_half;
             }
+        } else if constexpr (std::is_same_v<OrderType, WarDeclarationOrder>) {
+            // Diplomacy intent has no prepaid resource to refund.
         } else {
             Country* country = state.find_country(order.country_id);
             if (country == nullptr) {

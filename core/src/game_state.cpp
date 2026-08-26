@@ -453,6 +453,7 @@ std::vector<std::string> GameState::validate() const {
     std::set<ArmyId> ordered_armies;
     std::set<CountryId> researching_countries;
     std::set<ProvinceConnectionKey> ordered_roads;
+    std::set<CountryRelationKey> ordered_war_declarations;
     std::map<ProvinceId, CountryId> attack_locks;
     std::map<ProvinceId, std::int64_t> reserved_population;
     for (const auto& [id, order] : orders_) {
@@ -549,6 +550,20 @@ std::vector<std::string> GameState::validate() const {
                     typed_order.paid_cost <= 0 || typed_order.remaining_months <= 0 ||
                     typed_order.remaining_months > typed_order.target_level + 1) {
                     issues.push_back("research order has invalid progress or reservation values");
+                }
+            } else if constexpr (std::is_same_v<OrderType, WarDeclarationOrder>) {
+                const Country* aggressor = find_country(typed_order.country_id);
+                const Country* defender = find_country(typed_order.defender_id);
+                if (typed_order.country_id == typed_order.defender_id ||
+                    aggressor == nullptr || defender == nullptr ||
+                    (aggressor != nullptr && aggressor->hidden) ||
+                    (defender != nullptr && defender->hidden)) {
+                    issues.push_back("war declaration order references invalid countries");
+                }
+                if (!ordered_war_declarations.insert(CountryRelationKey{
+                        typed_order.country_id, typed_order.defender_id
+                    }).second) {
+                    issues.push_back("countries have more than one war declaration order");
                 }
             }
         }, order);
