@@ -108,8 +108,9 @@ int run_smoke_tests() {
     const CommandResult turn = processor.execute(state, AdvanceTurnCommand{1});
     const Army* army = state.find_army(army_id);
     if (!turn.accepted || army == nullptr ||
-        army->movement_points != MovementSystem::base_monthly_movement_points_half) {
-        std::cerr << "Generated army did not receive monthly movement points\n";
+        army->manpower != 2'000 || army->movement_points != 0 ||
+        state.army_count() != 18) {
+        std::cerr << "Generated recruitment did not complete and auto-merge deterministically\n";
         return 1;
     }
     std::size_t fiscal_event_index = turn.events.size();
@@ -135,11 +136,13 @@ int run_smoke_tests() {
             return 1;
         }
     }
+    state.find_army(army_id)->movement_points =
+        MovementSystem::base_monthly_movement_points_half;
     const CommandResult movement = processor.execute(
         state, MoveArmyCommand{army_id, city_id}
     );
     if (!movement.accepted || state.find_army(army_id)->province_id != capital_id ||
-        state.orders().size() != 2 ||
+        state.orders().size() != 1 ||
         movement.events.front().type != GameEventType::order_created) {
         std::cerr << "Generated map movement was not queued\n";
         return 1;

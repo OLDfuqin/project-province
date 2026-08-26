@@ -398,6 +398,65 @@ CommandResult CommandProcessor::execute_advance_turn(
             });
         }
 
+        const MonthlyOrderProjectReport project_report =
+            monthly_order_system_.resolve_projects(working_state);
+        for (const CompletedRecruitmentOrder& recruitment : project_report.recruitments) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::army_recruited,
+                ArmyRecruitedEvent{
+                    recruitment.army_id,
+                    recruitment.country_id,
+                    recruitment.province_id,
+                    recruitment.manpower,
+                    recruitment.paid_cost,
+                },
+            });
+        }
+        for (const CompletedRoadOrder& road : project_report.roads) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::road_built,
+                RoadBuiltEvent{
+                    road.country_id,
+                    road.province_a,
+                    road.province_b,
+                    RoadLevel::paved,
+                    road.paid_cost,
+                },
+            });
+        }
+        for (const CompletedResearchOrder& research : project_report.research) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::technology_researched,
+                research.result,
+            });
+        }
+        for (const RefundedProjectOrder& refund : project_report.refunds) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::order_cancelled,
+                OrderCancelledEvent{refund.order_id},
+            });
+        }
+
+        const MonthlyArmyConsolidationReport consolidation_report =
+            monthly_order_system_.consolidate_armies(working_state);
+        for (const AutomaticArmyMerge& merge : consolidation_report.merges) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::armies_merged,
+                ArmiesMergedEvent{
+                    merge.primary_army_id,
+                    merge.merged_army_ids,
+                    merge.previous_manpower,
+                    merge.current_manpower,
+                    merge.current_movement_points,
+                },
+            });
+        }
+
         std::vector<ArmyId> planned_armies;
         planned_armies.reserve(working_state.army_count());
         for (const auto& [army_id, army] : working_state.armies()) {

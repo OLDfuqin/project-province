@@ -2,6 +2,8 @@
 
 #include "province/core/battle_system.hpp"
 #include "province/core/game_state.hpp"
+#include "province/core/road_system.hpp"
+#include "province/core/technology_system.hpp"
 
 #include <cstdint>
 #include <string>
@@ -36,12 +38,64 @@ struct MonthlyOrderCombatReport final {
     std::vector<RefundedArmyAction> refunds;
 };
 
+struct CompletedRecruitmentOrder final {
+    OrderId order_id;
+    ArmyId army_id;
+    CountryId country_id;
+    ProvinceId province_id;
+    std::int64_t manpower{};
+    std::int64_t paid_cost{};
+};
+
+struct CompletedRoadOrder final {
+    OrderId order_id;
+    CountryId country_id;
+    ProvinceId province_a;
+    ProvinceId province_b;
+    std::int64_t paid_cost{};
+};
+
+struct CompletedResearchOrder final {
+    OrderId order_id;
+    TechnologyResearchResult result;
+};
+
+struct RefundedProjectOrder final {
+    OrderId order_id;
+    CountryId country_id;
+    std::int64_t refunded_cost{};
+    std::string reason;
+};
+
+struct MonthlyOrderProjectReport final {
+    std::vector<CompletedRecruitmentOrder> recruitments;
+    std::vector<CompletedRoadOrder> roads;
+    std::vector<CompletedResearchOrder> research;
+    std::vector<RefundedProjectOrder> refunds;
+};
+
+struct AutomaticArmyMerge final {
+    ArmyId primary_army_id;
+    std::vector<ArmyId> merged_army_ids;
+    std::int64_t previous_manpower{};
+    std::int64_t current_manpower{};
+    std::int32_t current_movement_points{};
+};
+
+struct MonthlyArmyConsolidationReport final {
+    std::vector<AutomaticArmyMerge> merges;
+};
+
 class MonthlyOrderSystem final {
 public:
     [[nodiscard]] MonthlyOrderMovementReport resolve_movement(GameState& state) const;
     [[nodiscard]] MonthlyOrderCombatReport resolve_combat(
         GameState& state,
         const BattleSystem& battle_system
+    ) const;
+    [[nodiscard]] MonthlyOrderProjectReport resolve_projects(GameState& state) const;
+    [[nodiscard]] MonthlyArmyConsolidationReport consolidate_armies(
+        GameState& state
     ) const;
 };
 

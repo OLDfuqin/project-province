@@ -42,6 +42,13 @@ public:
         const ProvinceId& province_id,
         std::int64_t manpower
     ) const;
+    [[nodiscard]] ArmyRecruitResult complete_prepaid_recruitment(
+        GameState& state,
+        const CountryId& country_id,
+        const ProvinceId& province_id,
+        std::int64_t manpower,
+        std::int64_t paid_cost
+    ) const;
     [[nodiscard]] ArmyRenameResult rename(
         GameState& state,
         const ArmyId& army_id,

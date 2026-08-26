@@ -57,6 +57,13 @@ public:
         const ProvinceId& province_a,
         const ProvinceId& province_b
     ) const;
+    [[nodiscard]] RoadBuildResult complete_prepaid_paved_road(
+        GameState& state,
+        const CountryId& country_id,
+        const ProvinceId& province_a,
+        const ProvinceId& province_b,
+        std::int64_t paid_cost
+    ) const;
 };
 
 } // namespace province::core

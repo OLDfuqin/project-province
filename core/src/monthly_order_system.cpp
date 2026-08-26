@@ -1,7 +1,9 @@
 #include "province/core/monthly_order_system.hpp"
 
+#include "province/core/army_system.hpp"
 #include "province/core/movement_system.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <optional>
@@ -47,6 +49,22 @@ void add_refund(Army& army, const std::int32_t refund) {
         throw std::overflow_error{"army movement refund overflow"};
     }
     army.movement_points += refund;
+}
+
+void refund_project_cost(
+    GameState& state,
+    const CountryId& country_id,
+    const std::int64_t paid_cost
+) {
+    Country* country = state.find_country(country_id);
+    if (country == nullptr) {
+        throw std::logic_error{"project refund country no longer exists"};
+    }
+    if (paid_cost <= 0 || country->treasury >
+            std::numeric_limits<std::int64_t>::max() - paid_cost) {
+        throw std::overflow_error{"project refund would overflow country treasury"};
+    }
+    country->treasury += paid_cost;
 }
 
 } // namespace
@@ -259,6 +277,169 @@ MonthlyOrderCombatReport MonthlyOrderSystem::resolve_combat(
         }
         for (const OrderId& id : consumed_orders) {
             state.orders_.erase(id);
+        }
+    }
+    return report;
+}
+
+MonthlyOrderProjectReport MonthlyOrderSystem::resolve_projects(GameState& state) const {
+    MonthlyOrderProjectReport report;
+    std::vector<OrderId> project_ids;
+    project_ids.reserve(state.orders_.size());
+    for (const auto& [id, order] : state.orders_) {
+        if (!std::holds_alternative<ArmyActionOrder>(order)) {
+            project_ids.push_back(id);
+        }
+    }
+
+    for (const OrderId& id : project_ids) {
+        const auto found = state.orders_.find(id);
+        if (found == state.orders_.end()) continue;
+
+        if (auto* recruitment = std::get_if<RecruitmentOrder>(&found->second)) {
+            --recruitment->remaining_months;
+            if (recruitment->remaining_months > 0) continue;
+            const RecruitmentOrder order = *recruitment;
+            const ArmyRecruitResult result = ArmySystem{}.complete_prepaid_recruitment(
+                state,
+                order.country_id,
+                order.province_id,
+                order.manpower,
+                order.paid_cost
+            );
+            if (result.accepted && result.army_id.has_value()) {
+                report.recruitments.push_back({
+                    id,
+                    *result.army_id,
+                    order.country_id,
+                    order.province_id,
+                    order.manpower,
+                    order.paid_cost,
+                });
+            } else {
+                refund_project_cost(state, order.country_id, order.paid_cost);
+                report.refunds.push_back({
+                    id, order.country_id, order.paid_cost, result.error,
+                });
+            }
+            state.orders_.erase(found);
+            continue;
+        }
+
+        if (auto* road = std::get_if<RoadConstructionOrder>(&found->second)) {
+            --road->remaining_months;
+            if (road->remaining_months > 0) continue;
+            const RoadConstructionOrder order = *road;
+            const RoadBuildResult result = RoadSystem{}.complete_prepaid_paved_road(
+                state,
+                order.country_id,
+                order.province_a,
+                order.province_b,
+                order.paid_cost
+            );
+            if (result.accepted) {
+                report.roads.push_back({
+                    id,
+                    order.country_id,
+                    order.province_a,
+                    order.province_b,
+                    order.paid_cost,
+                });
+            } else {
+                refund_project_cost(state, order.country_id, order.paid_cost);
+                report.refunds.push_back({
+                    id, order.country_id, order.paid_cost, result.error,
+                });
+            }
+            state.orders_.erase(found);
+            continue;
+        }
+
+        auto* research = std::get_if<ResearchOrder>(&found->second);
+        if (research == nullptr) continue;
+        --research->remaining_months;
+        if (research->remaining_months > 0) continue;
+        const ResearchOrder order = *research;
+        const TechnologyResearchResult result =
+            TechnologySystem{}.complete_prepaid_research(
+                state,
+                order.country_id,
+                order.track,
+                order.previous_level,
+                order.target_level,
+                order.paid_cost
+            );
+        if (result.accepted) {
+            report.research.push_back({id, result});
+        } else {
+            refund_project_cost(state, order.country_id, order.paid_cost);
+            report.refunds.push_back({
+                id, order.country_id, order.paid_cost, result.error,
+            });
+        }
+        state.orders_.erase(found);
+    }
+    return report;
+}
+
+MonthlyArmyConsolidationReport MonthlyOrderSystem::consolidate_armies(
+    GameState& state
+) const {
+    MonthlyArmyConsolidationReport report;
+    using Location = std::pair<CountryId, ProvinceId>;
+    std::map<Location, std::vector<ArmyId>> locations;
+    for (const auto& [army_id, army] : state.armies()) {
+        locations[{army.owner_id, army.province_id}].push_back(army_id);
+    }
+
+    constexpr std::int64_t automatic_merge_limit = 1'500;
+    for (const auto& [location, initial_ids] : locations) {
+        static_cast<void>(initial_ids);
+        while (true) {
+            std::vector<ArmyId> candidates;
+            for (const auto& [army_id, army] : state.armies()) {
+                if (army.owner_id == location.first && army.province_id == location.second &&
+                    army.manpower < automatic_merge_limit) {
+                    candidates.push_back(army_id);
+                }
+            }
+            if (candidates.size() < 2) break;
+            std::sort(
+                candidates.begin(),
+                candidates.end(),
+                [&state](const ArmyId& lhs_id, const ArmyId& rhs_id) {
+                    const Army& lhs = *state.find_army(lhs_id);
+                    const Army& rhs = *state.find_army(rhs_id);
+                    if (lhs.manpower != rhs.manpower) return lhs.manpower < rhs.manpower;
+                    return lhs_id < rhs_id;
+                }
+            );
+
+            const ArmyId first_id = candidates[0];
+            const ArmyId second_id = candidates[1];
+            const Army& first = *state.find_army(first_id);
+            const Army& second = *state.find_army(second_id);
+            const bool first_survives = first.formation_number < second.formation_number ||
+                (first.formation_number == second.formation_number && first_id < second_id);
+            const ArmyId primary_id = first_survives ? first_id : second_id;
+            const ArmyId merged_id = first_survives ? second_id : first_id;
+            const ArmyMergeResult merged = ArmySystem{}.merge(
+                state,
+                primary_id,
+                {merged_id}
+            );
+            if (!merged.accepted) {
+                throw std::logic_error{
+                    "automatic army consolidation failed: " + merged.error
+                };
+            }
+            report.merges.push_back({
+                primary_id,
+                {merged_id},
+                merged.previous_manpower,
+                merged.current_manpower,
+                merged.current_movement_points,
+            });
         }
     }
     return report;

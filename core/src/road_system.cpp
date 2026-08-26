@@ -59,4 +59,52 @@ RoadBuildResult RoadSystem::build_paved_road(
     return {true, {}, cost};
 }
 
+RoadBuildResult RoadSystem::complete_prepaid_paved_road(
+    GameState& state,
+    const CountryId& country_id,
+    const ProvinceId& province_a,
+    const ProvinceId& province_b,
+    const std::int64_t paid_cost
+) const {
+    if (paid_cost <= 0) {
+        return {false, "prepaid road cost must be positive", 0};
+    }
+    const Country* country = state.find_country(country_id);
+    if (country == nullptr) {
+        return {false, "road builder country does not exist", 0};
+    }
+    if (country->hidden) {
+        return {false, "hidden neutral country cannot build roads", 0};
+    }
+    const Province* first = state.find_province(province_a);
+    const Province* second = state.find_province(province_b);
+    if (first == nullptr || second == nullptr) {
+        return {false, "both road endpoint provinces must exist", 0};
+    }
+    if (!state.are_adjacent(province_a, province_b)) {
+        return {false, "road endpoint provinces are not adjacent", 0};
+    }
+    if (state.controller_of(province_a) != country_id ||
+        state.controller_of(province_b) != country_id) {
+        return {false, "road endpoint provinces must be controlled by the paying country", 0};
+    }
+    if (state.road_level(province_a, province_b) != RoadLevel::none) {
+        return {false, "a paved road already exists on this connection", 0};
+    }
+    const CountryTechnology* technology = state.find_technology(country_id);
+    if (technology == nullptr) {
+        return {false, "road builder has no technology state", 0};
+    }
+    if (technology->roads_level < required_roads_level(first->terrain, second->terrain)) {
+        return {
+            false,
+            "road technology level is insufficient for these terrain endpoints",
+            0,
+        };
+    }
+
+    state.set_road_level(province_a, province_b, RoadLevel::paved);
+    return {true, {}, paid_cost};
+}
+
 } // namespace province::core

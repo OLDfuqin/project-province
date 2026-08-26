@@ -56,4 +56,61 @@ TechnologyResearchResult TechnologySystem::research(
     };
 }
 
+TechnologyResearchResult TechnologySystem::complete_prepaid_research(
+    GameState& state,
+    const CountryId& country_id,
+    const TechnologyTrack track,
+    const std::int32_t previous_level,
+    const std::int32_t target_level,
+    const std::int64_t paid_cost
+) const {
+    Country* country = state.find_country(country_id);
+    CountryTechnology* technology = state.find_technology(country_id);
+    if (country == nullptr || technology == nullptr) {
+        return {
+            false,
+            "researching country does not exist",
+            country_id,
+            track,
+            previous_level,
+            previous_level,
+            0,
+        };
+    }
+    if (country->hidden) {
+        return {
+            false,
+            "hidden neutral country cannot research",
+            country_id,
+            track,
+            previous_level,
+            previous_level,
+            0,
+        };
+    }
+    if (paid_cost <= 0 || target_level != previous_level + 1 ||
+        target_level > maximum_level(track) || technology->level(track) != previous_level) {
+        return {
+            false,
+            "research order no longer matches the current technology level",
+            country_id,
+            track,
+            technology->level(track),
+            technology->level(track),
+            0,
+        };
+    }
+
+    technology->level(track) = target_level;
+    return {
+        true,
+        {},
+        country_id,
+        track,
+        previous_level,
+        target_level,
+        paid_cost,
+    };
+}
+
 } // namespace province::core

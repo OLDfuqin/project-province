@@ -34,6 +34,14 @@ public:
         const CountryId& country_id,
         TechnologyTrack track
     ) const;
+    [[nodiscard]] TechnologyResearchResult complete_prepaid_research(
+        GameState& state,
+        const CountryId& country_id,
+        TechnologyTrack track,
+        std::int32_t previous_level,
+        std::int32_t target_level,
+        std::int64_t paid_cost
+    ) const;
 };
 
 } // namespace province::core

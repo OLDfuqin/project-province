@@ -65,6 +65,40 @@ ArmyRecruitResult ArmySystem::recruit(
     return {true, {}, cost, army_id};
 }
 
+ArmyRecruitResult ArmySystem::complete_prepaid_recruitment(
+    GameState& state,
+    const CountryId& country_id,
+    const ProvinceId& province_id,
+    const std::int64_t manpower,
+    const std::int64_t paid_cost
+) const {
+    if (manpower <= 0 || paid_cost <= 0) {
+        return {false, "prepaid recruitment values must be positive", 0, std::nullopt};
+    }
+    Country* country = state.find_country(country_id);
+    Province* province = state.find_province(province_id);
+    if (country == nullptr) {
+        return {false, "recruiting country does not exist", 0, std::nullopt};
+    }
+    if (country->hidden) {
+        return {false, "hidden neutral country cannot recruit", 0, std::nullopt};
+    }
+    if (province == nullptr) {
+        return {false, "recruitment province does not exist", 0, std::nullopt};
+    }
+    if (state.controller_of(province_id) != country_id) {
+        return {false, "recruitment province is not controlled by the country", 0, std::nullopt};
+    }
+    if (province->recruitable_population < manpower || province->population < manpower) {
+        return {false, "province population reserved for recruitment is unavailable", 0, std::nullopt};
+    }
+
+    province->recruitable_population -= manpower;
+    PopulationSystem::apply_population_delta(*province, -manpower);
+    const ArmyId army_id = state.create_army(country_id, province_id, manpower);
+    return {true, {}, paid_cost, army_id};
+}
+
 ArmyRenameResult ArmySystem::rename(
     GameState& state,
     const ArmyId& army_id,

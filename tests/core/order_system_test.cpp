@@ -773,14 +773,16 @@ bool test_monthly_unopposed_group_occupies_and_reports_every_attacker() {
     );
     if (!advanced.accepted || battle_event == advanced.events.end()) return false;
     const BattleResolution& battle = std::get<BattleResolution>(battle_event->payload);
+    const Army* consolidated_attacker = state.find_army(attacker_a);
     if (battle.occurred || !battle.attacker_won || !battle.province_occupied ||
         battle.attacker_initial_manpower != 300 || battle.attacker_remaining_manpower != 300 ||
         battle.armies.size() != 2 || find_outcome(battle, attacker_a) == nullptr ||
         find_outcome(battle, attacker_b) == nullptr ||
-        state.find_army(attacker_a)->province_id != target ||
-        state.find_army(attacker_b)->province_id != target ||
+        consolidated_attacker == nullptr || consolidated_attacker->province_id != target ||
+        consolidated_attacker->manpower != 300 ||
+        state.find_army(attacker_b) != nullptr ||
         state.controller_of(target) != alpha || !state.orders().empty()) {
-        std::cerr << "Unopposed grouped attack did not occupy or preserve every attacker result\n";
+        std::cerr << "Unopposed grouped attack did not report both attackers before consolidation\n";
         return false;
     }
     return true;
@@ -939,6 +941,197 @@ bool test_validate_requires_army_at_order_origin() {
     return true;
 }
 
+bool test_monthly_projects_complete_prepaid_recruitment_and_road_once() {
+    GameState state = order_state();
+    OrderSystem orders;
+    MonthlyOrderSystem monthly;
+    const CountryId alpha{"alpha"};
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const std::int64_t original_treasury = state.find_country(alpha)->treasury;
+    const std::int64_t original_population = state.find_province(alpha_a)->population;
+    const std::int64_t original_recruitable =
+        state.find_province(alpha_a)->recruitable_population;
+    const std::int64_t original_economy = state.find_province(alpha_a)->base_economy;
+
+    const OrderOperationResult recruitment =
+        orders.queue_recruitment(state, alpha, alpha_a, 600);
+    const OrderOperationResult road =
+        orders.queue_road_construction(state, alpha, alpha_a, alpha_b);
+    if (!recruitment.accepted || !road.accepted) return false;
+    const std::int64_t prepaid_treasury = state.find_country(alpha)->treasury;
+
+    const MonthlyOrderProjectReport report = monthly.resolve_projects(state);
+    if (report.recruitments.size() != 1 || report.roads.size() != 1 ||
+        !report.refunds.empty() || !state.orders().empty() ||
+        state.army_count() != 1 || state.armies().begin()->second.manpower != 600 ||
+        state.find_province(alpha_a)->population != original_population - 600 ||
+        state.find_province(alpha_a)->recruitable_population != original_recruitable - 600 ||
+        state.find_province(alpha_a)->base_economy != original_economy - 600 ||
+        state.road_level(alpha_a, alpha_b) != RoadLevel::paved ||
+        state.find_country(alpha)->treasury != prepaid_treasury ||
+        prepaid_treasury != original_treasury - 2'400 - 540) {
+        std::cerr << "Monthly prepaid recruitment/road completion mutated resources incorrectly\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_monthly_research_uses_target_level_plus_one_months() {
+    const CountryId alpha{"alpha"};
+    OrderSystem orders;
+    MonthlyOrderSystem monthly;
+
+    GameState first_level = order_state();
+    if (!orders.queue_research(first_level, alpha, TechnologyTrack::military).accepted) {
+        return false;
+    }
+    const std::int64_t prepaid_treasury = first_level.find_country(alpha)->treasury;
+    const MonthlyOrderProjectReport first_tick = monthly.resolve_projects(first_level);
+    if (!first_tick.research.empty() || first_level.orders().size() != 1 ||
+        first_level.find_technology(alpha)->military_level != 0 ||
+        std::get<ResearchOrder>(first_level.orders().begin()->second).remaining_months != 1) {
+        std::cerr << "Level-one research completed before its second monthly project tick\n";
+        return false;
+    }
+    const MonthlyOrderProjectReport second_tick = monthly.resolve_projects(first_level);
+    if (second_tick.research.size() != 1 || !first_level.orders().empty() ||
+        first_level.find_technology(alpha)->military_level != 1 ||
+        first_level.find_country(alpha)->treasury != prepaid_treasury) {
+        std::cerr << "Level-one prepaid research did not complete after two months\n";
+        return false;
+    }
+
+    GameState eighth_level = order_state();
+    eighth_level.find_technology(alpha)->military_level = 7;
+    if (!orders.queue_research(eighth_level, alpha, TechnologyTrack::military).accepted) {
+        return false;
+    }
+    const std::int64_t level_eight_treasury = eighth_level.find_country(alpha)->treasury;
+    for (int month = 0; month < 8; ++month) {
+        const MonthlyOrderProjectReport tick = monthly.resolve_projects(eighth_level);
+        if (!tick.research.empty() || eighth_level.find_technology(alpha)->military_level != 7) {
+            std::cerr << "Level-eight research completed before its ninth monthly tick\n";
+            return false;
+        }
+    }
+    const MonthlyOrderProjectReport final_tick = monthly.resolve_projects(eighth_level);
+    if (final_tick.research.size() != 1 ||
+        eighth_level.find_technology(alpha)->military_level != 8 ||
+        eighth_level.find_country(alpha)->treasury != level_eight_treasury ||
+        !eighth_level.orders().empty()) {
+        std::cerr << "Level-eight prepaid research did not complete on its ninth tick\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_invalidated_monthly_projects_refund_prepaid_costs() {
+    GameState state = order_state();
+    OrderSystem orders;
+    MonthlyOrderSystem monthly;
+    const CountryId alpha{"alpha"};
+    const CountryId beta{"beta"};
+    const ProvinceId alpha_a{"alpha_a"};
+    const ProvinceId alpha_b{"alpha_b"};
+
+    const OrderOperationResult recruitment =
+        orders.queue_recruitment(state, alpha, alpha_a, 100);
+    const OrderOperationResult road =
+        orders.queue_road_construction(state, alpha, alpha_a, alpha_b);
+    const OrderOperationResult research =
+        orders.queue_research(state, alpha, TechnologyTrack::economy);
+    if (!recruitment.accepted || !road.accepted || !research.accepted) return false;
+    const std::int64_t after_prepayment = state.find_country(alpha)->treasury;
+    const std::int64_t total_paid = 400 + 540 + 5'000;
+
+    state.set_occupation(alpha_a, beta);
+    state.find_technology(alpha)->economy_level = 1;
+    const MonthlyOrderProjectReport first_tick = monthly.resolve_projects(state);
+    if (first_tick.refunds.size() != 2 || state.orders().size() != 1 ||
+        state.find_country(alpha)->treasury != after_prepayment + 400 + 540 ||
+        state.army_count() != 0 || state.road_level(alpha_a, alpha_b) != RoadLevel::none) {
+        std::cerr << "Invalid one-month projects were not removed and fully refunded\n";
+        return false;
+    }
+    const MonthlyOrderProjectReport second_tick = monthly.resolve_projects(state);
+    if (second_tick.refunds.size() != 1 || !state.orders().empty() ||
+        state.find_country(alpha)->treasury != after_prepayment + total_paid ||
+        state.find_technology(alpha)->economy_level != 1) {
+        std::cerr << "Invalid progressed research was not fully refunded by the system\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_project_phase_runs_after_combat_and_refunds_lost_province_recruitment() {
+    GameState state = grouped_combat_state();
+    OrderSystem orders;
+    const CountryId alpha{"alpha"};
+    const CountryId beta{"beta"};
+    const ProvinceId alpha_b{"alpha_b"};
+    const ProvinceId target{"target"};
+    const ArmyId attacker = state.create_army(alpha, alpha_b, 2'000);
+    state.find_army(attacker)->movement_points = 8;
+    if (!orders.queue_army_action(state, attacker, {alpha_b, target}, true).accepted ||
+        !orders.queue_recruitment(state, beta, target, 100).accepted) {
+        return false;
+    }
+
+    CommandProcessor processor{fixed_rolls({})};
+    const CommandResult advanced = processor.execute(state, AdvanceTurnCommand{1});
+    const auto battle = std::find_if(
+        advanced.events.begin(), advanced.events.end(),
+        [](const GameEvent& event) { return event.type == GameEventType::battle_resolved; }
+    );
+    const auto refunded = std::find_if(
+        advanced.events.begin(), advanced.events.end(),
+        [](const GameEvent& event) { return event.type == GameEventType::order_cancelled; }
+    );
+    if (!advanced.accepted || battle == advanced.events.end() ||
+        refunded == advanced.events.end() || battle >= refunded ||
+        state.controller_of(target) != alpha || state.army_count() != 1 ||
+        !state.orders().empty()) {
+        std::cerr << "Recruitment project did not invalidate after same-month occupation\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_month_end_auto_consolidation_is_repeated_and_deterministic() {
+    GameState state = order_state();
+    const CountryId alpha{"alpha"};
+    const ProvinceId alpha_a{"alpha_a"};
+    const ArmyId first = state.create_army(alpha, alpha_a, 600);
+    const ArmyId second = state.create_army(alpha, alpha_a, 400);
+    const ArmyId third = state.create_army(alpha, alpha_a, 700);
+    const ArmyId fourth = state.create_army(alpha, alpha_a, 500);
+    state.find_army(first)->movement_points = 8;
+    state.find_army(second)->movement_points = 2;
+    state.find_army(third)->movement_points = 6;
+    state.find_army(fourth)->movement_points = 4;
+    state.find_army(first)->formation_number = 9;
+    state.find_army(second)->formation_number = 8;
+    state.find_army(third)->formation_number = 7;
+    state.find_army(fourth)->formation_number = 6;
+
+    const MonthlyArmyConsolidationReport report =
+        MonthlyOrderSystem{}.consolidate_armies(state);
+    if (report.merges.size() != 3 || state.army_count() != 1) {
+        std::cerr << "Auto consolidation did not repeatedly merge all sub-1500 pairs\n";
+        return false;
+    }
+    const Army& survivor = state.armies().begin()->second;
+    if (survivor.manpower != 2'200 || survivor.formation_number != 6 ||
+        survivor.movement_points != 2 || survivor.id != fourth ||
+        report.merges.front().primary_army_id != fourth ||
+        report.merges.front().merged_army_ids != std::vector<ArmyId>{second}) {
+        std::cerr << "Auto consolidation did not follow manpower/ID pairing and formation retention\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool run_order_system_tests() {
@@ -963,5 +1156,10 @@ bool run_order_system_tests() {
         test_auto_advance_queues_at_most_one_next_month_step() &&
         test_pending_action_blocks_immediate_move_but_allows_rename() &&
         test_pending_action_blocks_manual_merge() &&
-        test_validate_requires_army_at_order_origin();
+        test_validate_requires_army_at_order_origin() &&
+        test_monthly_projects_complete_prepaid_recruitment_and_road_once() &&
+        test_monthly_research_uses_target_level_plus_one_months() &&
+        test_invalidated_monthly_projects_refund_prepaid_costs() &&
+        test_project_phase_runs_after_combat_and_refunds_lost_province_recruitment() &&
+        test_month_end_auto_consolidation_is_repeated_and_deterministic();
 }
