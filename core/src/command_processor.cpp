@@ -265,52 +265,34 @@ CommandResult CommandProcessor::execute_move_army(
     GameState& state,
     const MoveArmyCommand& command
 ) {
-    GameState working_state = state;
-    const ArmyMoveResult move = movement_system_.move(
-        working_state,
+    const Army* army = state.find_army(command.army_id);
+    if (army == nullptr) {
+        return {false, "ordered army does not exist", {}};
+    }
+    const std::vector<ProvinceId> path = movement_system_.find_order_path(
+        state,
         command.army_id,
         command.destination
     );
-    if (!move.accepted) {
-        return {false, move.error, {}};
+    if (path.empty()) {
+        return {false, "army destination is not reachable with available movement", {}};
     }
-
-    const Army* army = working_state.find_army(command.army_id);
-    if (army == nullptr) {
-        return {false, "army disappeared after movement", {}};
-    }
-    GameEvent move_event{
-        next_event_sequence_++,
-        GameEventType::army_moved,
-        ArmyMovedEvent{
-            command.army_id,
-            move.origin,
-            move.destination,
-            move.cost,
-            army->movement_points,
-        },
-    };
-    const BattleResolution battle = battle_system_.resolve_entry(
-        working_state,
+    const bool is_attack = state.controller_of(command.destination) != army->owner_id;
+    const OrderOperationResult queued = order_system_.queue_army_action(
+        state,
         command.army_id,
-        move.origin
+        path,
+        is_attack
     );
-    std::vector<GameEvent> events;
-    events.push_back(std::move(move_event));
-    if (battle.occurred || battle.province_occupied) {
-        events.push_back(GameEvent{
-            next_event_sequence_++,
-            GameEventType::battle_resolved,
-            battle,
-        });
+    if (!queued.accepted || !queued.order_id.has_value()) {
+        return {false, queued.error, {}};
     }
-    Army* current_army = working_state.find_army(command.army_id);
-    if (current_army != nullptr && current_army->advance_target.has_value() &&
-        current_army->province_id == *current_army->advance_target) {
-        current_army->advance_target.reset();
-    }
-    state = std::move(working_state);
-    return {true, {}, std::move(events)};
+    GameEvent event{
+        next_event_sequence_++,
+        GameEventType::order_created,
+        OrderCreatedEvent{*queued.order_id},
+    };
+    return {true, {}, {std::move(event)}};
 }
 
 bool CommandProcessor::is_supported_turn_length(const std::int32_t months) noexcept {
@@ -376,6 +358,29 @@ CommandResult CommandProcessor::execute_advance_turn(
             }
         }
 
+        const MonthlyOrderMovementReport order_movement_report =
+            monthly_order_system_.resolve_movement(working_state);
+        for (const ResolvedArmyMovement& movement : order_movement_report.movements) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::army_moved,
+                ArmyMovedEvent{
+                    movement.army_id,
+                    movement.origin,
+                    movement.destination,
+                    movement.movement_cost_half / MovementSystem::movement_point_scale,
+                    movement.remaining_movement_half,
+                },
+            });
+        }
+        for (const RefundedArmyAction& refund : order_movement_report.refunds) {
+            ai_events.push_back(GameEvent{
+                next_event_sequence_++,
+                GameEventType::order_cancelled,
+                OrderCancelledEvent{refund.order_id},
+            });
+        }
+
         std::vector<ArmyId> planned_armies;
         planned_armies.reserve(working_state.army_count());
         for (const auto& [army_id, army] : working_state.armies()) {
@@ -384,55 +389,33 @@ CommandResult CommandProcessor::execute_advance_turn(
             }
         }
         for (const ArmyId& army_id : planned_armies) {
-            for (std::size_t step = 0; step < working_state.province_count(); ++step) {
-                const Army* army = working_state.find_army(army_id);
-                if (army == nullptr || !army->advance_target.has_value() ||
-                    !army->advance_enabled) {
-                    break;
-                }
-                const std::optional<ProvinceId> next_step =
-                    ai_system_.find_step_toward(
-                        working_state,
-                        *army,
-                        *army->advance_target
-                    );
-                if (!next_step.has_value()) {
-                    break;
-                }
-                const std::string advance_strategy = army->advance_strategy;
-                if (advance_strategy == "stop_before_enemy" &&
-                    working_state.controller_of(*next_step) != army->owner_id) {
-                    break;
-                }
-                const CommandResult move_result = execute(
-                    working_state,
-                    MoveArmyCommand{army_id, *next_step}
-                );
-                if (!move_result.accepted) {
-                    break;
-                }
-                bool should_stop = false;
-                for (const GameEvent& event : move_result.events) {
-                    if (event.type == GameEventType::battle_resolved) {
-                        const auto& battle = std::get<BattleResolution>(event.payload);
-                        if (battle.occurred || battle.province_occupied) {
-                            should_stop = true;
-                        }
-                    }
-                }
+            const Army* army = working_state.find_army(army_id);
+            if (army == nullptr || !army->advance_target.has_value() ||
+                !army->advance_enabled) {
+                continue;
+            }
+            const std::optional<ProvinceId> next_step = ai_system_.find_step_toward(
+                working_state,
+                *army,
+                *army->advance_target
+            );
+            if (!next_step.has_value()) {
+                continue;
+            }
+            if (army->advance_strategy == "stop_before_enemy" &&
+                working_state.controller_of(*next_step) != army->owner_id) {
+                continue;
+            }
+            const CommandResult move_result = execute(
+                working_state,
+                MoveArmyCommand{army_id, *next_step}
+            );
+            if (move_result.accepted) {
                 ai_events.insert(
                     ai_events.end(),
                     move_result.events.begin(),
                     move_result.events.end()
                 );
-                if (advance_strategy == "one_step") {
-                    break;
-                }
-                const Army* moved_army = working_state.find_army(army_id);
-                if (moved_army == nullptr || !moved_army->advance_target.has_value() ||
-                    should_stop) {
-                    break;
-                }
             }
         }
         if (human_country_id_.has_value()) {

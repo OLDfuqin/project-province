@@ -98,7 +98,6 @@ OrderOperationResult OrderSystem::queue_army_action(
         return rejected("army action path must start at the army's current province");
     }
 
-    std::int64_t cost_half = 0;
     for (std::size_t index = 1; index < path.size(); ++index) {
         if (!state.are_adjacent(path[index - 1], path[index])) {
             return rejected("army action path contains non-adjacent provinces");
@@ -110,13 +109,8 @@ OrderOperationResult OrderSystem::queue_army_action(
         if (index + 1 < path.size() && state.controller_of(path[index]) != army->owner_id) {
             return rejected("army action path crosses a province not controlled by its country");
         }
-        const std::int32_t edge_cost =
-            state.road_level(path[index - 1], path[index]) == RoadLevel::paved
-            ? MovementSystem::paved_road_cost
-            : terrain_movement_cost(destination->terrain);
-        cost_half += static_cast<std::int64_t>(edge_cost) *
-            MovementSystem::movement_point_scale;
     }
+    std::int64_t cost_half = MovementSystem{}.path_cost_half(state, path);
     const CountryId target_controller = state.controller_of(path.back());
     if (is_attack) {
         if (!state.are_hostile(army->owner_id, target_controller)) {

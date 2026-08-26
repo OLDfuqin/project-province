@@ -2,7 +2,6 @@
 #include "province/core/game_command.hpp"
 #include "province/core/game_event.hpp"
 #include "province/core/movement_system.hpp"
-#include "province/core/population_system.hpp"
 #include "province/core/scenario_loader.hpp"
 #include "smoke_test_groups.hpp"
 
@@ -64,16 +63,20 @@ bool run_neutral_combat_tests() {
         conquest, MoveArmyCommand{attacker, target}
     );
     if (!conquered.accepted || conquest.find_army(attacker) == nullptr ||
-        conquest.find_army(attacker)->province_id != target ||
-        conquest.find_province(target)->owner_id != auroria ||
-        conquest.controller_of(target) != auroria ||
-        conquest.occupations().contains(target) || conquered.events.size() != 2) {
-        std::cerr << "Neutral conquest did not transfer legal ownership directly\n";
+        conquest.find_army(attacker)->province_id != origin ||
+        conquest.find_province(target)->owner_id != neutral ||
+        conquest.controller_of(target) != neutral ||
+        conquest.occupations().contains(target) || conquered.events.size() != 1 ||
+        conquered.events.front().type != GameEventType::order_created) {
+        std::cerr << "Neutral attack did not remain queued for monthly combat\n";
         return false;
     }
-    const auto& battle = std::get<BattleResolution>(conquered.events.back().payload);
-    if (!battle.attacker_won || battle.province_occupied) {
-        std::cerr << "Neutral conquest was reported as an occupation\n";
+    const OrderId conquest_order_id =
+        std::get<OrderCreatedEvent>(conquered.events.front().payload).order_id;
+    const auto* conquest_order =
+        std::get_if<ArmyActionOrder>(&conquest.orders().at(conquest_order_id));
+    if (conquest_order == nullptr || !conquest_order->is_attack) {
+        std::cerr << "Neutral attack order lost its attack classification\n";
         return false;
     }
 
@@ -86,16 +89,11 @@ bool run_neutral_combat_tests() {
         mutual, MoveArmyCommand{mutual_attacker, target}
     );
     if (!mutual_result.accepted || mutual.find_province(target)->owner_id != neutral ||
-        mutual.find_army(mutual_attacker) != nullptr) {
-        std::cerr << "Mutual destruction changed neutral ownership\n";
+        mutual.find_army(mutual_attacker) == nullptr ||
+        mutual.find_army(mutual_attacker)->province_id != origin) {
+        std::cerr << "Queued mutual-destruction attack resolved before combat phase\n";
         return false;
     }
-    [[maybe_unused]] const auto month = PopulationSystem{}.resolve_month(mutual);
-    if (mutual.find_army(guard_id(mutual, target))->manpower != 90) {
-        std::cerr << "Neutral guard did not reform after mutual destruction\n";
-        return false;
-    }
-
     GameState passive = state();
     const ArmyId passive_guard = guard_id(passive, ProvinceId{"cell_5_5"});
     passive.find_army(passive_guard)->movement_points = 12;
@@ -114,9 +112,10 @@ bool run_neutral_combat_tests() {
     const CommandResult entered = CommandProcessor{}.execute(
         empty, MoveArmyCommand{unopposed, target}
     );
-    if (!entered.accepted || empty.find_province(target)->owner_id != auroria ||
-        empty.occupations().contains(target)) {
-        std::cerr << "Empty neutral province was not transferred directly\n";
+    if (!entered.accepted || empty.find_province(target)->owner_id != neutral ||
+        empty.occupations().contains(target) ||
+        empty.find_army(unopposed)->province_id != origin || empty.orders().size() != 1) {
+        std::cerr << "Unopposed neutral attack did not wait for combat phase\n";
         return false;
     }
     return true;

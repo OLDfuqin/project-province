@@ -10,6 +10,7 @@
 #include "province/core/population_system.hpp"
 #include "province/core/peace_system.hpp"
 #include "province/core/movement_system.hpp"
+#include "province/core/monthly_order_system.hpp"
 #include "province/core/order_system.hpp"
 #include "province/core/road_system.hpp"
 #include "province/core/technology_system.hpp"
@@ -89,6 +90,7 @@ private:
     RoadSystem road_system_;
     ArmySystem army_system_;
     MovementSystem movement_system_;
+    MonthlyOrderSystem monthly_order_system_;
     BattleSystem battle_system_;
     PeaceSystem peace_system_;
     AiSystem ai_system_;

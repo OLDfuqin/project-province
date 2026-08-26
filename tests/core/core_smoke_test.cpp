@@ -138,8 +138,15 @@ int run_smoke_tests() {
     const CommandResult movement = processor.execute(
         state, MoveArmyCommand{army_id, city_id}
     );
-    if (!movement.accepted || state.find_army(army_id)->province_id != city_id) {
-        std::cerr << "Generated map movement failed\n";
+    if (!movement.accepted || state.find_army(army_id)->province_id != capital_id ||
+        state.orders().size() != 2 ||
+        movement.events.front().type != GameEventType::order_created) {
+        std::cerr << "Generated map movement was not queued\n";
+        return 1;
+    }
+    if (!processor.execute(state, AdvanceTurnCommand{1}).accepted ||
+        state.find_army(army_id)->province_id != city_id) {
+        std::cerr << "Generated queued map movement did not resolve next month\n";
         return 1;
     }
 

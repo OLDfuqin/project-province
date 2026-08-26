@@ -49,6 +49,15 @@ public:
     }
 
     [[nodiscard]] MonthlyMovementReport grant_monthly_points(GameState& state) const;
+    [[nodiscard]] std::vector<ProvinceId> find_order_path(
+        const GameState& state,
+        const ArmyId& army_id,
+        const ProvinceId& destination
+    ) const;
+    [[nodiscard]] std::int32_t path_cost_half(
+        const GameState& state,
+        const std::vector<ProvinceId>& path
+    ) const;
     [[nodiscard]] ArmyMoveResult move(
         GameState& state,
         const ArmyId& army_id,

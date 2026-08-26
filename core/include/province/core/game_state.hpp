@@ -20,6 +20,7 @@ namespace province::core {
 class SaveGameSerializer;
 class MapScenarioGenerator;
 class OrderSystem;
+class MonthlyOrderSystem;
 
 class GameState final {
 public:
@@ -107,6 +108,7 @@ private:
     friend class SaveGameSerializer;
     friend class MapScenarioGenerator;
     friend class OrderSystem;
+    friend class MonthlyOrderSystem;
     GameClock clock_;
     std::string map_layout_id_;
     std::map<CountryId, Country> countries_;
