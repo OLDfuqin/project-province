@@ -521,41 +521,68 @@ std::vector<std::string> GameState::validate() const {
                         }
                     }
                 }
-                std::int64_t minimum_reservation = typed_order.is_attack
-                    ? 2 * MovementSystem::movement_point_scale
+                const CountryTechnology* technology =
+                    find_technology(typed_order.country_id);
+                const bool military_level_is_valid = technology != nullptr &&
+                    technology->military_level >= 0 &&
+                    technology->military_level <=
+                        CountryTechnology::military_maximum_level;
+                const std::int32_t movement_cap = military_level_is_valid
+                    ? MovementSystem::maximum_movement_points_half(
+                        technology->military_level
+                    )
                     : 0;
-                std::int64_t maximum_reservation = minimum_reservation;
-                if (path_is_valid) {
-                    for (std::size_t index = 1; index < typed_order.path.size(); ++index) {
+                bool reservation_is_reachable = false;
+                if (path_is_valid && typed_order.reserved_movement_half > 0 &&
+                    typed_order.reserved_movement_half <= movement_cap) {
+                    const std::size_t reserved = static_cast<std::size_t>(
+                        typed_order.reserved_movement_half
+                    );
+                    std::vector<bool> reachable(reserved + 1, false);
+                    const std::int32_t surcharge = typed_order.is_attack
+                        ? 2 * MovementSystem::movement_point_scale
+                        : 0;
+                    if (surcharge <= typed_order.reserved_movement_half) {
+                        reachable[static_cast<std::size_t>(surcharge)] = true;
+                    }
+                    for (std::size_t index = 1;
+                         index < typed_order.path.size();
+                         ++index) {
                         const Province* destination = find_province(typed_order.path[index]);
                         if (destination == nullptr) {
                             path_is_valid = false;
                             break;
                         }
-                        minimum_reservation += MovementSystem::paved_road_cost *
+                        const std::int32_t normal_cost =
+                            terrain_movement_cost(destination->terrain) *
                             MovementSystem::movement_point_scale;
-                        maximum_reservation += terrain_movement_cost(destination->terrain) *
+                        const std::int32_t paved_cost =
+                            MovementSystem::paved_road_cost *
                             MovementSystem::movement_point_scale;
+                        const bool paved_may_have_existed = road_level(
+                            typed_order.path[index - 1], typed_order.path[index]
+                        ) == RoadLevel::paved;
+                        std::vector<bool> next(reserved + 1, false);
+                        for (std::size_t subtotal = 0; subtotal <= reserved; ++subtotal) {
+                            if (!reachable[subtotal]) continue;
+                            if (subtotal + static_cast<std::size_t>(normal_cost) <= reserved) {
+                                next[subtotal + static_cast<std::size_t>(normal_cost)] = true;
+                            }
+                            if (paved_may_have_existed &&
+                                subtotal + static_cast<std::size_t>(paved_cost) <= reserved) {
+                                next[subtotal + static_cast<std::size_t>(paved_cost)] = true;
+                            }
+                        }
+                        reachable = std::move(next);
                     }
+                    reservation_is_reachable = path_is_valid && reachable[reserved];
                 }
-                if (!path_is_valid || typed_order.reserved_movement_half <= 0 ||
-                    typed_order.reserved_movement_half < minimum_reservation ||
-                    typed_order.reserved_movement_half > maximum_reservation ||
-                    typed_order.reserved_movement_half %
-                        MovementSystem::movement_point_scale != 0) {
+                if (!path_is_valid || !reservation_is_reachable) {
                     issues.push_back("army action order has invalid reserved movement");
                 } else if (army != nullptr) {
-                    const CountryTechnology* technology =
-                        find_technology(typed_order.country_id);
-                    if (technology != nullptr &&
-                        (typed_order.reserved_movement_half >
-                            MovementSystem::maximum_movement_points_half(
-                                technology->military_level
-                            ) ||
-                         army->movement_points >
-                            MovementSystem::maximum_movement_points_half(
-                                technology->military_level
-                            ) - typed_order.reserved_movement_half)) {
+                    if (military_level_is_valid &&
+                        army->movement_points >
+                            movement_cap - typed_order.reserved_movement_half) {
                         issues.push_back("army action order exceeds the movement point cap");
                     }
                 }
@@ -620,14 +647,18 @@ std::vector<std::string> GameState::validate() const {
                     const std::int32_t minimum_level = RoadSystem::required_roads_level(
                         first->terrain, second->terrain
                     );
-                    for (std::int32_t level = minimum_level;
-                         level <= CountryTechnology::roads_maximum_level;
-                         ++level) {
-                        const std::int64_t possible_cost = base_cost *
-                            (100 - RoadSystem::discount_percent(level)) / 100;
-                        if (typed_order.paid_cost == possible_cost) {
-                            cost_is_valid = true;
-                            break;
+                    if (technology->roads_level >= minimum_level &&
+                        technology->roads_level <=
+                            CountryTechnology::roads_maximum_level) {
+                        for (std::int32_t level = minimum_level;
+                             level <= technology->roads_level;
+                             ++level) {
+                            const std::int64_t possible_cost = base_cost *
+                                (100 - RoadSystem::discount_percent(level)) / 100;
+                            if (typed_order.paid_cost == possible_cost) {
+                                cost_is_valid = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -657,11 +688,14 @@ std::vector<std::string> GameState::validate() const {
                 const bool cost_is_valid = previous_level_is_valid &&
                     typed_order.paid_cost ==
                         TechnologySystem::research_cost(typed_order.previous_level);
+                const bool current_level_is_valid = previous_level_is_valid &&
+                    technology != nullptr &&
+                    technology->level(typed_order.track) >= typed_order.previous_level;
                 const bool progress_is_valid = target_level_is_valid &&
                     typed_order.remaining_months > 0 &&
                     typed_order.remaining_months <= typed_order.target_level + 1;
                 if (!previous_level_is_valid || !target_level_is_valid || !cost_is_valid ||
-                    !progress_is_valid) {
+                    !current_level_is_valid || !progress_is_valid) {
                     issues.push_back("research order has invalid progress or reservation values");
                 }
             } else if constexpr (std::is_same_v<OrderType, WarDeclarationOrder>) {

@@ -5,12 +5,15 @@
 #include "province/core/monthly_order_system.hpp"
 #include "province/core/movement_system.hpp"
 #include "province/core/order_system.hpp"
+#include "province/core/road_system.hpp"
 #include "province/core/save_game.hpp"
 #include "province/core/scenario_loader.hpp"
+#include "province/core/technology_system.hpp"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -54,6 +57,30 @@ std::optional<std::pair<ProvinceId, ProvinceId>> find_owned_connection(
             if (state.controller_of(neighbor_id) == country_id &&
                 state.road_level(province_id, neighbor_id) == RoadLevel::none) {
                 return std::pair{province_id, neighbor_id};
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::array<ProvinceId, 3>> find_owned_chain(
+    const GameState& state,
+    const CountryId& country_id
+) {
+    for (const auto& [first_id, first] : state.provinces()) {
+        if (state.controller_of(first_id) != country_id) continue;
+        for (const ProvinceId& second_id : first.neighbors) {
+            const Province* second = state.find_province(second_id);
+            if (second == nullptr || state.controller_of(second_id) != country_id ||
+                state.road_level(first_id, second_id) != RoadLevel::none) {
+                continue;
+            }
+            for (const ProvinceId& third_id : second->neighbors) {
+                if (third_id == first_id || state.controller_of(third_id) != country_id ||
+                    state.road_level(second_id, third_id) != RoadLevel::none) {
+                    continue;
+                }
+                return std::array{first_id, second_id, third_id};
             }
         }
     }
@@ -123,6 +150,10 @@ bool test_schema7_round_trip_restores_every_order_without_recharging() {
     }
     const ProvinceId origin = connection->first;
     const ProvinceId destination = connection->second;
+    technology->roads_level = RoadSystem::required_roads_level(
+        state.find_province(origin)->terrain,
+        state.find_province(destination)->terrain
+    );
     const ArmyId army_id = state.create_army(human, origin, 2'000);
     Army* army = state.find_army(army_id);
     const std::int32_t initial_movement =
@@ -357,6 +388,13 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     Json exhausted_next_sequence = document;
     exhausted_next_sequence["next_order_sequence"] =
         std::numeric_limits<std::uint64_t>::max();
+    Json extreme_military_level = document;
+    for (Json& technology_entry : extreme_military_level["technologies"]) {
+        if (technology_entry.at("country_id") == human.value()) {
+            technology_entry["military_level"] =
+                std::numeric_limits<std::int32_t>::max();
+        }
+    }
     Json duplicate_id = document;
     duplicate_id["orders"].push_back(duplicate_id["orders"][action_index]);
     Json duplicate_army_order = document;
@@ -413,6 +451,29 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
 
     Json forged_road_cost = document;
     forged_road_cost["orders"][road_index]["paid_cost"] = 1;
+    Json future_road_technology_cost = document;
+    const std::string road_a =
+        future_road_technology_cost["orders"][road_index]["province_a"].get<std::string>();
+    const std::string road_b =
+        future_road_technology_cost["orders"][road_index]["province_b"].get<std::string>();
+    const TerrainType road_a_terrain = terrain_from_string(
+        province_document(future_road_technology_cost, road_a).at("terrain").get<std::string>()
+    );
+    const TerrainType road_b_terrain = terrain_from_string(
+        province_document(future_road_technology_cost, road_b).at("terrain").get<std::string>()
+    );
+    const std::int32_t road_minimum_level = RoadSystem::required_roads_level(
+        road_a_terrain, road_b_terrain
+    );
+    for (Json& technology_entry : future_road_technology_cost["technologies"]) {
+        if (technology_entry.at("country_id") == human.value()) {
+            technology_entry["roads_level"] = road_minimum_level;
+        }
+    }
+    const std::int64_t road_base_cost = RoadSystem::endpoint_base_cost(road_a_terrain) +
+        RoadSystem::endpoint_base_cost(road_b_terrain);
+    future_road_technology_cost["orders"][road_index]["paid_cost"] = road_base_cost *
+        (100 - RoadSystem::discount_percent(road_minimum_level + 1)) / 100;
     Json invalid_road_target = document;
     invalid_road_target["orders"][road_index]["province_b"] =
         invalid_road_target["orders"][road_index]["province_a"];
@@ -426,6 +487,12 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     Json extreme_previous_level = document;
     extreme_previous_level["orders"][research_index]["previous_level"] =
         std::numeric_limits<std::int32_t>::max();
+    Json research_level_regression = document;
+    research_level_regression["orders"][research_index]["previous_level"] = 1;
+    research_level_regression["orders"][research_index]["target_level"] = 2;
+    research_level_regression["orders"][research_index]["paid_cost"] =
+        TechnologySystem::research_cost(1);
+    research_level_regression["orders"][research_index]["remaining_months"] = 1;
     Json duplicate_research = document;
     Json second_research = duplicate_research["orders"][research_index];
     second_research["id"] = "order_6";
@@ -450,6 +517,7 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&missing_technology, "missing-technology"},
         {&bad_next_sequence, "bad-next-sequence"},
         {&exhausted_next_sequence, "exhausted-next-sequence"},
+        {&extreme_military_level, "extreme-military-level"},
         {&duplicate_id, "duplicate-order-id"},
         {&duplicate_army_order, "duplicate-army-order"},
         {&unknown_type, "unknown-order-type"},
@@ -464,11 +532,13 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&cumulatively_over_reserved_population, "cumulative-over-reserved-population"},
         {&unknown_recruitment_province, "unknown-recruitment-province"},
         {&forged_road_cost, "forged-road-cost"},
+        {&future_road_technology_cost, "future-road-technology-cost"},
         {&invalid_road_target, "invalid-road-target"},
         {&unknown_track, "unknown-track"},
         {&forged_research_cost, "forged-research-cost"},
         {&invalid_research_progress, "invalid-research-progress"},
         {&extreme_previous_level, "extreme-previous-level"},
+        {&research_level_regression, "research-level-regression"},
         {&duplicate_research, "duplicate-research"},
         {&unknown_war_target, "unknown-war-target"},
         {&duplicate_war, "duplicate-war"},
@@ -516,6 +586,57 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     return true;
 }
 
+bool test_schema7_requires_exact_historical_movement_cost_combinations() {
+    GameState state = ScenarioLoader::load(
+        "game/data", GameClock{1200, 6},
+        [](const std::uint32_t) { return std::uint32_t{0}; }
+    );
+    const CountryId country_id{"auroria"};
+    const auto chain = find_owned_chain(state, country_id);
+    if (!chain.has_value()) {
+        std::cerr << "No three-province owned chain for movement persistence test\n";
+        return false;
+    }
+    const ProvinceId origin = (*chain)[0];
+    const ProvinceId middle = (*chain)[1];
+    const ProvinceId destination = (*chain)[2];
+    state.find_province(middle)->terrain = TerrainType::plains;
+    state.find_province(destination)->terrain = TerrainType::mountains;
+    state.set_road_level(origin, middle, RoadLevel::paved);
+    const ArmyId army_id = state.create_army(country_id, origin, 2'000);
+    state.find_army(army_id)->movement_points =
+        MovementSystem::maximum_movement_points_half(0);
+    OrderSystem orders;
+    const OrderOperationResult action = orders.queue_army_action(
+        state, army_id, {origin, middle, destination}, false
+    );
+    if (!action.accepted) return false;
+    const ArmyActionOrder& stored = std::get<ArmyActionOrder>(
+        state.orders().at(*action.order_id)
+    );
+    if (stored.reserved_movement_half != 10) return false;
+
+    state.set_road_level(middle, destination, RoadLevel::paved);
+    if (!state.validate().empty()) {
+        std::cerr << "Legitimate pre-road movement reservation failed validation\n";
+        return false;
+    }
+    const auto path = std::filesystem::temp_directory_path() /
+        "province-schema7-historical-movement-cost.json";
+    SaveGameSerializer::save(path, state, 91, country_id);
+    std::ifstream stream{path};
+    Json document = Json::parse(stream);
+    stream.close();
+    std::filesystem::remove(path);
+    document["orders"][order_index(document, "army_action")]
+        ["reserved_movement_half"] = 8;
+    if (!rejected(document, "unreachable-movement-cost-combination")) {
+        std::cerr << "Schema 7 accepted an unreachable per-edge movement cost combination\n";
+        return false;
+    }
+    return true;
+}
+
 bool test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() {
     GameState state = ScenarioLoader::load(
         "game/data", GameClock{1200, 6},
@@ -529,6 +650,10 @@ bool test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() {
     if (!connection.has_value()) return false;
     const ProvinceId origin = connection->first;
     const ProvinceId destination = connection->second;
+    technology->roads_level = RoadSystem::required_roads_level(
+        state.find_province(origin)->terrain,
+        state.find_province(destination)->terrain
+    );
     const ArmyId army_id = state.create_army(country_id, origin, 2'000);
     Army* army = state.find_army(army_id);
     army->movement_points = MovementSystem::maximum_movement_points_half(
@@ -577,6 +702,7 @@ bool test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() {
 
     state.set_occupation(destination, occupier_id);
     state.set_road_level(origin, destination, RoadLevel::paved);
+    technology->roads_level = CountryTechnology::roads_maximum_level;
     technology->economy_level = research_order->target_level;
     if (!state.validate().empty()) {
         std::cerr << "Dynamic execution invalidations made the order state unsaveable\n";
@@ -663,6 +789,7 @@ bool test_schema7_round_trips_legal_defensive_debt() {
 bool run_save_game_smoke_tests() {
     return test_schema7_round_trip_restores_every_order_without_recharging() &&
         test_schema7_rejects_old_versions_and_malformed_orders() &&
+        test_schema7_requires_exact_historical_movement_cost_combinations() &&
         test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() &&
         test_schema7_round_trips_legal_defensive_debt();
 }
