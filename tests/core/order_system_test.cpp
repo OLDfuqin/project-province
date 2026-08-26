@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -918,7 +919,7 @@ bool test_pending_action_blocks_manual_merge() {
     return true;
 }
 
-bool test_validate_requires_army_at_order_origin() {
+bool test_validate_keeps_moved_army_order_refundable() {
     GameState state = order_state();
     OrderSystem system;
     const ProvinceId alpha_a{"alpha_a"};
@@ -928,14 +929,85 @@ bool test_validate_requires_army_at_order_origin() {
     if (!system.queue_army_action(state, army_id, {alpha_a, alpha_b}, false).accepted) {
         return false;
     }
+    const std::int32_t reserved = std::get<ArmyActionOrder>(
+        state.orders().begin()->second
+    ).reserved_movement_half;
+    const std::int32_t before_refund = state.find_army(army_id)->movement_points;
     state.find_army(army_id)->province_id = alpha_b;
-
-    bool found_origin_issue = false;
-    for (const std::string& issue : state.validate()) {
-        if (issue.find("order origin") != std::string::npos) found_origin_issue = true;
+    if (!state.validate().empty()) {
+        std::cerr << "Moved army made its refundable action order invalid state\n";
+        return false;
     }
-    if (!found_origin_issue) {
-        std::cerr << "State validation accepted an army away from its order origin\n";
+    const MonthlyOrderMovementReport report = MonthlyOrderSystem{}.resolve_movement(state);
+    if (report.refunds.size() != 1 || !state.orders().empty() ||
+        state.find_army(army_id)->movement_points != before_refund + reserved) {
+        std::cerr << "Moved army action order did not refund its reservation\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_dynamic_order_invalidations_remain_valid_until_refunded() {
+    GameState state = order_state();
+    OrderSystem orders;
+    const CountryId alpha{"alpha"};
+    const CountryId beta{"beta"};
+    const ProvinceId origin{"alpha_a"};
+    const ProvinceId destination{"alpha_b"};
+    const ArmyId army_id = state.create_army(alpha, origin, 1'000);
+    state.find_army(army_id)->movement_points = 12;
+    const OrderOperationResult movement = orders.queue_army_action(
+        state, army_id, {origin, destination}, false
+    );
+    const OrderOperationResult recruitment = orders.queue_recruitment(
+        state, alpha, destination, 100
+    );
+    const OrderOperationResult road = orders.queue_road_construction(
+        state, alpha, origin, destination
+    );
+    if (!movement.accepted || !recruitment.accepted || !road.accepted) return false;
+    const auto* action = std::get_if<ArmyActionOrder>(&state.orders().at(*movement.order_id));
+    const auto* recruit = std::get_if<RecruitmentOrder>(
+        &state.orders().at(*recruitment.order_id)
+    );
+    const auto* construction = std::get_if<RoadConstructionOrder>(
+        &state.orders().at(*road.order_id)
+    );
+    if (action == nullptr || recruit == nullptr || construction == nullptr) return false;
+    const std::int32_t reserved_movement = action->reserved_movement_half;
+    const std::int64_t prepaid_cost = recruit->paid_cost + construction->paid_cost;
+    const std::int32_t movement_before_refund = state.find_army(army_id)->movement_points;
+    const std::int64_t treasury_before_refund = state.find_country(alpha)->treasury;
+
+    state.set_occupation(destination, beta);
+    state.set_road_level(origin, destination, RoadLevel::paved);
+    if (!state.validate().empty()) {
+        std::cerr << "Dynamic order invalidation failed persistent state validation\n";
+        return false;
+    }
+    const MonthlyOrderMovementReport movement_report =
+        MonthlyOrderSystem{}.resolve_movement(state);
+    const MonthlyOrderProjectReport project_report =
+        MonthlyOrderSystem{}.resolve_projects(state);
+    if (movement_report.refunds.size() != 1 || project_report.refunds.size() != 2 ||
+        !state.orders().empty() ||
+        state.find_army(army_id)->movement_points !=
+            movement_before_refund + reserved_movement ||
+        state.find_country(alpha)->treasury != treasury_before_refund + prepaid_cost) {
+        std::cerr << "Dynamically invalid orders did not refund their reservations exactly\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_order_sequence_capacity_prevents_wraparound() {
+    const std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
+    if (!OrderSystem::can_allocate_order_id(1) ||
+        !OrderSystem::can_allocate_order_id(maximum - 2) ||
+        OrderSystem::can_allocate_order_id(0) ||
+        OrderSystem::can_allocate_order_id(maximum - 1) ||
+        OrderSystem::can_allocate_order_id(maximum)) {
+        std::cerr << "Order sequence capacity did not prevent counter exhaustion\n";
         return false;
     }
     return true;
@@ -1198,7 +1270,9 @@ bool run_order_system_tests() {
         test_auto_advance_queues_at_most_one_next_month_step() &&
         test_pending_action_blocks_immediate_move_but_allows_rename() &&
         test_pending_action_blocks_manual_merge() &&
-        test_validate_requires_army_at_order_origin() &&
+        test_validate_keeps_moved_army_order_refundable() &&
+        test_dynamic_order_invalidations_remain_valid_until_refunded() &&
+        test_order_sequence_capacity_prevents_wraparound() &&
         test_monthly_projects_complete_prepaid_recruitment_and_road_once() &&
         test_monthly_research_uses_target_level_plus_one_months() &&
         test_invalidated_monthly_projects_refund_prepaid_costs() &&

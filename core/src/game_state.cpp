@@ -482,8 +482,9 @@ std::vector<std::string> GameState::validate() const {
     std::set<CountryRelationKey> ordered_war_declarations;
     std::map<ProvinceId, CountryId> attack_locks;
     std::map<ProvinceId, std::int64_t> reserved_population;
-    if (next_order_sequence_ == 0) {
-        issues.push_back("next order sequence must be positive");
+    if (next_order_sequence_ == 0 ||
+        next_order_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+        issues.push_back("next order sequence must be positive and not exhausted");
     }
     for (const auto& [id, order] : orders_) {
         if (id != order_id(order)) {
@@ -502,9 +503,6 @@ std::vector<std::string> GameState::validate() const {
                 } else if (army->owner_id != typed_order.country_id) {
                     issues.push_back("army action order country does not own its army");
                 }
-                if (army != nullptr && army->province_id != typed_order.origin) {
-                    issues.push_back("army is not at its action order origin");
-                }
                 if (!ordered_armies.insert(typed_order.army_id).second) {
                     issues.push_back("army has more than one action order");
                 }
@@ -521,31 +519,30 @@ std::vector<std::string> GameState::validate() const {
                             path_is_valid = false;
                             break;
                         }
-                        if (index + 1 < typed_order.path.size() &&
-                            controller_of(typed_order.path[index]) != typed_order.country_id) {
-                            issues.push_back(
-                                "army action order path has a non-friendly intermediate province"
-                            );
+                    }
+                }
+                std::int64_t minimum_reservation = typed_order.is_attack
+                    ? 2 * MovementSystem::movement_point_scale
+                    : 0;
+                std::int64_t maximum_reservation = minimum_reservation;
+                if (path_is_valid) {
+                    for (std::size_t index = 1; index < typed_order.path.size(); ++index) {
+                        const Province* destination = find_province(typed_order.path[index]);
+                        if (destination == nullptr) {
                             path_is_valid = false;
                             break;
                         }
-                    }
-                }
-                std::int64_t expected_reservation = -1;
-                if (path_is_valid) {
-                    try {
-                        expected_reservation = MovementSystem{}.path_cost_half(
-                            *this, typed_order.path
-                        );
-                        if (typed_order.is_attack) {
-                            expected_reservation += 2 * MovementSystem::movement_point_scale;
-                        }
-                    } catch (const std::exception&) {
-                        path_is_valid = false;
+                        minimum_reservation += MovementSystem::paved_road_cost *
+                            MovementSystem::movement_point_scale;
+                        maximum_reservation += terrain_movement_cost(destination->terrain) *
+                            MovementSystem::movement_point_scale;
                     }
                 }
                 if (!path_is_valid || typed_order.reserved_movement_half <= 0 ||
-                    expected_reservation != typed_order.reserved_movement_half) {
+                    typed_order.reserved_movement_half < minimum_reservation ||
+                    typed_order.reserved_movement_half > maximum_reservation ||
+                    typed_order.reserved_movement_half %
+                        MovementSystem::movement_point_scale != 0) {
                     issues.push_back("army action order has invalid reserved movement");
                 } else if (army != nullptr) {
                     const CountryTechnology* technology =
@@ -599,10 +596,6 @@ std::vector<std::string> GameState::validate() const {
                 if (country != nullptr && country->hidden) {
                     issues.push_back("hidden country has a recruitment order");
                 }
-                if (province != nullptr && country != nullptr &&
-                    controller_of(typed_order.province_id) != typed_order.country_id) {
-                    issues.push_back("recruitment order province is not controlled by its country");
-                }
             } else if constexpr (std::is_same_v<OrderType, RoadConstructionOrder>) {
                 const Country* country = find_country(typed_order.country_id);
                 const Province* first = find_province(typed_order.province_a);
@@ -619,21 +612,26 @@ std::vector<std::string> GameState::validate() const {
                 bool road_is_valid = country != nullptr && first != nullptr &&
                     second != nullptr && technology != nullptr && !country->hidden &&
                     typed_order.province_a != typed_order.province_b &&
-                    are_adjacent(typed_order.province_a, typed_order.province_b) &&
-                    controller_of(typed_order.province_a) == typed_order.country_id &&
-                    controller_of(typed_order.province_b) == typed_order.country_id &&
-                    road_level(typed_order.province_a, typed_order.province_b) == RoadLevel::none &&
-                    technology->roads_level >= RoadSystem::required_roads_level(
-                        first->terrain, second->terrain
-                    );
-                std::int64_t expected_cost{};
+                    are_adjacent(typed_order.province_a, typed_order.province_b);
+                bool cost_is_valid = false;
                 if (road_is_valid) {
                     const std::int64_t base_cost = RoadSystem::endpoint_base_cost(first->terrain) +
                         RoadSystem::endpoint_base_cost(second->terrain);
-                    expected_cost = base_cost *
-                        (100 - RoadSystem::discount_percent(technology->roads_level)) / 100;
+                    const std::int32_t minimum_level = RoadSystem::required_roads_level(
+                        first->terrain, second->terrain
+                    );
+                    for (std::int32_t level = minimum_level;
+                         level <= CountryTechnology::roads_maximum_level;
+                         ++level) {
+                        const std::int64_t possible_cost = base_cost *
+                            (100 - RoadSystem::discount_percent(level)) / 100;
+                        if (typed_order.paid_cost == possible_cost) {
+                            cost_is_valid = true;
+                            break;
+                        }
+                    }
                 }
-                if (!road_is_valid || typed_order.paid_cost != expected_cost ||
+                if (!road_is_valid || !cost_is_valid ||
                     typed_order.remaining_months != 1) {
                     issues.push_back("road construction order has invalid reservation values");
                 }
@@ -649,16 +647,21 @@ std::vector<std::string> GameState::validate() const {
                 if (country != nullptr && country->hidden) {
                     issues.push_back("hidden country has a research order");
                 }
-                if (typed_order.previous_level < 0 ||
-                    typed_order.target_level != typed_order.previous_level + 1 ||
-                    typed_order.target_level > CountryTechnology::maximum_level(typed_order.track) ||
-                    typed_order.paid_cost !=
-                        TechnologySystem::research_cost(typed_order.previous_level) ||
-                    technology == nullptr ||
-                    (technology != nullptr &&
-                     technology->level(typed_order.track) != typed_order.previous_level) ||
-                    typed_order.remaining_months <= 0 ||
-                    typed_order.remaining_months > typed_order.target_level + 1) {
+                const std::int32_t maximum_level =
+                    CountryTechnology::maximum_level(typed_order.track);
+                const bool previous_level_is_valid =
+                    typed_order.previous_level >= 0 &&
+                    typed_order.previous_level < maximum_level;
+                const bool target_level_is_valid = previous_level_is_valid &&
+                    typed_order.target_level == typed_order.previous_level + 1;
+                const bool cost_is_valid = previous_level_is_valid &&
+                    typed_order.paid_cost ==
+                        TechnologySystem::research_cost(typed_order.previous_level);
+                const bool progress_is_valid = target_level_is_valid &&
+                    typed_order.remaining_months > 0 &&
+                    typed_order.remaining_months <= typed_order.target_level + 1;
+                if (!previous_level_is_valid || !target_level_is_valid || !cost_is_valid ||
+                    !progress_is_valid) {
                     issues.push_back("research order has invalid progress or reservation values");
                 }
             } else if constexpr (std::is_same_v<OrderType, WarDeclarationOrder>) {

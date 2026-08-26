@@ -2,6 +2,8 @@
 
 #include "province/core/game_state.hpp"
 
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -16,6 +18,13 @@ struct OrderOperationResult final {
 
 class OrderSystem final {
 public:
+    [[nodiscard]] static constexpr bool can_allocate_order_id(
+        const std::uint64_t next_sequence
+    ) noexcept {
+        return next_sequence > 0 &&
+            next_sequence < std::numeric_limits<std::uint64_t>::max() - 1;
+    }
+
     [[nodiscard]] OrderOperationResult queue_army_action(
         GameState& state,
         const ArmyId& army_id,

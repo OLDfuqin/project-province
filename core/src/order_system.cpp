@@ -149,6 +149,9 @@ OrderOperationResult OrderSystem::queue_army_action(
     if (army->movement_points < cost_half) {
         return rejected("army has insufficient movement points for the action order");
     }
+    if (!can_allocate_order_id(state.next_order_sequence_)) {
+        return rejected("order ID sequence is exhausted");
+    }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
     ArmyActionOrder order{
@@ -197,6 +200,9 @@ OrderOperationResult OrderSystem::queue_recruitment(
     const std::int64_t cost = manpower * ArmySystem::recruitment_cost_per_soldier;
     if (country->treasury < cost) {
         return rejected("country treasury is insufficient for recruitment");
+    }
+    if (!can_allocate_order_id(state.next_order_sequence_)) {
+        return rejected("order ID sequence is exhausted");
     }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
@@ -252,6 +258,9 @@ OrderOperationResult OrderSystem::queue_road_construction(
     if (country->treasury < cost) {
         return rejected("country treasury is insufficient to build the road");
     }
+    if (!can_allocate_order_id(state.next_order_sequence_)) {
+        return rejected("order ID sequence is exhausted");
+    }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
     country->treasury -= cost;
@@ -286,6 +295,9 @@ OrderOperationResult OrderSystem::queue_research(
     const std::int64_t cost = TechnologySystem::research_cost(previous_level);
     if (country->treasury < cost) {
         return rejected("country treasury is insufficient for research");
+    }
+    if (!can_allocate_order_id(state.next_order_sequence_)) {
+        return rejected("order ID sequence is exhausted");
     }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
@@ -326,6 +338,9 @@ OrderOperationResult OrderSystem::queue_war_declaration(
     }
     if (has_war_declaration_order(state, aggressor_id, defender_id)) {
         return rejected("countries already have a pending war declaration");
+    }
+    if (!can_allocate_order_id(state.next_order_sequence_)) {
+        return rejected("order ID sequence is exhausted");
     }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};

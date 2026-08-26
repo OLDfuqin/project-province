@@ -1,5 +1,6 @@
 #include "smoke_test_groups.hpp"
 
+#include "province/core/army_system.hpp"
 #include "province/core/command_processor.hpp"
 #include "province/core/monthly_order_system.hpp"
 #include "province/core/movement_system.hpp"
@@ -9,10 +10,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -72,6 +75,25 @@ std::size_t order_index(const Json& document, const std::string& type) {
         if (orders[index].at("type") == type) return index;
     }
     throw std::runtime_error{"saved order type was not found: " + type};
+}
+
+const Json& province_document(const Json& document, const std::string& province_id) {
+    for (const Json& province : document.at("provinces")) {
+        if (province.at("id") == province_id) return province;
+    }
+    throw std::runtime_error{"saved province was not found: " + province_id};
+}
+
+std::size_t foreign_order_count(const GameState& state, const CountryId& human) {
+    std::size_t count = 0;
+    for (const auto& [id, order] : state.orders()) {
+        static_cast<void>(id);
+        const CountryId country_id = std::visit([](const auto& typed_order) {
+            return typed_order.country_id;
+        }, order);
+        if (country_id != human) ++count;
+    }
+    return count;
 }
 
 bool test_schema7_round_trip_restores_every_order_without_recharging() {
@@ -188,6 +210,17 @@ bool test_schema7_round_trip_restores_every_order_without_recharging() {
     GameState loaded_after_turn = loaded.state;
     CommandProcessor expected_processor;
     CommandProcessor loaded_processor;
+    expected_processor.enable_ai(human);
+    loaded_processor.enable_ai(human);
+    const std::size_t expected_orders_before_restore = expected_after_turn.orders().size();
+    const std::size_t loaded_orders_before_restore = loaded_after_turn.orders().size();
+    expected_processor.enable_ai(expected_after_turn, human);
+    loaded_processor.enable_ai(loaded_after_turn, human);
+    if (expected_after_turn.orders().size() != expected_orders_before_restore ||
+        loaded_after_turn.orders().size() != loaded_orders_before_restore) {
+        std::cerr << "Restoring AI configuration queued duplicate initial orders\n";
+        return false;
+    }
     const CommandResult expected_turn = expected_processor.execute(
         expected_after_turn, AdvanceTurnCommand{1}
     );
@@ -209,8 +242,27 @@ bool test_schema7_round_trip_restores_every_order_without_recharging() {
     loaded_stream.close();
     std::filesystem::remove(expected_path);
     std::filesystem::remove(loaded_path);
-    if (loaded_document != expected_document) {
-        std::cerr << "Loaded order queue did not resolve like its pre-save state\n";
+    bool equivalent_events = expected_turn.events.size() == loaded_turn.events.size();
+    for (std::size_t index = 0; equivalent_events && index < expected_turn.events.size(); ++index) {
+        equivalent_events = expected_turn.events[index].sequence ==
+                loaded_turn.events[index].sequence &&
+            expected_turn.events[index].type == loaded_turn.events[index].type;
+    }
+    const std::size_t expected_foreign_orders = foreign_order_count(expected_after_turn, human);
+    const std::size_t loaded_foreign_orders = foreign_order_count(loaded_after_turn, human);
+    if (loaded_document != expected_document || !equivalent_events ||
+        expected_foreign_orders == 0 ||
+        loaded_foreign_orders != expected_foreign_orders) {
+        std::cerr << "Loaded order queue and AI did not resolve like the pre-save state\n";
+        return false;
+    }
+    const std::size_t expected_orders_after_plan = expected_after_turn.orders().size();
+    const std::size_t loaded_orders_after_plan = loaded_after_turn.orders().size();
+    expected_processor.enable_ai(expected_after_turn, human);
+    loaded_processor.enable_ai(loaded_after_turn, human);
+    if (expected_after_turn.orders().size() != expected_orders_after_plan ||
+        loaded_after_turn.orders().size() != loaded_orders_after_plan) {
+        std::cerr << "AI configuration repeated next-month planning after settlement\n";
         return false;
     }
 
@@ -302,6 +354,9 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     );
     Json bad_next_sequence = document;
     bad_next_sequence["next_order_sequence"] = 1;
+    Json exhausted_next_sequence = document;
+    exhausted_next_sequence["next_order_sequence"] =
+        std::numeric_limits<std::uint64_t>::max();
     Json duplicate_id = document;
     duplicate_id["orders"].push_back(duplicate_id["orders"][action_index]);
     Json duplicate_army_order = document;
@@ -329,8 +384,29 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     Json fractional_recruitment_cost = document;
     fractional_recruitment_cost["orders"][recruitment_index]["paid_cost"] = 400.5;
     Json over_reserved_population = document;
+    const std::string recruitment_province_id =
+        document["orders"][recruitment_index]["province_id"].get<std::string>();
+    const Json& recruitment_province = province_document(document, recruitment_province_id);
+    const std::int64_t recruitment_capacity = std::min(
+        recruitment_province.at("population").get<std::int64_t>(),
+        recruitment_province.at("recruitable_population").get<std::int64_t>()
+    );
+    const std::int64_t individually_excessive_manpower = recruitment_capacity + 1;
     over_reserved_population["orders"][recruitment_index]["manpower"] =
-        document["provinces"][0]["population"].get<std::int64_t>() + 1'000'000;
+        individually_excessive_manpower;
+    over_reserved_population["orders"][recruitment_index]["paid_cost"] =
+        individually_excessive_manpower * ArmySystem::recruitment_cost_per_soldier;
+    Json cumulatively_over_reserved_population = document;
+    Json second_recruitment =
+        cumulatively_over_reserved_population["orders"][recruitment_index];
+    second_recruitment["id"] = "order_6";
+    second_recruitment["manpower"] = recruitment_capacity;
+    second_recruitment["paid_cost"] =
+        recruitment_capacity * ArmySystem::recruitment_cost_per_soldier;
+    cumulatively_over_reserved_population["orders"].push_back(
+        std::move(second_recruitment)
+    );
+    cumulatively_over_reserved_population["next_order_sequence"] = 7;
     Json unknown_recruitment_province = document;
     unknown_recruitment_province["orders"][recruitment_index]["province_id"] =
         "missing_province";
@@ -347,6 +423,9 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     forged_research_cost["orders"][research_index]["paid_cost"] = 1;
     Json invalid_research_progress = document;
     invalid_research_progress["orders"][research_index]["remaining_months"] = 0;
+    Json extreme_previous_level = document;
+    extreme_previous_level["orders"][research_index]["previous_level"] =
+        std::numeric_limits<std::int32_t>::max();
     Json duplicate_research = document;
     Json second_research = duplicate_research["orders"][research_index];
     second_research["id"] = "order_6";
@@ -370,6 +449,7 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&missing_orders, "missing-orders"},
         {&missing_technology, "missing-technology"},
         {&bad_next_sequence, "bad-next-sequence"},
+        {&exhausted_next_sequence, "exhausted-next-sequence"},
         {&duplicate_id, "duplicate-order-id"},
         {&duplicate_army_order, "duplicate-army-order"},
         {&unknown_type, "unknown-order-type"},
@@ -381,12 +461,14 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&forged_recruitment_cost, "forged-recruitment-cost"},
         {&fractional_recruitment_cost, "fractional-recruitment-cost"},
         {&over_reserved_population, "over-reserved-population"},
+        {&cumulatively_over_reserved_population, "cumulative-over-reserved-population"},
         {&unknown_recruitment_province, "unknown-recruitment-province"},
         {&forged_road_cost, "forged-road-cost"},
         {&invalid_road_target, "invalid-road-target"},
         {&unknown_track, "unknown-track"},
         {&forged_research_cost, "forged-research-cost"},
         {&invalid_research_progress, "invalid-research-progress"},
+        {&extreme_previous_level, "extreme-previous-level"},
         {&duplicate_research, "duplicate-research"},
         {&unknown_war_target, "unknown-war-target"},
         {&duplicate_war, "duplicate-war"},
@@ -396,6 +478,136 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
             std::cerr << "Schema 7 accepted malformed save case: " << suffix << "\n";
             return false;
         }
+    }
+
+    Json last_safe_sequence = document;
+    last_safe_sequence["next_order_sequence"] =
+        std::numeric_limits<std::uint64_t>::max() - 1;
+    const auto exhausted_path = std::filesystem::temp_directory_path() /
+        "province-schema7-near-exhausted-orders.json";
+    {
+        std::ofstream exhausted_stream{exhausted_path};
+        exhausted_stream << last_safe_sequence.dump(2);
+    }
+    LoadedGame exhausted{GameState{GameClock{1, 1}}, 1, std::nullopt};
+    try {
+        exhausted = SaveGameSerializer::load(exhausted_path);
+    } catch (const SaveGameError& error) {
+        std::cerr << "Last safe order sequence did not load: " << error.what() << "\n";
+        std::filesystem::remove(exhausted_path);
+        return false;
+    }
+    std::filesystem::remove(exhausted_path);
+    const std::size_t orders_before_exhausted_queue = exhausted.state.orders().size();
+    const std::int64_t treasury_before_exhausted_queue =
+        exhausted.state.find_country(human)->treasury;
+    const OrderOperationResult exhausted_queue = orders.queue_recruitment(
+        exhausted.state,
+        human,
+        ProvinceId{recruitment_province_id},
+        1
+    );
+    if (exhausted_queue.accepted ||
+        exhausted.state.orders().size() != orders_before_exhausted_queue ||
+        exhausted.state.find_country(human)->treasury != treasury_before_exhausted_queue) {
+        std::cerr << "Exhausted order allocator wrapped or mutated prepaid resources\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() {
+    GameState state = ScenarioLoader::load(
+        "game/data", GameClock{1200, 6},
+        [](const std::uint32_t) { return std::uint32_t{0}; }
+    );
+    const CountryId country_id{"auroria"};
+    const CountryId occupier_id{"caelus"};
+    CountryTechnology* technology = state.find_technology(country_id);
+    technology->roads_level = CountryTechnology::roads_maximum_level;
+    const auto connection = find_owned_connection(state, country_id);
+    if (!connection.has_value()) return false;
+    const ProvinceId origin = connection->first;
+    const ProvinceId destination = connection->second;
+    const ArmyId army_id = state.create_army(country_id, origin, 2'000);
+    Army* army = state.find_army(army_id);
+    army->movement_points = MovementSystem::maximum_movement_points_half(
+        technology->military_level
+    );
+
+    OrderSystem orders;
+    const OrderOperationResult research = orders.queue_research(
+        state, country_id, TechnologyTrack::economy
+    );
+    if (!research.accepted) return false;
+    const MonthlyOrderProjectReport research_progress =
+        MonthlyOrderSystem{}.resolve_projects(state);
+    if (!research_progress.research.empty()) return false;
+    const OrderOperationResult movement = orders.queue_army_action(
+        state, army_id, {origin, destination}, false
+    );
+    const OrderOperationResult recruitment = orders.queue_recruitment(
+        state, country_id, destination, 100
+    );
+    const OrderOperationResult road = orders.queue_road_construction(
+        state, country_id, origin, destination
+    );
+    if (!movement.accepted || !recruitment.accepted || !road.accepted) return false;
+    const auto* movement_order = std::get_if<ArmyActionOrder>(
+        &state.orders().at(*movement.order_id)
+    );
+    const auto* recruitment_order = std::get_if<RecruitmentOrder>(
+        &state.orders().at(*recruitment.order_id)
+    );
+    const auto* road_order = std::get_if<RoadConstructionOrder>(
+        &state.orders().at(*road.order_id)
+    );
+    const auto* research_order = std::get_if<ResearchOrder>(
+        &state.orders().at(*research.order_id)
+    );
+    if (movement_order == nullptr || recruitment_order == nullptr || road_order == nullptr ||
+        research_order == nullptr || research_order->remaining_months != 1) {
+        return false;
+    }
+    const std::int32_t movement_refund = movement_order->reserved_movement_half;
+    const std::int64_t treasury_refund = recruitment_order->paid_cost +
+        road_order->paid_cost + research_order->paid_cost;
+    const std::int32_t movement_before_refund = state.find_army(army_id)->movement_points;
+    const std::int64_t treasury_before_refund = state.find_country(country_id)->treasury;
+
+    state.set_occupation(destination, occupier_id);
+    state.set_road_level(origin, destination, RoadLevel::paved);
+    technology->economy_level = research_order->target_level;
+    if (!state.validate().empty()) {
+        std::cerr << "Dynamic execution invalidations made the order state unsaveable\n";
+        return false;
+    }
+
+    const auto path = std::filesystem::temp_directory_path() /
+        "province-schema7-dynamic-invalidations.json";
+    SaveGameSerializer::save(path, state, 77, country_id);
+    LoadedGame loaded{GameState{GameClock{1, 1}}, 1, std::nullopt};
+    try {
+        loaded = SaveGameSerializer::load(path);
+    } catch (const SaveGameError& error) {
+        std::cerr << "Dynamic invalidation load failed: " << error.what() << "\n";
+        std::filesystem::remove(path);
+        return false;
+    }
+    std::filesystem::remove(path);
+
+    const MonthlyOrderMovementReport movement_report =
+        MonthlyOrderSystem{}.resolve_movement(loaded.state);
+    const MonthlyOrderProjectReport project_report =
+        MonthlyOrderSystem{}.resolve_projects(loaded.state);
+    if (movement_report.refunds.size() != 1 || project_report.refunds.size() != 3 ||
+        !loaded.state.orders().empty() ||
+        loaded.state.find_army(army_id)->movement_points !=
+            movement_before_refund + movement_refund ||
+        loaded.state.find_country(country_id)->treasury !=
+            treasury_before_refund + treasury_refund) {
+        std::cerr << "Loaded dynamically invalid orders did not refund exactly once\n";
+        return false;
     }
     return true;
 }
@@ -451,5 +663,6 @@ bool test_schema7_round_trips_legal_defensive_debt() {
 bool run_save_game_smoke_tests() {
     return test_schema7_round_trip_restores_every_order_without_recharging() &&
         test_schema7_rejects_old_versions_and_malformed_orders() &&
+        test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() &&
         test_schema7_round_trips_legal_defensive_debt();
 }
