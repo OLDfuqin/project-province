@@ -16,6 +16,11 @@ void CommandProcessor::enable_ai(CountryId human_country_id) {
     human_country_id_ = std::move(human_country_id);
 }
 
+void CommandProcessor::enable_ai(GameState& state, CountryId human_country_id) {
+    enable_ai(std::move(human_country_id));
+    static_cast<void>(queue_ai_orders(state));
+}
+
 void CommandProcessor::disable_ai() noexcept {
     human_country_id_.reset();
 }
@@ -156,6 +161,24 @@ CommandResult CommandProcessor::execute_cancel_order(
         OrderCancelledEvent{command.order_id},
     };
     return {true, {}, {std::move(event)}};
+}
+
+std::vector<GameEvent> CommandProcessor::queue_ai_orders(GameState& state) {
+    std::vector<GameEvent> events;
+    if (!human_country_id_.has_value()) return events;
+
+    const std::vector<AiDecision> decisions =
+        ai_system_.plan_month(state, *human_country_id_);
+    for (const AiDecision& decision : decisions) {
+        const CommandResult result = execute(state, decision.command);
+        if (!result.accepted) continue;
+        for (const GameEvent& event : result.events) {
+            if (event.type != GameEventType::order_created) {
+                events.push_back(event);
+            }
+        }
+    }
+    return events;
 }
 
 CommandResult CommandProcessor::execute_make_peace(
@@ -494,20 +517,12 @@ CommandResult CommandProcessor::execute_advance_turn(
                 );
             }
         }
-        if (human_country_id_.has_value()) {
-            const std::vector<AiDecision> decisions =
-                ai_system_.plan_month(working_state, *human_country_id_);
-            for (const AiDecision& decision : decisions) {
-                const CommandResult ai_result = execute(working_state, decision.command);
-                if (ai_result.accepted) {
-                    ai_events.insert(
-                        ai_events.end(),
-                        ai_result.events.begin(),
-                        ai_result.events.end()
-                    );
-                }
-            }
-        }
+        std::vector<GameEvent> planned_ai_events = queue_ai_orders(working_state);
+        ai_events.insert(
+            ai_events.end(),
+            planned_ai_events.begin(),
+            planned_ai_events.end()
+        );
         working_state.clock().advance_months(1);
     }
 

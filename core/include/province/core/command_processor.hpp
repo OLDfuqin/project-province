@@ -36,6 +36,7 @@ public:
     [[nodiscard]] CommandResult execute(GameState& state, const GameCommand& command);
     [[nodiscard]] static bool is_supported_turn_length(std::int32_t months) noexcept;
     void enable_ai(CountryId human_country_id);
+    void enable_ai(GameState& state, CountryId human_country_id);
     void disable_ai() noexcept;
     [[nodiscard]] bool ai_enabled() const noexcept;
     [[nodiscard]] const std::optional<CountryId>& human_country_id() const noexcept;
@@ -83,6 +84,7 @@ private:
         GameState& state,
         const CancelOrderCommand& command
     );
+    [[nodiscard]] std::vector<GameEvent> queue_ai_orders(GameState& state);
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;

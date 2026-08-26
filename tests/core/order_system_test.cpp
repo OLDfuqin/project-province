@@ -1132,6 +1132,48 @@ bool test_month_end_auto_consolidation_is_repeated_and_deterministic() {
     return true;
 }
 
+bool test_ai_plans_only_after_month_end_consolidation() {
+    GameState state = order_state();
+    const CountryId human{"alpha"};
+    const CountryId ai{"beta"};
+    const ProvinceId ai_land{"beta_a"};
+    const ProvinceId target{"alpha_b"};
+    const ArmyId smaller = state.create_army(ai, ai_land, 500);
+    const ArmyId larger = state.create_army(ai, ai_land, 600);
+    state.find_army(smaller)->movement_points = 12;
+    state.find_army(larger)->movement_points = 12;
+
+    CommandProcessor processor;
+    processor.enable_ai(human);
+    const CommandResult advanced = processor.execute(state, AdvanceTurnCommand{1});
+    std::size_t ai_armies = 0;
+    std::size_t ai_action_orders = 0;
+    ArmyId surviving_army = smaller;
+    for (const auto& [army_id, army] : state.armies()) {
+        if (army.owner_id == ai) {
+            ++ai_armies;
+            surviving_army = army_id;
+        }
+    }
+    for (const auto& [id, order] : state.orders()) {
+        static_cast<void>(id);
+        const auto* action = std::get_if<ArmyActionOrder>(&order);
+        if (action != nullptr && action->country_id == ai) {
+            ++ai_action_orders;
+            if (action->army_id != surviving_army || action->destination != target) {
+                std::cerr << "AI planned from pre-consolidation army state\n";
+                return false;
+            }
+        }
+    }
+    if (!advanced.accepted || ai_armies != 1 || ai_action_orders != 1 ||
+        state.find_army(smaller) == nullptr || state.find_army(larger) != nullptr) {
+        std::cerr << "AI planning did not run after deterministic month-end consolidation\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool run_order_system_tests() {
@@ -1161,5 +1203,6 @@ bool run_order_system_tests() {
         test_monthly_research_uses_target_level_plus_one_months() &&
         test_invalidated_monthly_projects_refund_prepaid_costs() &&
         test_project_phase_runs_after_combat_and_refunds_lost_province_recruitment() &&
-        test_month_end_auto_consolidation_is_repeated_and_deterministic();
+        test_month_end_auto_consolidation_is_repeated_and_deterministic() &&
+        test_ai_plans_only_after_month_end_consolidation();
 }

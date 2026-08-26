@@ -1,4 +1,5 @@
 #include "province/core/ai_system.hpp"
+#include "province/core/army_system.hpp"
 #include "province/core/movement_system.hpp"
 #include "province/core/technology_system.hpp"
 
@@ -188,6 +189,31 @@ std::optional<ProvinceId> choose_step_toward(
     return path[1];
 }
 
+bool army_has_action_order(const GameState& state, const ArmyId& army_id) {
+    for (const auto& [order_id, order] : state.orders()) {
+        static_cast<void>(order_id);
+        const auto* action = std::get_if<ArmyActionOrder>(&order);
+        if (action != nullptr && action->army_id == army_id) return true;
+    }
+    return false;
+}
+
+bool target_locked_by_other_country(
+    const GameState& state,
+    const CountryId& country_id,
+    const ProvinceId& destination
+) {
+    for (const auto& [order_id, order] : state.orders()) {
+        static_cast<void>(order_id);
+        const auto* action = std::get_if<ArmyActionOrder>(&order);
+        if (action != nullptr && action->is_attack &&
+            action->destination == destination && action->country_id != country_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 std::vector<AiDecision> AiSystem::plan_month(
@@ -213,7 +239,8 @@ std::vector<AiDecision> AiSystem::plan_month(
         }
 
         if (military_strength[country_id] < desired_manpower &&
-            country.treasury >= recruitment_batch) {
+            country.treasury >=
+                recruitment_batch * ArmySystem::recruitment_cost_per_soldier) {
             for (const auto& [province_id, province] : state.provinces()) {
                 if (state.controller_of(province_id) == country_id &&
                     province.recruitable_population >= recruitment_batch) {
@@ -284,12 +311,18 @@ std::vector<AiDecision> AiSystem::plan_month(
             if (army.owner_id != country_id) {
                 continue;
             }
+            if (army_has_action_order(state, army_id)) {
+                continue;
+            }
             const Province* province = state.find_province(army.province_id);
             if (province == nullptr) {
                 continue;
             }
             const std::optional<ProvinceId> next_step = find_wartime_step(state, army);
             if (next_step.has_value()) {
+                if (target_locked_by_other_country(state, country_id, *next_step)) {
+                    continue;
+                }
                 if (!MovementSystem{}.find_order_path(
                         state,
                         army_id,
