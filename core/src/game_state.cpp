@@ -1,7 +1,12 @@
 #include "province/core/game_state.hpp"
+#include "province/core/army_system.hpp"
 #include "province/core/movement_system.hpp"
+#include "province/core/road_system.hpp"
+#include "province/core/technology_system.hpp"
 
 #include <algorithm>
+#include <charconv>
+#include <limits>
 #include <set>
 #include <optional>
 #include <stdexcept>
@@ -10,6 +15,27 @@
 #include <utility>
 
 namespace province::core {
+namespace {
+
+std::optional<std::uint64_t> parse_order_sequence(const OrderId& id) noexcept {
+    constexpr std::string_view prefix{"order_"};
+    const std::string& value = id.value();
+    if (!value.starts_with(prefix) || value.size() == prefix.size()) {
+        return std::nullopt;
+    }
+    const std::string_view digits{value.data() + prefix.size(), value.size() - prefix.size()};
+    if (digits.size() > 1 && digits.front() == '0') return std::nullopt;
+    std::uint64_t sequence{};
+    const auto [end, error] = std::from_chars(
+        digits.data(), digits.data() + digits.size(), sequence
+    );
+    if (error != std::errc{} || end != digits.data() + digits.size() || sequence == 0) {
+        return std::nullopt;
+    }
+    return sequence;
+}
+
+} // namespace
 
 GameState::GameState(GameClock clock) : clock_{std::move(clock)} {}
 
@@ -456,9 +482,16 @@ std::vector<std::string> GameState::validate() const {
     std::set<CountryRelationKey> ordered_war_declarations;
     std::map<ProvinceId, CountryId> attack_locks;
     std::map<ProvinceId, std::int64_t> reserved_population;
+    if (next_order_sequence_ == 0) {
+        issues.push_back("next order sequence must be positive");
+    }
     for (const auto& [id, order] : orders_) {
         if (id != order_id(order)) {
             issues.push_back("order map key does not match its stored order ID");
+        }
+        const std::optional<std::uint64_t> sequence = parse_order_sequence(id);
+        if (!sequence.has_value() || *sequence >= next_order_sequence_) {
+            issues.push_back("order ID is incompatible with the next order sequence");
         }
         std::visit([&](const auto& typed_order) {
             using OrderType = std::decay_t<decltype(typed_order)>;
@@ -475,19 +508,44 @@ std::vector<std::string> GameState::validate() const {
                 if (!ordered_armies.insert(typed_order.army_id).second) {
                     issues.push_back("army has more than one action order");
                 }
+                bool path_is_valid = true;
                 if (typed_order.path.size() < 2 ||
                     typed_order.path.front() != typed_order.origin ||
                     typed_order.path.back() != typed_order.destination) {
                     issues.push_back("army action order has an invalid stored path");
+                    path_is_valid = false;
                 } else {
                     for (std::size_t index = 1; index < typed_order.path.size(); ++index) {
                         if (!are_adjacent(typed_order.path[index - 1], typed_order.path[index])) {
                             issues.push_back("army action order path is not continuous");
+                            path_is_valid = false;
+                            break;
+                        }
+                        if (index + 1 < typed_order.path.size() &&
+                            controller_of(typed_order.path[index]) != typed_order.country_id) {
+                            issues.push_back(
+                                "army action order path has a non-friendly intermediate province"
+                            );
+                            path_is_valid = false;
                             break;
                         }
                     }
                 }
-                if (typed_order.reserved_movement_half <= 0) {
+                std::int64_t expected_reservation = -1;
+                if (path_is_valid) {
+                    try {
+                        expected_reservation = MovementSystem{}.path_cost_half(
+                            *this, typed_order.path
+                        );
+                        if (typed_order.is_attack) {
+                            expected_reservation += 2 * MovementSystem::movement_point_scale;
+                        }
+                    } catch (const std::exception&) {
+                        path_is_valid = false;
+                    }
+                }
+                if (!path_is_valid || typed_order.reserved_movement_half <= 0 ||
+                    expected_reservation != typed_order.reserved_movement_half) {
                     issues.push_back("army action order has invalid reserved movement");
                 } else if (army != nullptr) {
                     const CountryTechnology* technology =
@@ -513,20 +571,44 @@ std::vector<std::string> GameState::validate() const {
                     }
                 }
             } else if constexpr (std::is_same_v<OrderType, RecruitmentOrder>) {
-                if (!countries_.contains(typed_order.country_id) ||
-                    !provinces_.contains(typed_order.province_id)) {
+                const Country* country = find_country(typed_order.country_id);
+                const Province* province = find_province(typed_order.province_id);
+                if (country == nullptr || province == nullptr) {
                     issues.push_back("recruitment order references an unknown country or province");
                 }
-                if (typed_order.manpower <= 0 || typed_order.paid_cost <= 0 ||
+                const bool cost_overflows = typed_order.manpower >
+                    std::numeric_limits<std::int64_t>::max() /
+                        ArmySystem::recruitment_cost_per_soldier;
+                const std::int64_t expected_cost =
+                    typed_order.manpower > 0 && !cost_overflows
+                    ? typed_order.manpower * ArmySystem::recruitment_cost_per_soldier
+                    : 0;
+                if (typed_order.manpower <= 0 || cost_overflows ||
+                    typed_order.paid_cost != expected_cost ||
                     typed_order.remaining_months != 1) {
                     issues.push_back("recruitment order has invalid reservation values");
                 } else {
-                    reserved_population[typed_order.province_id] += typed_order.manpower;
+                    std::int64_t& reserved = reserved_population[typed_order.province_id];
+                    if (reserved > std::numeric_limits<std::int64_t>::max() -
+                            typed_order.manpower) {
+                        issues.push_back("recruitment orders overflow reserved population");
+                    } else {
+                        reserved += typed_order.manpower;
+                    }
+                }
+                if (country != nullptr && country->hidden) {
+                    issues.push_back("hidden country has a recruitment order");
+                }
+                if (province != nullptr && country != nullptr &&
+                    controller_of(typed_order.province_id) != typed_order.country_id) {
+                    issues.push_back("recruitment order province is not controlled by its country");
                 }
             } else if constexpr (std::is_same_v<OrderType, RoadConstructionOrder>) {
-                if (!countries_.contains(typed_order.country_id) ||
-                    !provinces_.contains(typed_order.province_a) ||
-                    !provinces_.contains(typed_order.province_b)) {
+                const Country* country = find_country(typed_order.country_id);
+                const Province* first = find_province(typed_order.province_a);
+                const Province* second = find_province(typed_order.province_b);
+                const CountryTechnology* technology = find_technology(typed_order.country_id);
+                if (country == nullptr || first == nullptr || second == nullptr) {
                     issues.push_back("road construction order references unknown state");
                 }
                 if (!ordered_roads.insert(
@@ -534,20 +616,48 @@ std::vector<std::string> GameState::validate() const {
                     ).second) {
                     issues.push_back("road connection has more than one construction order");
                 }
-                if (typed_order.paid_cost <= 0 || typed_order.remaining_months != 1) {
+                bool road_is_valid = country != nullptr && first != nullptr &&
+                    second != nullptr && technology != nullptr && !country->hidden &&
+                    typed_order.province_a != typed_order.province_b &&
+                    are_adjacent(typed_order.province_a, typed_order.province_b) &&
+                    controller_of(typed_order.province_a) == typed_order.country_id &&
+                    controller_of(typed_order.province_b) == typed_order.country_id &&
+                    road_level(typed_order.province_a, typed_order.province_b) == RoadLevel::none &&
+                    technology->roads_level >= RoadSystem::required_roads_level(
+                        first->terrain, second->terrain
+                    );
+                std::int64_t expected_cost{};
+                if (road_is_valid) {
+                    const std::int64_t base_cost = RoadSystem::endpoint_base_cost(first->terrain) +
+                        RoadSystem::endpoint_base_cost(second->terrain);
+                    expected_cost = base_cost *
+                        (100 - RoadSystem::discount_percent(technology->roads_level)) / 100;
+                }
+                if (!road_is_valid || typed_order.paid_cost != expected_cost ||
+                    typed_order.remaining_months != 1) {
                     issues.push_back("road construction order has invalid reservation values");
                 }
             } else if constexpr (std::is_same_v<OrderType, ResearchOrder>) {
-                if (!countries_.contains(typed_order.country_id)) {
+                const Country* country = find_country(typed_order.country_id);
+                const CountryTechnology* technology = find_technology(typed_order.country_id);
+                if (country == nullptr || technology == nullptr) {
                     issues.push_back("research order references an unknown country");
                 }
                 if (!researching_countries.insert(typed_order.country_id).second) {
                     issues.push_back("country has more than one research order");
                 }
+                if (country != nullptr && country->hidden) {
+                    issues.push_back("hidden country has a research order");
+                }
                 if (typed_order.previous_level < 0 ||
                     typed_order.target_level != typed_order.previous_level + 1 ||
                     typed_order.target_level > CountryTechnology::maximum_level(typed_order.track) ||
-                    typed_order.paid_cost <= 0 || typed_order.remaining_months <= 0 ||
+                    typed_order.paid_cost !=
+                        TechnologySystem::research_cost(typed_order.previous_level) ||
+                    technology == nullptr ||
+                    (technology != nullptr &&
+                     technology->level(typed_order.track) != typed_order.previous_level) ||
+                    typed_order.remaining_months <= 0 ||
                     typed_order.remaining_months > typed_order.target_level + 1) {
                     issues.push_back("research order has invalid progress or reservation values");
                 }
