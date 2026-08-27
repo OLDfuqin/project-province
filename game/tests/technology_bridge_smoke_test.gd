@@ -22,6 +22,19 @@ func _initialize() -> void:
         push_error("Scenario load failed")
         quit(1)
         return
+
+    var invalid_error := ""
+    for _attempt: int in range(8):
+        var invalid: Dictionary = bridge.research_technology("", "economy")
+        var error := String(invalid.get("error", ""))
+        if invalid.get("accepted", true) or error.is_empty() or \
+                error.to_ascii_buffer().get_string_from_ascii() != error or \
+                (not invalid_error.is_empty() and invalid_error != error):
+            push_error("Invalid technology boundary was unstable: %s" % invalid)
+            bridge.free()
+            quit(1)
+            return
+        invalid_error = error
     bridge.set_ai_enabled(false, "auroria")
 
     var cost := int(_technology(bridge, "auroria").get("economy_cost", 0))
@@ -64,6 +77,7 @@ func _initialize() -> void:
             break
     var rejected_months: Dictionary = bridge.advance_turn(2)
     if not queued.get("accepted", false) or completion.is_empty() or \
+            completion.get("order_id", "") != queued.get("order_id", "missing") or \
             completion.get("track", "") != "economy" or \
             completion.get("previous_level", -1) != 0 or completion.get("current_level", -1) != 1 or \
             _technology(bridge, "auroria").get("economy_level", -1) != 1 or \

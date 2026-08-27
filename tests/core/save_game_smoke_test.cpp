@@ -182,7 +182,7 @@ bool test_schema7_round_trip_restores_every_order_without_recharging() {
         state.find_province(origin)->recruitable_population;
     const auto path = std::filesystem::temp_directory_path() /
         "province-schema7-orders.json";
-    SaveGameSerializer::save(path, state, 42, human);
+    SaveGameSerializer::save(path, state, 42, human, human);
 
     std::ifstream stream{path};
     const Json document = Json::parse(stream);
@@ -200,7 +200,9 @@ bool test_schema7_round_trip_restores_every_order_without_recharging() {
         return false;
     }
 
-    LoadedGame loaded{GameState{GameClock{1, 1}}, 1, std::nullopt};
+    LoadedGame loaded{
+        GameState{GameClock{1, 1}}, 1, CountryId{"auroria"}, std::nullopt
+    };
     try {
         loaded = SaveGameSerializer::load(path);
     } catch (const SaveGameError& error) {
@@ -215,8 +217,9 @@ bool test_schema7_round_trip_restores_every_order_without_recharging() {
     const RoadConstructionOrder* loaded_road = find_order<RoadConstructionOrder>(loaded.state);
     const ResearchOrder* loaded_research = find_order<ResearchOrder>(loaded.state);
     const WarDeclarationOrder* loaded_declaration = find_order<WarDeclarationOrder>(loaded.state);
-    if (loaded.next_event_sequence != 42 || !loaded.human_country_id.has_value() ||
-        *loaded.human_country_id != human || loaded.state.orders().size() != 5 ||
+    if (loaded.next_event_sequence != 42 || loaded.player_country_id != human ||
+        !loaded.ai_human_country_id.has_value() ||
+        *loaded.ai_human_country_id != human || loaded.state.orders().size() != 5 ||
         loaded_action == nullptr || loaded_recruitment == nullptr ||
         loaded_road == nullptr || loaded_research == nullptr ||
         loaded_declaration == nullptr || loaded_action->army_id != army_id ||
@@ -263,8 +266,8 @@ bool test_schema7_round_trip_restores_every_order_without_recharging() {
     const auto loaded_path = std::filesystem::temp_directory_path() /
         "province-schema7-loaded-after-turn.json";
     if (!expected_turn.accepted || !loaded_turn.accepted) return false;
-    SaveGameSerializer::save(expected_path, expected_after_turn, 100, human);
-    SaveGameSerializer::save(loaded_path, loaded_after_turn, 100, human);
+    SaveGameSerializer::save(expected_path, expected_after_turn, 100, human, human);
+    SaveGameSerializer::save(loaded_path, loaded_after_turn, 100, human, human);
     std::ifstream expected_stream{expected_path};
     std::ifstream loaded_stream{loaded_path};
     const Json expected_document = Json::parse(expected_stream);
@@ -299,7 +302,7 @@ bool test_schema7_round_trip_restores_every_order_without_recharging() {
 
     const std::size_t order_count_before_ai_restore = loaded.state.orders().size();
     CommandProcessor restored_processor;
-    restored_processor.enable_ai(*loaded.human_country_id);
+    restored_processor.enable_ai(*loaded.ai_human_country_id);
     if (!restored_processor.ai_enabled() ||
         loaded.state.orders().size() != order_count_before_ai_restore) {
         std::cerr << "Restoring saved AI configuration duplicated initial AI orders\n";
@@ -357,7 +360,7 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     }
     const auto path = std::filesystem::temp_directory_path() /
         "province-schema7-malformed-base.json";
-    SaveGameSerializer::save(path, state, 12, human);
+    SaveGameSerializer::save(path, state, 12, human, human);
     std::ifstream stream{path};
     const Json document = Json::parse(stream);
     stream.close();
@@ -559,7 +562,9 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         std::ofstream exhausted_stream{exhausted_path};
         exhausted_stream << last_safe_sequence.dump(2);
     }
-    LoadedGame exhausted{GameState{GameClock{1, 1}}, 1, std::nullopt};
+    LoadedGame exhausted{
+        GameState{GameClock{1, 1}}, 1, CountryId{"auroria"}, std::nullopt
+    };
     try {
         exhausted = SaveGameSerializer::load(exhausted_path);
     } catch (const SaveGameError& error) {
@@ -623,7 +628,7 @@ bool test_schema7_requires_exact_historical_movement_cost_combinations() {
     }
     const auto path = std::filesystem::temp_directory_path() /
         "province-schema7-historical-movement-cost.json";
-    SaveGameSerializer::save(path, state, 91, country_id);
+    SaveGameSerializer::save(path, state, 91, country_id, std::nullopt);
     std::ifstream stream{path};
     Json document = Json::parse(stream);
     stream.close();
@@ -711,8 +716,10 @@ bool test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() {
 
     const auto path = std::filesystem::temp_directory_path() /
         "province-schema7-dynamic-invalidations.json";
-    SaveGameSerializer::save(path, state, 77, country_id);
-    LoadedGame loaded{GameState{GameClock{1, 1}}, 1, std::nullopt};
+    SaveGameSerializer::save(path, state, 77, country_id, std::nullopt);
+    LoadedGame loaded{
+        GameState{GameClock{1, 1}}, 1, CountryId{"auroria"}, std::nullopt
+    };
     try {
         loaded = SaveGameSerializer::load(path);
     } catch (const SaveGameError& error) {
@@ -749,8 +756,10 @@ bool test_schema7_round_trips_legal_defensive_debt() {
     state.find_country(debt_country)->treasury = -1'234;
     const auto path = std::filesystem::temp_directory_path() /
         "province-schema7-defensive-debt.json";
-    SaveGameSerializer::save(path, state, 8, std::nullopt);
-    LoadedGame loaded{GameState{GameClock{1, 1}}, 1, std::nullopt};
+    SaveGameSerializer::save(path, state, 8, debt_country, std::nullopt);
+    LoadedGame loaded{
+        GameState{GameClock{1, 1}}, 1, CountryId{"auroria"}, std::nullopt
+    };
     try {
         loaded = SaveGameSerializer::load(path);
     } catch (const SaveGameError& error) {
@@ -770,7 +779,7 @@ bool test_schema7_round_trips_legal_defensive_debt() {
 
     const auto valid_path = std::filesystem::temp_directory_path() /
         "province-schema7-valid-for-debt-mutation.json";
-    SaveGameSerializer::save(valid_path, state, 9, std::nullopt);
+    SaveGameSerializer::save(valid_path, state, 9, debt_country, std::nullopt);
     std::ifstream stream{valid_path};
     Json document = Json::parse(stream);
     stream.close();
@@ -784,6 +793,46 @@ bool test_schema7_round_trips_legal_defensive_debt() {
     return true;
 }
 
+bool test_schema7_separates_player_identity_from_ai_configuration() {
+    GameState state = ScenarioLoader::load(
+        "game/data", GameClock{1337, 9},
+        [](const std::uint32_t) { return std::uint32_t{0}; }
+    );
+    const CountryId player{"caelus"};
+    const auto path = std::filesystem::temp_directory_path() /
+        "province-schema7-player-identity.json";
+    SaveGameSerializer::save(path, state, 73, player, std::nullopt);
+
+    std::ifstream stream{path};
+    Json document = Json::parse(stream);
+    stream.close();
+    LoadedGame loaded = SaveGameSerializer::load(path);
+    std::filesystem::remove(path);
+    if (document.at("player_country_id") != player.value() ||
+        !document.at("ai_human_country_id").is_null() ||
+        loaded.player_country_id != player || loaded.ai_human_country_id.has_value()) {
+        std::cerr << "Schema 7 derived the player identity from optional AI configuration\n";
+        return false;
+    }
+
+    Json missing_player = document;
+    missing_player.erase("player_country_id");
+    Json unknown_player = document;
+    unknown_player["player_country_id"] = "missing_country";
+    Json hidden_player = document;
+    hidden_player["player_country_id"] = "neutral";
+    Json mismatched_ai = document;
+    mismatched_ai["ai_human_country_id"] = "auroria";
+    if (!rejected(missing_player, "missing-player-country") ||
+        !rejected(unknown_player, "unknown-player-country") ||
+        !rejected(hidden_player, "hidden-player-country") ||
+        !rejected(mismatched_ai, "mismatched-ai-human-country")) {
+        std::cerr << "Schema 7 accepted malformed player/AI identity configuration\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool run_save_game_smoke_tests() {
@@ -791,5 +840,6 @@ bool run_save_game_smoke_tests() {
         test_schema7_rejects_old_versions_and_malformed_orders() &&
         test_schema7_requires_exact_historical_movement_cost_combinations() &&
         test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() &&
-        test_schema7_round_trips_legal_defensive_debt();
+        test_schema7_round_trips_legal_defensive_debt() &&
+        test_schema7_separates_player_identity_from_ai_configuration();
 }

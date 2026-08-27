@@ -293,7 +293,8 @@ void SaveGameSerializer::save(
     const std::filesystem::path& path,
     const GameState& state,
     const std::uint64_t next_event_sequence,
-    const std::optional<CountryId>& human_country_id
+    const CountryId& player_country_id,
+    const std::optional<CountryId>& ai_human_country_id
 ) {
     const std::vector<std::string> issues = state.validate();
     if (!issues.empty()) {
@@ -302,13 +303,21 @@ void SaveGameSerializer::save(
     if (state.map_layout_id() != "generated_grid_v1") {
         throw SaveGameError{"only generated_grid_v1 states can be saved"};
     }
+    const Country* player_country = state.find_country(player_country_id);
+    if (player_country == nullptr || player_country->hidden) {
+        throw SaveGameError{"player country must identify a visible loaded country"};
+    }
+    if (ai_human_country_id.has_value() && *ai_human_country_id != player_country_id) {
+        throw SaveGameError{"AI human country must match the player country"};
+    }
     Json document{
         {"schema_version", schema_version},
         {"map_layout_id", state.map_layout_id()},
         {"clock", {{"year", state.clock().year()}, {"month", state.clock().month()}}},
         {"next_event_sequence", next_event_sequence},
-        {"human_country_id", human_country_id.has_value()
-            ? Json(human_country_id->value())
+        {"player_country_id", player_country_id.value()},
+        {"ai_human_country_id", ai_human_country_id.has_value()
+            ? Json(ai_human_country_id->value())
             : Json(nullptr)},
         {"next_army_sequence", state.next_army_sequence_},
         {"next_order_sequence", state.next_order_sequence_},
@@ -449,7 +458,8 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
         }
         require_object_fields(document, {
             "schema_version", "map_layout_id", "clock", "next_event_sequence",
-            "human_country_id", "next_army_sequence", "next_order_sequence", "countries",
+            "player_country_id", "ai_human_country_id", "next_army_sequence",
+            "next_order_sequence", "countries",
             "provinces", "roads", "armies", "occupations", "relations", "technologies",
             "orders",
         });
@@ -657,13 +667,20 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
             throw SaveGameError{join_issues(issues)};
         }
 
-        std::optional<CountryId> human_country_id;
-        if (!document.at("human_country_id").is_null()) {
-            human_country_id.emplace(
-                document.at("human_country_id").get<std::string>()
+        const CountryId player_country_id{
+            document.at("player_country_id").get<std::string>()
+        };
+        const Country* player_country = state.find_country(player_country_id);
+        if (player_country == nullptr || player_country->hidden) {
+            throw SaveGameError{"player country must identify a visible loaded country"};
+        }
+        std::optional<CountryId> ai_human_country_id;
+        if (!document.at("ai_human_country_id").is_null()) {
+            ai_human_country_id.emplace(
+                document.at("ai_human_country_id").get<std::string>()
             );
-            if (state.find_country(*human_country_id) == nullptr) {
-                throw SaveGameError{"human country does not exist in loaded state"};
+            if (*ai_human_country_id != player_country_id) {
+                throw SaveGameError{"AI human country must match the player country"};
             }
         }
         const std::uint64_t next_event_sequence = integral_value<std::uint64_t>(
@@ -676,7 +693,8 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
         LoadedGame loaded{
             std::move(state),
             next_event_sequence,
-            std::move(human_country_id),
+            player_country_id,
+            std::move(ai_human_country_id),
         };
         return loaded;
     } catch (const SaveGameError&) {

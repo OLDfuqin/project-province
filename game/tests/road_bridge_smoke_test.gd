@@ -43,6 +43,24 @@ func _initialize() -> void:
         push_error("Scenario load failed")
         quit(1)
         return
+
+    var invalid_errors: Dictionary = {}
+    for _attempt: int in range(8):
+        var invalid_results := {
+            "quote": bridge.get_road_order_quote("", "", ""),
+            "build": bridge.build_road("", "", ""),
+        }
+        for api_name: String in invalid_results:
+            var invalid: Dictionary = invalid_results[api_name]
+            var error := String(invalid.get("error", ""))
+            if invalid.get("accepted", true) or error.is_empty() or \
+                    error.to_ascii_buffer().get_string_from_ascii() != error or \
+                    (invalid_errors.has(api_name) and invalid_errors[api_name] != error):
+                push_error("Invalid road boundary was unstable for %s: %s" % [api_name, invalid])
+                bridge.free()
+                quit(1)
+                return
+            invalid_errors[api_name] = error
     bridge.set_ai_enabled(false, "auroria")
 
     var road_research: Dictionary = {}
@@ -101,6 +119,7 @@ func _initialize() -> void:
     if not queued.get("accepted", false) or not turn.get("accepted", false) or \
             not _has_road(bridge, pair[0], pair[1]) or \
             bridge.get_pending_orders("auroria").size() != 0 or completion.is_empty() or \
+            completion.get("order_id", "") != queued.get("order_id", "missing") or \
             completion.get("cost", -1) != quote.get("cost", -2) or \
             completion.get("level", "") != "paved":
         push_error("Road order did not complete with a stable monthly event: %s" % completion)

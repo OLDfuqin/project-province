@@ -518,10 +518,11 @@ bool test_monthly_refunds_invalidated_path_without_minting() {
     GameState state = order_state();
     OrderSystem orders;
     MovementSystem movement;
+    const CountryId alpha{"alpha"};
     const ProvinceId alpha_a{"alpha_a"};
     const ProvinceId alpha_b{"alpha_b"};
     const ProvinceId beta_a{"beta_a"};
-    const ArmyId army_id = state.create_army(CountryId{"alpha"}, alpha_a, 1'000);
+    const ArmyId army_id = state.create_army(alpha, alpha_a, 1'000);
     state.find_army(army_id)->movement_points =
         MovementSystem::maximum_movement_points_half(0);
     if (!orders.queue_army_action(
@@ -535,6 +536,9 @@ bool test_monthly_refunds_invalidated_path_without_minting() {
     const MonthlyOrderMovementReport report =
         MonthlyOrderSystem{}.resolve_movement(state);
     if (!report.movements.empty() || report.refunds.size() != 1 ||
+        report.refunds.front().country_id != alpha ||
+        report.refunds.front().army_id != army_id ||
+        report.refunds.front().reason.empty() ||
         report.refunds.front().refunded_movement_half != 12 ||
         state.find_army(army_id)->province_id != alpha_a ||
         state.find_army(army_id)->movement_points !=
@@ -548,25 +552,36 @@ bool test_monthly_refunds_invalidated_path_without_minting() {
 
 bool test_monthly_converts_friendly_attack_to_ordinary_movement() {
     GameState state = order_state();
-    OrderSystem orders;
     const ProvinceId alpha_a{"alpha_a"};
-    const ProvinceId alpha_b{"alpha_b"};
     const ProvinceId beta_a{"beta_a"};
     const ArmyId army_id = state.create_army(CountryId{"alpha"}, alpha_a, 1'000);
     state.find_army(army_id)->movement_points = 12;
-    if (!orders.queue_army_action(
-            state, army_id, {alpha_a, alpha_b, beta_a}, true
-        ).accepted) {
+    CommandProcessor processor;
+    const CommandResult queued = processor.execute(
+        state, MoveArmyCommand{army_id, beta_a}
+    );
+    if (!queued.accepted || queued.events.empty()) {
         return false;
     }
+    const OrderId queued_id = std::get<OrderCreatedEvent>(queued.events.front().payload).order_id;
     state.set_occupation(beta_a, CountryId{"alpha"});
 
-    const MonthlyOrderMovementReport report =
-        MonthlyOrderSystem{}.resolve_movement(state);
-    if (report.movements.size() != 1 || !report.movements.front().converted_from_attack ||
-        !report.refunds.empty() || state.find_army(army_id)->province_id != beta_a ||
+    const CommandResult advanced = processor.execute(state, AdvanceTurnCommand{1});
+    const auto moved_event = std::find_if(
+        advanced.events.begin(), advanced.events.end(),
+        [](const GameEvent& event) { return event.type == GameEventType::army_moved; }
+    );
+    if (!advanced.accepted || moved_event == advanced.events.end() ||
+        state.find_army(army_id)->province_id != beta_a ||
         state.find_army(army_id)->movement_points != 4 || !state.orders().empty()) {
         std::cerr << "Friendly attack target was not converted with only its surcharge refunded\n";
+        return false;
+    }
+    const ArmyMovedEvent& moved = std::get<ArmyMovedEvent>(moved_event->payload);
+    if (moved.order_id != queued_id || !moved.converted_from_attack ||
+        moved.army_id != army_id || moved.origin != alpha_a || moved.destination != beta_a ||
+        moved.movement_cost_half != 8 || moved.remaining_movement_half != 4) {
+        std::cerr << "Converted attack event lost its order correlation or movement metadata\n";
         return false;
     }
     return true;
@@ -644,12 +659,14 @@ bool test_monthly_groups_attackers_after_defensive_movement() {
     state.find_army(withdrawing)->movement_points = 4;
     state.find_army(arriving)->movement_points = 4;
 
-    if (!orders.queue_army_action(
-            state, attacker_a, {alpha_a, alpha_b, target}, true
-        ).accepted ||
-        !orders.queue_army_action(
-            state, attacker_b, {alpha_b, target}, true
-        ).accepted ||
+    const OrderOperationResult attack_a = orders.queue_army_action(
+        state, attacker_a, {alpha_a, alpha_b, target}, true
+    );
+    const OrderOperationResult attack_b = orders.queue_army_action(
+        state, attacker_b, {alpha_b, target}, true
+    );
+    if (!attack_a.accepted || !attack_a.order_id.has_value() ||
+        !attack_b.accepted || !attack_b.order_id.has_value() ||
         !orders.queue_army_action(
             state, withdrawing, {target, beta_safe}, false
         ).accepted ||
@@ -678,10 +695,16 @@ bool test_monthly_groups_attackers_after_defensive_movement() {
         std::cerr << "Grouped attack orders were not consumed as one battle\n";
         return false;
     }
-    const BattleResolution& battle = combat.battles.front();
+    const ResolvedOrderCombat& resolved = combat.battles.front();
+    const BattleResolution& battle = resolved.battle;
     const ArmyBattleOutcome* attacker_a_outcome = find_outcome(battle, attacker_a);
     const ArmyBattleOutcome* attacker_b_outcome = find_outcome(battle, attacker_b);
-    if (!battle.occurred || battle.result != BattleResultType::defender_victory ||
+    if (resolved.order_ids.size() != 2 ||
+        std::find(resolved.order_ids.begin(), resolved.order_ids.end(), *attack_a.order_id) ==
+            resolved.order_ids.end() ||
+        std::find(resolved.order_ids.begin(), resolved.order_ids.end(), *attack_b.order_id) ==
+            resolved.order_ids.end() ||
+        !battle.occurred || battle.result != BattleResultType::defender_victory ||
         battle.attacker_initial_manpower != 20 || battle.defender_initial_manpower != 20 ||
         battle.attacker_casualties != 14 || battle.defender_casualties != 7 ||
         attacker_a_outcome == nullptr || attacker_b_outcome == nullptr ||
@@ -773,7 +796,8 @@ bool test_monthly_unopposed_group_occupies_and_reports_every_attacker() {
         }
     );
     if (!advanced.accepted || battle_event == advanced.events.end()) return false;
-    const BattleResolution& battle = std::get<BattleResolution>(battle_event->payload);
+    const BattleResolution& battle =
+        std::get<BattleResolvedEvent>(battle_event->payload).battle;
     const Army* consolidated_attacker = state.find_army(attacker_a);
     if (battle.occurred || !battle.attacker_won || !battle.province_occupied ||
         battle.attacker_initial_manpower != 300 || battle.attacker_remaining_manpower != 300 ||
@@ -796,15 +820,30 @@ bool test_advance_turn_resolves_queued_ordinary_movement() {
     const ProvinceId alpha_b{"alpha_b"};
     const ArmyId army_id = state.create_army(CountryId{"alpha"}, alpha_a, 1'000);
     state.find_army(army_id)->movement_points = 12;
-    if (!processor.execute(state, MoveArmyCommand{army_id, alpha_b}).accepted ||
+    const CommandResult queued = processor.execute(
+        state, MoveArmyCommand{army_id, alpha_b}
+    );
+    if (!queued.accepted || queued.events.empty() ||
         state.find_army(army_id)->province_id != alpha_a || state.orders().size() != 1) {
         return false;
     }
+    const OrderId queued_id = std::get<OrderCreatedEvent>(queued.events.front().payload).order_id;
 
     const CommandResult advanced = processor.execute(state, AdvanceTurnCommand{1});
+    const auto movement_event = std::find_if(
+        advanced.events.begin(), advanced.events.end(),
+        [](const GameEvent& event) { return event.type == GameEventType::army_moved; }
+    );
     if (!advanced.accepted || state.find_army(army_id)->province_id != alpha_b ||
-        !state.orders().empty() || state.find_army(army_id)->movement_points != 8) {
+        !state.orders().empty() || state.find_army(army_id)->movement_points != 8 ||
+        movement_event == advanced.events.end()) {
         std::cerr << "Advance turn did not resolve the queued ordinary move\n";
+        return false;
+    }
+    const ArmyMovedEvent& moved = std::get<ArmyMovedEvent>(movement_event->payload);
+    if (moved.order_id != queued_id || moved.converted_from_attack ||
+        moved.movement_cost_half != 4 || moved.remaining_movement_half != 8) {
+        std::cerr << "Resolved movement event lost its source order or exact movement metadata\n";
         return false;
     }
     return true;
@@ -1145,8 +1184,14 @@ bool test_project_phase_runs_after_combat_and_refunds_lost_province_recruitment(
     const ProvinceId target{"target"};
     const ArmyId attacker = state.create_army(alpha, alpha_b, 2'000);
     state.find_army(attacker)->movement_points = 8;
-    if (!orders.queue_army_action(state, attacker, {alpha_b, target}, true).accepted ||
-        !orders.queue_recruitment(state, beta, target, 100).accepted) {
+    const OrderOperationResult attack = orders.queue_army_action(
+        state, attacker, {alpha_b, target}, true
+    );
+    const OrderOperationResult recruitment = orders.queue_recruitment(
+        state, beta, target, 100
+    );
+    if (!attack.accepted || !attack.order_id.has_value() ||
+        !recruitment.accepted || !recruitment.order_id.has_value()) {
         return false;
     }
 
@@ -1165,6 +1210,18 @@ bool test_project_phase_runs_after_combat_and_refunds_lost_province_recruitment(
         state.controller_of(target) != alpha || state.army_count() != 1 ||
         !state.orders().empty()) {
         std::cerr << "Recruitment project did not invalidate after same-month occupation\n";
+        return false;
+    }
+    const BattleResolvedEvent& battle_payload =
+        std::get<BattleResolvedEvent>(battle->payload);
+    const OrderCancelledEvent& refund_payload =
+        std::get<OrderCancelledEvent>(refunded->payload);
+    if (battle_payload.order_ids != std::vector<OrderId>{*attack.order_id} ||
+        refund_payload.order_id != *recruitment.order_id ||
+        refund_payload.country_id != beta || refund_payload.army_id.has_value() ||
+        refund_payload.refunded_cost != 400 ||
+        refund_payload.refunded_movement_half != 0 || refund_payload.reason.empty()) {
+        std::cerr << "Monthly combat/project events lost source orders or refund metadata\n";
         return false;
     }
     return true;
@@ -1218,6 +1275,10 @@ bool test_ai_plans_only_after_month_end_consolidation() {
     CommandProcessor processor;
     processor.enable_ai(human);
     const CommandResult advanced = processor.execute(state, AdvanceTurnCommand{1});
+    const auto merge_event = std::find_if(
+        advanced.events.begin(), advanced.events.end(),
+        [](const GameEvent& event) { return event.type == GameEventType::armies_merged; }
+    );
     std::size_t ai_armies = 0;
     std::size_t ai_action_orders = 0;
     ArmyId surviving_army = smaller;
@@ -1239,8 +1300,19 @@ bool test_ai_plans_only_after_month_end_consolidation() {
         }
     }
     if (!advanced.accepted || ai_armies != 1 || ai_action_orders != 1 ||
-        state.find_army(smaller) == nullptr || state.find_army(larger) != nullptr) {
+        state.find_army(smaller) == nullptr || state.find_army(larger) != nullptr ||
+        merge_event == advanced.events.end()) {
         std::cerr << "AI planning did not run after deterministic month-end consolidation\n";
+        return false;
+    }
+    const ArmiesMergedEvent& merge = std::get<ArmiesMergedEvent>(merge_event->payload);
+    if (!merge.automatic || merge.country_id != ai || merge.province_id != ai_land ||
+        merge.primary_army_id != smaller ||
+        merge.merged_army_ids != std::vector<ArmyId>{larger} ||
+        merge.previous_manpower != 500 || merge.current_manpower != 1'100 ||
+        merge.current_movement_points != 12 || merge.formation_number != 1 ||
+        merge.display_name != state.army_display_name(smaller)) {
+        std::cerr << "Automatic merge event omitted stable survivor metadata\n";
         return false;
     }
     return true;

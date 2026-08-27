@@ -17,6 +17,37 @@ CountryId order_country_id(const GameOrder& order) {
     }, order);
 }
 
+OrderCancelledEvent cancellation_event(
+    const GameOrder& order,
+    std::string reason
+) {
+    return std::visit([&reason](const auto& typed_order) {
+        using OrderType = std::decay_t<decltype(typed_order)>;
+        std::optional<ArmyId> army_id;
+        std::int64_t refunded_cost = 0;
+        std::int32_t refunded_movement_half = 0;
+        if constexpr (std::is_same_v<OrderType, ArmyActionOrder>) {
+            army_id = typed_order.army_id;
+            refunded_movement_half = typed_order.reserved_movement_half;
+        } else if constexpr (!std::is_same_v<OrderType, WarDeclarationOrder>) {
+            refunded_cost = typed_order.paid_cost;
+            if constexpr (std::is_same_v<OrderType, ResearchOrder>) {
+                if (typed_order.remaining_months != typed_order.target_level + 1) {
+                    refunded_cost = 0;
+                }
+            }
+        }
+        return OrderCancelledEvent{
+            order_id(GameOrder{typed_order}),
+            typed_order.country_id,
+            std::move(army_id),
+            refunded_cost,
+            refunded_movement_half,
+            std::move(reason),
+        };
+    }, order);
+}
+
 } // namespace
 
 CommandProcessor::CommandProcessor(BattleSystem::RandomRoll random_roll)
@@ -134,11 +165,16 @@ CommandResult CommandProcessor::execute_merge_armies(
         next_event_sequence_++,
         GameEventType::armies_merged,
         ArmiesMergedEvent{
+            working_state.find_army(command.primary_army_id)->owner_id,
+            working_state.find_army(command.primary_army_id)->province_id,
             command.primary_army_id,
             command.merged_army_ids,
             merged.previous_manpower,
             merged.current_manpower,
             merged.current_movement_points,
+            working_state.find_army(command.primary_army_id)->formation_number,
+            working_state.army_display_name(command.primary_army_id),
+            false,
         },
     };
     state = std::move(working_state);
@@ -174,12 +210,18 @@ CommandResult CommandProcessor::execute_cancel_order(
         order_country_id(found->second) != *human_country_id_) {
         return {false, "cannot cancel another country's order", {}};
     }
+    if (found == state.orders().end()) {
+        return {false, "order does not exist", {}};
+    }
+    OrderCancelledEvent event_payload = cancellation_event(
+        found->second, "cancelled by player"
+    );
     const OrderOperationResult cancelled = order_system_.cancel(state, command.order_id);
     if (!cancelled.accepted) return {false, cancelled.error, {}};
     GameEvent event{
         next_event_sequence_++,
         GameEventType::order_cancelled,
-        OrderCancelledEvent{command.order_id},
+        std::move(event_payload),
     };
     return {true, {}, {std::move(event)}};
 }
@@ -263,7 +305,7 @@ CommandResult CommandProcessor::execute_declare_war(
     GameEvent event{
         next_event_sequence_++,
         GameEventType::war_declared,
-        WarDeclaredEvent{command.aggressor_id, command.defender_id},
+        WarDeclaredEvent{std::nullopt, command.aggressor_id, command.defender_id},
     };
     state = std::move(working_state);
     return {true, {}, {std::move(event)}};
@@ -425,7 +467,11 @@ CommandResult CommandProcessor::execute_advance_turn(
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::war_declared,
-                WarDeclaredEvent{declaration.aggressor_id, declaration.defender_id},
+                WarDeclaredEvent{
+                    declaration.order_id,
+                    declaration.aggressor_id,
+                    declaration.defender_id,
+                },
             });
         }
         for (const InvalidatedWarDeclaration& invalidation :
@@ -434,7 +480,14 @@ CommandResult CommandProcessor::execute_advance_turn(
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::order_cancelled,
-                OrderCancelledEvent{invalidation.order_id},
+                OrderCancelledEvent{
+                    invalidation.order_id,
+                    invalidation.country_id,
+                    std::nullopt,
+                    0,
+                    0,
+                    invalidation.reason,
+                },
             });
         }
 
@@ -445,11 +498,13 @@ CommandResult CommandProcessor::execute_advance_turn(
                 next_event_sequence_++,
                 GameEventType::army_moved,
                 ArmyMovedEvent{
+                    movement.order_id,
                     movement.army_id,
                     movement.origin,
                     movement.destination,
-                    movement.movement_cost_half / MovementSystem::movement_point_scale,
+                    movement.movement_cost_half,
                     movement.remaining_movement_half,
+                    movement.converted_from_attack,
                 },
             });
         }
@@ -458,17 +513,24 @@ CommandResult CommandProcessor::execute_advance_turn(
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::order_cancelled,
-                OrderCancelledEvent{refund.order_id},
+                OrderCancelledEvent{
+                    refund.order_id,
+                    refund.country_id,
+                    refund.army_id,
+                    0,
+                    refund.refunded_movement_half,
+                    refund.reason,
+                },
             });
         }
 
         const MonthlyOrderCombatReport order_combat_report =
             monthly_order_system_.resolve_combat(working_state, battle_system_);
-        for (const BattleResolution& battle : order_combat_report.battles) {
+        for (const ResolvedOrderCombat& battle : order_combat_report.battles) {
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::battle_resolved,
-                battle,
+                BattleResolvedEvent{battle.order_ids, battle.battle},
             });
         }
         for (const RefundedArmyAction& refund : order_combat_report.refunds) {
@@ -476,7 +538,14 @@ CommandResult CommandProcessor::execute_advance_turn(
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::order_cancelled,
-                OrderCancelledEvent{refund.order_id},
+                OrderCancelledEvent{
+                    refund.order_id,
+                    refund.country_id,
+                    refund.army_id,
+                    0,
+                    refund.refunded_movement_half,
+                    refund.reason,
+                },
             });
         }
 
@@ -487,6 +556,7 @@ CommandResult CommandProcessor::execute_advance_turn(
                 next_event_sequence_++,
                 GameEventType::army_recruited,
                 ArmyRecruitedEvent{
+                    recruitment.order_id,
                     recruitment.army_id,
                     recruitment.country_id,
                     recruitment.province_id,
@@ -500,6 +570,7 @@ CommandResult CommandProcessor::execute_advance_turn(
                 next_event_sequence_++,
                 GameEventType::road_built,
                 RoadBuiltEvent{
+                    road.order_id,
                     road.country_id,
                     road.province_a,
                     road.province_b,
@@ -512,7 +583,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::technology_researched,
-                research.result,
+                TechnologyResearchedEvent{research.order_id, research.result},
             });
         }
         for (const RefundedProjectOrder& refund : project_report.refunds) {
@@ -520,7 +591,14 @@ CommandResult CommandProcessor::execute_advance_turn(
             ai_events.push_back(GameEvent{
                 next_event_sequence_++,
                 GameEventType::order_cancelled,
-                OrderCancelledEvent{refund.order_id},
+                OrderCancelledEvent{
+                    refund.order_id,
+                    refund.country_id,
+                    std::nullopt,
+                    refund.refunded_cost,
+                    0,
+                    refund.reason,
+                },
             });
         }
 
@@ -531,11 +609,16 @@ CommandResult CommandProcessor::execute_advance_turn(
                 next_event_sequence_++,
                 GameEventType::armies_merged,
                 ArmiesMergedEvent{
+                    merge.country_id,
+                    merge.province_id,
                     merge.primary_army_id,
                     merge.merged_army_ids,
                     merge.previous_manpower,
                     merge.current_manpower,
                     merge.current_movement_points,
+                    merge.formation_number,
+                    merge.display_name,
+                    true,
                 },
             });
         }

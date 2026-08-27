@@ -23,6 +23,7 @@ struct ResolvedArmyMovement final {
 
 struct RefundedArmyAction final {
     OrderId order_id;
+    CountryId country_id;
     ArmyId army_id;
     std::int32_t refunded_movement_half{};
     std::string reason;
@@ -33,8 +34,13 @@ struct MonthlyOrderMovementReport final {
     std::vector<RefundedArmyAction> refunds;
 };
 
+struct ResolvedOrderCombat final {
+    std::vector<OrderId> order_ids;
+    BattleResolution battle;
+};
+
 struct MonthlyOrderCombatReport final {
-    std::vector<BattleResolution> battles;
+    std::vector<ResolvedOrderCombat> battles;
     std::vector<RefundedArmyAction> refunds;
 };
 
@@ -92,11 +98,15 @@ struct MonthlyOrderProjectReport final {
 };
 
 struct AutomaticArmyMerge final {
+    CountryId country_id;
+    ProvinceId province_id;
     ArmyId primary_army_id;
     std::vector<ArmyId> merged_army_ids;
     std::int64_t previous_manpower{};
     std::int64_t current_manpower{};
     std::int32_t current_movement_points{};
+    std::int64_t formation_number{};
+    std::string display_name;
 };
 
 struct MonthlyArmyConsolidationReport final {

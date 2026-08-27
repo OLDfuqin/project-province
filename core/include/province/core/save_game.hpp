@@ -17,7 +17,8 @@ public:
 struct LoadedGame final {
     GameState state;
     std::uint64_t next_event_sequence{1};
-    std::optional<CountryId> human_country_id;
+    CountryId player_country_id;
+    std::optional<CountryId> ai_human_country_id;
 };
 
 class SaveGameSerializer final {
@@ -28,7 +29,8 @@ public:
         const std::filesystem::path& path,
         const GameState& state,
         std::uint64_t next_event_sequence,
-        const std::optional<CountryId>& human_country_id
+        const CountryId& player_country_id,
+        const std::optional<CountryId>& ai_human_country_id
     );
     [[nodiscard]] static LoadedGame load(const std::filesystem::path& path);
 };

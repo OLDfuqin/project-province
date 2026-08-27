@@ -144,6 +144,7 @@ MonthlyOrderMovementReport MonthlyOrderSystem::resolve_movement(GameState& state
             }
             report.refunds.push_back(RefundedArmyAction{
                 id,
+                order.country_id,
                 order.army_id,
                 army == nullptr ? 0 : order.reserved_movement_half,
                 *path_error,
@@ -162,6 +163,7 @@ MonthlyOrderMovementReport MonthlyOrderSystem::resolve_movement(GameState& state
                     add_refund(*army, order.reserved_movement_half);
                     report.refunds.push_back(RefundedArmyAction{
                         id,
+                        order.country_id,
                         order.army_id,
                         order.reserved_movement_half,
                         "attack reservation is smaller than its required surcharge",
@@ -177,6 +179,7 @@ MonthlyOrderMovementReport MonthlyOrderSystem::resolve_movement(GameState& state
                 add_refund(*army, order.reserved_movement_half);
                 report.refunds.push_back(RefundedArmyAction{
                     id,
+                    order.country_id,
                     order.army_id,
                     order.reserved_movement_half,
                     "attack target is no longer hostile",
@@ -188,6 +191,7 @@ MonthlyOrderMovementReport MonthlyOrderSystem::resolve_movement(GameState& state
             add_refund(*army, order.reserved_movement_half);
             report.refunds.push_back(RefundedArmyAction{
                 id,
+                order.country_id,
                 order.army_id,
                 order.reserved_movement_half,
                 "ordinary movement target is no longer friendly",
@@ -260,6 +264,7 @@ MonthlyOrderCombatReport MonthlyOrderSystem::resolve_combat(
             }
             report.refunds.push_back({
                 id,
+                order.country_id,
                 order.army_id,
                 army == nullptr ? 0 : order.reserved_movement_half,
                 *error,
@@ -297,6 +302,7 @@ MonthlyOrderCombatReport MonthlyOrderSystem::resolve_combat(
                 }
                 report.refunds.push_back({
                     order.id,
+                    order.country_id,
                     order.army_id,
                     army == nullptr ? 0 : order.reserved_movement_half,
                     *error,
@@ -313,7 +319,10 @@ MonthlyOrderCombatReport MonthlyOrderSystem::resolve_combat(
         if (attackers.empty()) {
             continue;
         }
-        report.battles.push_back(battle_system.resolve_group(state, attackers));
+        report.battles.push_back({
+            consumed_orders,
+            battle_system.resolve_group(state, attackers),
+        });
         for (const AttackingArmyEntry& entry : attackers) {
             Army* attacker = state.find_army(entry.army_id);
             if (attacker != nullptr && attacker->advance_target.has_value() &&
@@ -482,11 +491,15 @@ MonthlyArmyConsolidationReport MonthlyOrderSystem::consolidate_armies(
                 };
             }
             report.merges.push_back({
+                location.first,
+                location.second,
                 primary_id,
                 {merged_id},
                 merged.previous_manpower,
                 merged.current_manpower,
                 merged.current_movement_points,
+                state.find_army(primary_id)->formation_number,
+                state.army_display_name(primary_id),
             });
         }
     }
