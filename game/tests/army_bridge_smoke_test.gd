@@ -3,279 +3,309 @@ extends SceneTree
 const Helpers := preload("res://tests/generated_scenario_helpers.gd")
 
 
+func _country(bridge: Object, country_id: String) -> Dictionary:
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == country_id:
+            return country
+    return {}
+
+
 func _army(bridge: Object, army_id: String) -> Dictionary:
-    for summary: Dictionary in bridge.get_army_summaries():
-        if summary.get("id", "") == army_id:
-            return summary
-    return {}
-
-
-func _has_complete_battle_metadata(battle: Dictionary) -> bool:
-    var required := [
-        "battle_result", "attacker_random_x", "defender_random_x",
-        "attacker_initial_manpower", "defender_initial_manpower",
-        "attacker_military_level", "defender_military_level",
-        "attacker_base_strength", "defender_base_strength",
-        "defender_final_strength", "terrain_defense_bonus",
-        "attacker_casualties", "defender_casualties",
-        "attacker_remaining_manpower", "defender_remaining_manpower",
-    ]
-    for key: String in required:
-        if not battle.has(key):
-            return false
-    var result := String(battle.get("battle_result", ""))
-    if result not in ["defender_victory", "attacker_victory", "mutual_destruction"]:
-        return false
-    for key: String in ["attacker_random_x", "defender_random_x"]:
-        var random_x := float(battle[key])
-        if random_x < 0.7 or random_x > 1.4 or \
-                not is_equal_approx(random_x * 10.0, round(random_x * 10.0)):
-            return false
-    for outcome: Dictionary in battle.get("battle_outcomes", []):
-        if String(outcome.get("army_id", "")).is_empty() or \
-                String(outcome.get("display_name", "")).is_empty():
-            return false
-    return true
-
-
-func _find_unopposed_group_target(
-        bridge: Object, attacker_country: String, defender_country: String
-) -> Dictionary:
-    var defending_armies: Dictionary = {}
     for army: Dictionary in bridge.get_army_summaries():
-        if army.get("owner_id", "") != defender_country:
-            continue
-        var province_id := String(army.get("province_id", ""))
-        defending_armies[province_id] = int(defending_armies.get(province_id, 0)) + 1
-
-    var candidates: Dictionary = {}
-    for province: Dictionary in bridge.get_province_summaries():
-        if province.get("owner_id", "") != attacker_country:
-            continue
-        var origin_id := String(province.get("id", ""))
-        var neighbors: Array = province.get("neighbors", []).duplicate()
-        neighbors.sort()
-        for neighbor: String in neighbors:
-            var target := Helpers.province_by_id(bridge, neighbor)
-            if target.get("owner_id", "") != defender_country or \
-                    target.get("occupied", false) or \
-                    int(defending_armies.get(neighbor, 0)) != 0:
-                continue
-            if not candidates.has(neighbor):
-                candidates[neighbor] = []
-            candidates[neighbor].append(origin_id)
-
-    var targets: Array = candidates.keys()
-    targets.sort()
-    for target_id: String in targets:
-        var origins: Array = candidates[target_id]
-        origins.sort()
-        if origins.size() >= 2:
-            return {"target": target_id, "origins": [origins[0], origins[1]]}
+        if army.get("id", "") == army_id:
+            return army
     return {}
+
+
+func _player_army_count(bridge: Object) -> int:
+    var count := 0
+    for army: Dictionary in bridge.get_army_summaries():
+        if army.get("owner_id", "") == "auroria":
+            count += 1
+    return count
+
+
+func _first_friendly_target(targets: Array) -> Dictionary:
+    for target: Dictionary in targets:
+        if not target.get("is_attack", true):
+            return target
+    return {}
+
+
+func _has_target(targets: Array, province_id: String) -> bool:
+    for target: Dictionary in targets:
+        if target.get("province_id", "") == province_id:
+            return true
+    return false
+
+
+func _at_war(bridge: Object, first: String, second: String) -> bool:
+    for relation: Dictionary in bridge.get_diplomatic_relations():
+        var countries := [String(relation.get("country_a", "")), String(relation.get("country_b", ""))]
+        if first in countries and second in countries:
+            return relation.get("status", "peace") == "war"
+    return false
 
 
 func _initialize() -> void:
     var bridge: Object = ClassDB.instantiate("ProvinceBridge")
-    if bridge == null:
-        push_error("ProvinceBridge could not be instantiated")
+    var data_directory := ProjectSettings.globalize_path("res://data")
+    if bridge == null or not bridge.load_scenario(data_directory, 1000, 1):
+        push_error("Scenario load failed")
         quit(1)
         return
-    var data_directory := ProjectSettings.globalize_path("res://data")
-    if not bridge.load_scenario(data_directory, 1000, 1):
-        push_error("Scenario load failed: %s" % bridge.get_last_error())
+
+    # The bridge initializes AI orders for a new scenario, but a human query may
+    # only expose the configured human country's orders.
+    if bridge.get_pending_orders("auroria").size() != 0 or \
+            bridge.get_pending_orders("solmere").size() != 0:
+        push_error("Enemy AI orders leaked through the human bridge query")
         bridge.free()
         quit(1)
         return
     bridge.set_ai_enabled(false, "auroria")
 
-    var provinces: Array = bridge.get_province_summaries()
-    var neutral_armies := 0
-    for army: Dictionary in bridge.get_army_summaries():
-        if army.get("owner_id", "") == "neutral":
-            neutral_armies += 1
-    if provinces.size() != 69 or bridge.get_country_summaries().size() != 4 or \
-            neutral_armies != 17:
-        push_error("Generated scenario bridge snapshot is incomplete: provinces=%d countries=%d neutral_armies=%d total_armies=%d" % [
-            provinces.size(), bridge.get_country_summaries().size(), neutral_armies,
-            bridge.get_army_summaries().size(),
-        ])
-        bridge.free()
-        quit(1)
-        return
-
     var capital := Helpers.capital_id("auroria")
-    var capital_before := Helpers.province_by_id(bridge, capital)
+    var province_before := Helpers.province_by_id(bridge, capital)
+    var treasury_before := int(_country(bridge, "auroria").get("treasury", 0))
+    var army_count_before := _player_army_count(bridge)
+    var quote: Dictionary = bridge.get_recruitment_order_quote("auroria", capital, 100)
     var rejected: Dictionary = bridge.recruit_army("auroria", capital, 0)
-    var first: Dictionary = bridge.recruit_army("auroria", capital, 100)
-    var second: Dictionary = bridge.recruit_army("auroria", capital, 125)
-    var capital_after := Helpers.province_by_id(bridge, capital)
-    if rejected.get("accepted", true) or not first.get("accepted", false) or \
-            not second.get("accepted", false) or \
-            first.get("display_name", "") != "奥·第1军" or \
-            second.get("display_name", "") != "奥·第2军" or \
-            capital_after.get("population", -1) != capital_before.get("population", -1) - 225 or \
-            capital_after.get("recruitable_population", -1) != \
-                capital_before.get("recruitable_population", -1) - 225:
-        push_error("Variable recruitment or generated army naming failed")
+    var queued: Dictionary = bridge.recruit_army("auroria", capital, 100)
+    var province_after_queue := Helpers.province_by_id(bridge, capital)
+    var pending: Array = bridge.get_pending_orders("auroria")
+    if quote.get("cost", 0) != 400 or rejected.get("accepted", true) or \
+            not queued.get("accepted", false) or queued.get("status", "") != "queued" or \
+            queued.get("order_type", "") != "recruitment" or queued.get("order_id", "") == "" or \
+            queued.get("manpower", 0) != 100 or queued.get("remaining_months", 0) != 1 or \
+            _player_army_count(bridge) != army_count_before or \
+            province_after_queue.get("population", -1) != province_before.get("population", -1) or \
+            province_after_queue.get("recruitable_population", -1) != \
+                province_before.get("recruitable_population", -1) or \
+            pending.size() != 1 or int(_country(bridge, "auroria").get("treasury", 0)) != \
+                treasury_before - 400:
+        push_error("Recruitment was not exposed as a prepaid delayed order: %s" % queued)
         bridge.free()
         quit(1)
         return
 
-    var renamed: Dictionary = bridge.rename_army(first["army_id"], 5)
-    var duplicate: Dictionary = bridge.rename_army(second["army_id"], 5)
-    var merged: Dictionary = bridge.merge_armies(first["army_id"], [second["army_id"]])
-    var third: Dictionary = bridge.recruit_army("auroria", capital, 50)
-    if not renamed.get("accepted", false) or duplicate.get("accepted", true) or \
-            not merged.get("accepted", false) or \
-            _army(bridge, first["army_id"]).get("manpower", 0) != 225 or \
-            not _army(bridge, second["army_id"]).is_empty() or \
-            third.get("formation_number", 0) != 1:
-        push_error("Army rename, uniqueness, merge or released numbering failed")
+    var cancelled: Dictionary = bridge.cancel_order(queued["order_id"])
+    if not cancelled.get("accepted", false) or cancelled.get("event_type", "") != "order_cancelled" or \
+            bridge.get_pending_orders("auroria").size() != 0 or \
+            int(_country(bridge, "auroria").get("treasury", 0)) != treasury_before:
+        push_error("Recruitment cancellation did not refund its prepaid cost")
         bridge.free()
         quit(1)
         return
 
-    var turn: Dictionary = bridge.advance_turn(3)
-    var moved: Dictionary = bridge.move_army(first["army_id"], "cell_1_2")
-    var target: Dictionary = bridge.set_army_advance_target(first["army_id"], "cell_4_4")
-    var strategy: Dictionary = bridge.set_army_advance_strategy(first["army_id"], "one_step")
-    var preview: Dictionary = bridge.get_auto_advance_path_for_months(
-        first["army_id"], "cell_4_4", 1
-    )
-    if not turn.get("accepted", false) or not moved.get("accepted", false) or \
-            moved.get("origin", "") != capital or moved.get("destination", "") != "cell_1_2" or \
-            not target.get("accepted", false) or not strategy.get("accepted", false) or \
-            not preview.get("accepted", false) or \
-            preview.get("preview_path", []).is_empty():
-        push_error("Movement or advance-plan bridge contract failed: turn=%s moved=%s target=%s strategy=%s preview=%s" % [
-            turn, moved, target, strategy, preview,
-        ])
+    queued = bridge.recruit_army("auroria", capital, 100)
+    var date_before: Dictionary = bridge.get_current_date()
+    var rejected_turn: Dictionary = bridge.advance_turn(3)
+    var completion_turn: Dictionary = bridge.advance_turn()
+    var recruited_action: Dictionary = {}
+    var maintenance_action: Dictionary = {}
+    var movement_grant_action: Dictionary = {}
+    for action: Dictionary in completion_turn.get("turn_actions", []):
+        if action.get("type", "") == "army_recruited" and \
+                action.get("country_id", "") == "auroria":
+            recruited_action = action
+        elif action.get("type", "") == "maintenance_resolved":
+            maintenance_action = action
+        elif action.get("type", "") == "movement_points_granted":
+            movement_grant_action = action
+    var army_id := String(recruited_action.get("army_id", ""))
+    if rejected_turn.get("accepted", true) or bridge.get_current_date().get("month", 0) != \
+            ((int(date_before.get("month", 0)) % 12) + 1) or \
+            not completion_turn.get("accepted", false) or recruited_action.is_empty() or \
+            recruited_action.get("province_id", "") != capital or \
+            recruited_action.get("manpower", 0) != 100 or army_id == "" or \
+            recruited_action.get("event_sequence", 0) <= 0 or maintenance_action.is_empty() or \
+            movement_grant_action.is_empty() or not completion_turn.has("fiscal_incomes") or \
+            not completion_turn.has("maintenance_charges") or \
+            not completion_turn.has("population_changes") or \
+            not completion_turn.has("movement_grants") or \
+            _army(bridge, army_id).is_empty() or bridge.get_pending_orders("auroria").size() != 0:
+        push_error("Recruitment order did not complete through the monthly event stream")
         bridge.free()
         quit(1)
         return
 
-    var battle_bridge: Object = ClassDB.instantiate("ProvinceBridge")
-    if not battle_bridge.load_scenario(data_directory, 1000, 1):
-        push_error("Battle scenario load failed")
+    bridge.advance_turn()
+    var targets: Array = bridge.get_army_order_targets(army_id)
+    var destination := _first_friendly_target(targets)
+    if destination.is_empty():
+        bridge.advance_turn()
+        targets = bridge.get_army_order_targets(army_id)
+        destination = _first_friendly_target(targets)
+    if destination.is_empty():
+        push_error("Bridge exposed no reachable friendly order target")
         bridge.free()
-        battle_bridge.free()
         quit(1)
         return
-    battle_bridge.set_ai_enabled(false, "auroria")
-    var border := Helpers.neutral_neighbor(battle_bridge, "auroria")
-    if border.size() != 2:
-        push_error("Generated map has no Auroria-neutral border")
+    var origin := String(_army(bridge, army_id).get("province_id", ""))
+    var movement_points_before := float(_army(bridge, army_id).get("movement_points", 0.0))
+    var move: Dictionary = bridge.move_army(army_id, destination["province_id"])
+    if not move.get("accepted", false) or move.get("order_type", "") != "army_action" or \
+            move.get("origin", "") != origin or move.get("destination", "") != destination["province_id"] or \
+            move.get("path", []).size() < 2 or move.get("movement_cost", 0.0) <= 0.0 or \
+            _army(bridge, army_id).get("province_id", "") != origin:
+        push_error("Army action was not queued with its range and cost: %s" % move)
         bridge.free()
-        battle_bridge.free()
         quit(1)
         return
-    var neutral_before := Helpers.province_by_id(battle_bridge, border[1])
-    var guard_before: Dictionary = {}
-    for army: Dictionary in battle_bridge.get_army_summaries():
-        if army.get("province_id", "") == border[1] and \
-                army.get("owner_id", "") == "neutral":
-            guard_before = army
+    var move_cancel: Dictionary = bridge.cancel_order(move.get("order_id", ""))
+    if not move_cancel.get("accepted", false) or \
+            not is_equal_approx(
+                float(_army(bridge, army_id).get("movement_points", -1.0)),
+                movement_points_before
+            ):
+        push_error("Army action cancellation did not restore reserved movement")
+        bridge.free()
+        quit(1)
+        return
+    move = bridge.move_army(army_id, destination["province_id"])
+    var movement_turn: Dictionary = bridge.advance_turn()
+    var movement_action: Dictionary = {}
+    for action: Dictionary in movement_turn.get("turn_actions", []):
+        if action.get("type", "") == "army_moved" and action.get("army_id", "") == army_id:
+            movement_action = action
             break
-    var neutral_turn: Dictionary = battle_bridge.advance_turn(1)
-    var neutral_after_growth := Helpers.province_by_id(battle_bridge, border[1])
-    var guard_after: Dictionary = {}
-    for army: Dictionary in battle_bridge.get_army_summaries():
-        if army.get("province_id", "") == border[1] and \
-                army.get("owner_id", "") == "neutral":
-            guard_after = army
-            break
-    var expected_guard_growth := int(neutral_before.get("population", 0)) / 1000
-    if not neutral_turn.get("accepted", false) or \
-            neutral_after_growth.get("population", -1) != neutral_before.get("population", -1) or \
-            guard_after.get("manpower", -1) != guard_before.get("manpower", -1) + expected_guard_growth:
-        push_error("Neutral monthly population diversion failed")
+    if _army(bridge, army_id).get("province_id", "") != destination["province_id"] or \
+            movement_action.get("origin", "") != origin or \
+            movement_action.get("destination", "") != destination["province_id"] or \
+            movement_action.get("remaining_points", -99.0) < -1.0:
+        push_error("Queued army movement did not resolve next month")
         bridge.free()
-        battle_bridge.free()
         quit(1)
         return
 
-    var attacker: Dictionary = battle_bridge.recruit_army("auroria", border[0], 100)
-    battle_bridge.advance_turn(3)
-    var battle: Dictionary = battle_bridge.move_army(attacker["army_id"], border[1])
-    var neutral_after_battle := Helpers.province_by_id(battle_bridge, border[1])
-    var attacker_won: bool = battle.get("battle_result", "") == "attacker_victory"
-    if not battle.get("accepted", false) or not battle.get("battle_occurred", false) or \
-            not _has_complete_battle_metadata(battle) or \
-            (attacker_won and (
-                neutral_after_battle.get("owner_id", "") != "auroria" or \
-                neutral_after_battle.get("occupied", true)
-            )) or \
-            (not attacker_won and neutral_after_battle.get("owner_id", "") != "neutral"):
-        push_error("Neutral defensive battle or direct conquest failed")
-        bridge.free()
-        battle_bridge.free()
-        quit(1)
-        return
-
-    var grouped_bridge: Object = ClassDB.instantiate("ProvinceBridge")
-    if not grouped_bridge.load_scenario(data_directory, 1000, 1):
+    # Build a deterministic grouped battle setup to verify the monthly battle
+    # dictionary retains every attacking army identity.
+    var grouped: Object = ClassDB.instantiate("ProvinceBridge")
+    if not grouped.load_scenario(data_directory, 1000, 1):
         push_error("Grouped battle scenario load failed")
         bridge.free()
-        battle_bridge.free()
-        grouped_bridge.free()
+        grouped.free()
         quit(1)
         return
-    grouped_bridge.set_ai_enabled(false, "auroria")
-    var grouped_target := _find_unopposed_group_target(
-        grouped_bridge, "auroria", "solmere"
-    )
-    if grouped_target.is_empty():
-        push_error("Generated map has no grouped unopposed Auroria-Solmere target")
+    grouped.set_ai_enabled(false, "auroria")
+    var border := Helpers.neutral_neighbor(grouped, "auroria")
+    if border.size() != 2:
+        push_error("Generated scenario has no Auroria-neutral border")
         bridge.free()
-        battle_bridge.free()
-        grouped_bridge.free()
+        grouped.free()
         quit(1)
         return
-    var grouped_origins: Array = grouped_target.get("origins", [])
-    var grouped_attack_a: Dictionary = grouped_bridge.recruit_army(
-        "auroria", grouped_origins[0], 100
+    for _month: int in range(4):
+        grouped.advance_turn()
+    var first_recruit: Dictionary = grouped.recruit_army("auroria", border[0], 1500)
+    grouped.advance_turn()
+    var second_quote: Dictionary = grouped.get_recruitment_order_quote(
+        "auroria", border[0], 1500
     )
-    var grouped_attack_b: Dictionary = grouped_bridge.recruit_army(
-        "auroria", grouped_origins[1], 100
-    )
-    grouped_bridge.declare_war("auroria", "solmere")
-    grouped_bridge.advance_turn(3)
-    var queued_a: Dictionary = grouped_bridge.move_army(
-        grouped_attack_a["army_id"], grouped_target["target"]
-    )
-    var queued_b: Dictionary = grouped_bridge.move_army(
-        grouped_attack_b["army_id"], grouped_target["target"]
-    )
-    var grouped_turn: Dictionary = grouped_bridge.advance_turn(1)
-    var grouped_action: Dictionary = {}
-    for action: Dictionary in grouped_turn.get("turn_actions", []):
-        if action.get("type", "") == "battle_resolved" and \
-                action.get("province_id", "") == grouped_target["target"]:
-            grouped_action = action
+    for _month: int in range(12):
+        if second_quote.get("accepted", false):
             break
-    var grouped_after := Helpers.province_by_id(grouped_bridge, grouped_target["target"])
-    var grouped_outcomes: Array = grouped_action.get("battle_outcomes", [])
-    var grouped_ids: Dictionary = {}
-    for outcome: Dictionary in grouped_outcomes:
-        grouped_ids[String(outcome.get("army_id", ""))] = true
-    if not queued_a.get("accepted", false) or not queued_b.get("accepted", false) or \
-            not grouped_turn.get("accepted", false) or grouped_action.is_empty() or \
-            grouped_action.get("battle_occurred", true) or \
-            not grouped_action.get("province_occupied", false) or \
-            grouped_outcomes.size() != 2 or \
-            not grouped_ids.has(grouped_attack_a["army_id"]) or \
-            not grouped_ids.has(grouped_attack_b["army_id"]) or \
-            grouped_after.get("owner_id", "") != "auroria":
-        push_error("Unopposed grouped occupation did not expose every attacker outcome")
+        grouped.advance_turn()
+        second_quote = grouped.get_recruitment_order_quote("auroria", border[0], 1500)
+    var second_recruit: Dictionary = grouped.recruit_army("auroria", border[0], 1500)
+    grouped.advance_turn()
+    var attacker_ids: Array[String] = []
+    for summary: Dictionary in grouped.get_army_summaries():
+        if summary.get("owner_id", "") == "auroria" and \
+                summary.get("province_id", "") == border[0]:
+            attacker_ids.append(String(summary.get("id", "")))
+    for _month: int in range(3):
+        grouped.advance_turn()
+    if not first_recruit.get("accepted", false) or not second_recruit.get("accepted", false) or \
+            attacker_ids.size() < 2:
+        push_error("Grouped battle attackers were not recruited: %s / %s" % [
+            first_recruit, second_recruit,
+        ])
         bridge.free()
-        battle_bridge.free()
-        grouped_bridge.free()
+        grouped.free()
+        quit(1)
+        return
+    var first_attack: Dictionary = grouped.move_army(attacker_ids[0], border[1])
+    var second_attack: Dictionary = grouped.move_army(attacker_ids[1], border[1])
+    var battle_turn: Dictionary = grouped.advance_turn()
+    var battle: Dictionary = {}
+    for action: Dictionary in battle_turn.get("turn_actions", []):
+        if action.get("type", "") == "battle_resolved" and \
+                action.get("province_id", "") == border[1]:
+            battle = action
+            break
+    var outcome_ids: Dictionary = {}
+    for outcome: Dictionary in battle.get("battle_outcomes", []):
+        outcome_ids[String(outcome.get("army_id", ""))] = true
+    if not first_attack.get("accepted", false) or not second_attack.get("accepted", false) or \
+            battle.is_empty() or not battle.get("battle_occurred", false) or \
+            battle.get("attacker_id", "") != "auroria" or battle.get("defender_id", "") != "neutral" or \
+            not outcome_ids.has(attacker_ids[0]) or not outcome_ids.has(attacker_ids[1]):
+        push_error("Grouped monthly battle report lost stable participants: %s" % battle)
+        bridge.free()
+        grouped.free()
+        quit(1)
+        return
+
+    # A range query is a list of queueable destinations, not just geometrically
+    # reachable ones. Respect an attack lock already owned by another country.
+    var locked: Object = ClassDB.instantiate("ProvinceBridge")
+    locked.load_scenario(data_directory, 1000, 1)
+    for country_id: String in ["auroria", "caelus", "solmere", "verdantia"]:
+        locked.set_ai_enabled(false, country_id)
+        for order: Dictionary in locked.get_pending_orders(country_id):
+            locked.cancel_order(order.get("order_id", ""))
+    locked.set_ai_enabled(false, "auroria")
+    var auroria_recruit: Dictionary = locked.recruit_army("auroria", "cell_4_4", 100)
+    locked.set_ai_enabled(false, "caelus")
+    var caelus_recruit: Dictionary = locked.recruit_army("caelus", "cell_6_4", 100)
+    for _month: int in range(4):
+        locked.advance_turn()
+    var auroria_army_id := ""
+    var caelus_army_id := ""
+    for summary: Dictionary in locked.get_army_summaries():
+        if summary.get("owner_id", "") == "auroria" and \
+                summary.get("province_id", "") == "cell_4_4":
+            auroria_army_id = String(summary.get("id", ""))
+        elif summary.get("owner_id", "") == "caelus" and \
+                summary.get("province_id", "") == "cell_6_4":
+            caelus_army_id = String(summary.get("id", ""))
+    locked.set_ai_enabled(false, "caelus")
+    var lock_order: Dictionary = locked.move_army(caelus_army_id, "cell_5_4")
+    locked.set_ai_enabled(false, "auroria")
+    var player_targets: Array = locked.get_army_order_targets(auroria_army_id)
+    if not auroria_recruit.get("accepted", false) or not caelus_recruit.get("accepted", false) or \
+            auroria_army_id.is_empty() or caelus_army_id.is_empty() or \
+            not lock_order.get("accepted", false) or _has_target(player_targets, "cell_5_4"):
+        push_error("Army order range exposed a target locked by another country")
+        bridge.free()
+        grouped.free()
+        locked.free()
+        quit(1)
+        return
+
+    var diplomacy: Object = ClassDB.instantiate("ProvinceBridge")
+    diplomacy.load_scenario(data_directory, 1000, 1)
+    diplomacy.set_ai_enabled(false, "auroria")
+    var declaration: Dictionary = diplomacy.declare_war("auroria", "solmere")
+    var declaration_orders: Array = diplomacy.get_pending_orders("auroria")
+    if not declaration.get("accepted", false) or \
+            declaration.get("aggressor_id", "") != "auroria" or \
+            declaration.get("defender_id", "") != "solmere" or \
+            declaration.get("event_sequence", 0) <= 0 or not declaration_orders.is_empty() or \
+            not _at_war(diplomacy, "auroria", "solmere"):
+        push_error("Existing player diplomacy call no longer returned its stable event dictionary")
+        bridge.free()
+        grouped.free()
+        locked.free()
+        diplomacy.free()
         quit(1)
         return
 
     print("ProvinceBridge army integration smoke test passed")
     bridge.free()
-    battle_bridge.free()
-    grouped_bridge.free()
+    grouped.free()
+    locked.free()
+    diplomacy.free()
     quit(0)

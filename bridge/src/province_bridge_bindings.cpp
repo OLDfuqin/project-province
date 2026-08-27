@@ -13,7 +13,12 @@ void ProvinceBridge::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("get_country_summaries"), &ProvinceBridge::get_country_summaries);
     godot::ClassDB::bind_method(godot::D_METHOD("get_province_summaries"), &ProvinceBridge::get_province_summaries);
     godot::ClassDB::bind_method(godot::D_METHOD("get_current_date"), &ProvinceBridge::get_current_date);
-    godot::ClassDB::bind_method(godot::D_METHOD("advance_turn", "months"), &ProvinceBridge::advance_turn);
+    godot::ClassDB::bind_method(godot::D_METHOD("advance_turn", "months"), &ProvinceBridge::advance_turn, DEFVAL(1));
+    godot::ClassDB::bind_method(godot::D_METHOD("get_pending_orders", "country_id"), &ProvinceBridge::get_pending_orders);
+    godot::ClassDB::bind_method(godot::D_METHOD("cancel_order", "order_id"), &ProvinceBridge::cancel_order);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_army_order_targets", "army_id"), &ProvinceBridge::get_army_order_targets);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_recruitment_order_quote", "country_id", "province_id", "manpower"), &ProvinceBridge::get_recruitment_order_quote);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_road_order_quote", "country_id", "province_a", "province_b"), &ProvinceBridge::get_road_order_quote);
     godot::ClassDB::bind_method(godot::D_METHOD("build_road", "country_id", "province_a", "province_b"), &ProvinceBridge::build_road);
     godot::ClassDB::bind_method(godot::D_METHOD("get_road_summaries"), &ProvinceBridge::get_road_summaries);
     godot::ClassDB::bind_method(godot::D_METHOD("recruit_army", "country_id", "province_id", "manpower"), &ProvinceBridge::recruit_army);

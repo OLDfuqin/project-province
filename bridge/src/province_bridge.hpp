@@ -33,7 +33,24 @@ public:
     [[nodiscard]] godot::Array get_country_summaries() const;
     [[nodiscard]] godot::Array get_province_summaries() const;
     [[nodiscard]] godot::Dictionary get_current_date() const;
-    [[nodiscard]] godot::Dictionary advance_turn(std::int32_t months);
+    [[nodiscard]] godot::Dictionary advance_turn(std::int32_t months = 1);
+    [[nodiscard]] godot::Array get_pending_orders(
+        const godot::String& country_id
+    ) const;
+    [[nodiscard]] godot::Dictionary cancel_order(const godot::String& order_id);
+    [[nodiscard]] godot::Array get_army_order_targets(
+        const godot::String& army_id
+    ) const;
+    [[nodiscard]] godot::Dictionary get_recruitment_order_quote(
+        const godot::String& country_id,
+        const godot::String& province_id,
+        std::int64_t manpower
+    ) const;
+    [[nodiscard]] godot::Dictionary get_road_order_quote(
+        const godot::String& country_id,
+        const godot::String& province_a,
+        const godot::String& province_b
+    ) const;
     [[nodiscard]] godot::Dictionary build_road(
         const godot::String& country_id,
         const godot::String& province_a,
@@ -116,6 +133,9 @@ protected:
 private:
     std::optional<province::core::GameState> state_;
     province::core::CommandProcessor command_processor_;
+    std::optional<province::core::CountryId> player_country_id_{
+        province::core::CountryId{"auroria"}
+    };
     godot::String last_error_;
 };
 
