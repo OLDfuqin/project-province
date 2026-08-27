@@ -114,7 +114,10 @@ public:
         const godot::String& country_b,
         bool annex_occupied_provinces
     );
-    void set_ai_enabled(bool enabled, const godot::String& human_country_id);
+    [[nodiscard]] bool set_ai_enabled(
+        bool enabled,
+        const godot::String& human_country_id
+    );
     [[nodiscard]] bool is_ai_enabled() const noexcept;
     [[nodiscard]] godot::Array get_technology_summaries() const;
     [[nodiscard]] godot::Dictionary research_technology(

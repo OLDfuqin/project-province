@@ -786,19 +786,47 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
     return response;
 }
 
-void ProvinceBridge::set_ai_enabled(
+bool ProvinceBridge::set_ai_enabled(
     const bool enabled,
     const godot::String& human_country_id
 ) {
-    player_country_id_ = province::core::CountryId{human_country_id.utf8().get_data()};
-    if (!enabled) {
-        command_processor_.disable_ai();
-        return;
-    }
-    if (state_) {
-        command_processor_.enable_ai(*state_, *player_country_id_);
-    } else {
-        command_processor_.enable_ai(*player_country_id_);
+    constexpr const char* rejection = "ai configuration could not be changed";
+    try {
+        if (!state_) {
+            last_error_ = rejection;
+            return false;
+        }
+
+        const godot::CharString utf8_id = human_country_id.utf8();
+        const province::core::CountryId requested_player{
+            std::string{utf8_id.get_data()}
+        };
+        const province::core::Country* country = state_->find_country(requested_player);
+        if (country == nullptr || country->hidden) {
+            last_error_ = rejection;
+            return false;
+        }
+
+        // Enabling AI may queue orders. Perform the entire operation on copies
+        // so any rejection or exception leaves player authority, AI state and
+        // the live order queue unchanged.
+        province::core::GameState working_state = *state_;
+        province::core::CommandProcessor working_processor = command_processor_;
+        if (enabled) {
+            working_processor.enable_ai(working_state, requested_player);
+        } else {
+            working_processor.disable_ai();
+        }
+
+        state_ = std::move(working_state);
+        command_processor_ = std::move(working_processor);
+        player_country_id_ = requested_player;
+        last_error_ = godot::String{};
+        return true;
+    } catch (...) {
+        // Never expose exception payloads across the GDExtension ABI boundary.
+        last_error_ = rejection;
+        return false;
     }
 }
 

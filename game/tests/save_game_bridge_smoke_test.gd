@@ -49,6 +49,38 @@ func _write_json(path: String, document: Dictionary) -> void:
     file.close()
 
 
+func _ai_rejections_are_stable_and_transactional(
+    bridge: Object,
+    expected_player_id: String,
+    baseline_path: String,
+    mirror_path: String
+) -> bool:
+    var baseline_save: Dictionary = bridge.save_game(baseline_path)
+    var baseline_document := _read_json(baseline_path)
+    var baseline_ai_enabled: bool = bool(bridge.is_ai_enabled())
+    var baseline_player_orders: Array = bridge.get_pending_orders(expected_player_id)
+    if not baseline_save.get("accepted", false) or baseline_document.is_empty():
+        return false
+
+    # Exercise every rejected identity class repeatedly in both requested AI
+    # states. Saving after each class proves player, AI, orders and sequences
+    # are unchanged, rather than merely proving that the call returned false.
+    for rejected_id: String in ["", "Auroria!", "玩家", "missing-country", "neutral"]:
+        for requested_enabled: bool in [false, true]:
+            for _attempt: int in range(8):
+                var changed: Variant = bridge.set_ai_enabled(requested_enabled, rejected_id)
+                if changed != false or \
+                        bridge.get_last_error() != "ai configuration could not be changed":
+                    return false
+        var mirror_save: Dictionary = bridge.save_game(mirror_path)
+        if not mirror_save.get("accepted", false) or \
+                _read_json(mirror_path) != baseline_document or \
+                bridge.is_ai_enabled() != baseline_ai_enabled or \
+                bridge.get_pending_orders(expected_player_id) != baseline_player_orders:
+            return false
+    return true
+
+
 func _technology_level(bridge: Object, country_id: String, key: String) -> int:
     for technology: Dictionary in bridge.get_technology_summaries():
         if technology.get("country_id", "") == country_id:
@@ -102,6 +134,12 @@ func _initialize() -> void:
     var invalidated_path := save_path + ".invalidated"
     var transaction_path := save_path + ".transaction"
     var transaction_mirror_path := transaction_path + ".mirror"
+    var ai_valid_disabled_path := save_path + ".ai-valid-disabled"
+    var ai_valid_enabled_path := save_path + ".ai-valid-enabled"
+    var ai_transaction_path := save_path + ".ai-transaction"
+    var ai_transaction_mirror_path := ai_transaction_path + ".mirror"
+    var ai_disabled_transaction_path := save_path + ".ai-disabled-transaction"
+    var ai_disabled_transaction_mirror_path := ai_disabled_transaction_path + ".mirror"
     var save_result: Dictionary = bridge.save_game(save_path)
     var saved_document := _read_json(save_path)
 
@@ -243,7 +281,7 @@ func _initialize() -> void:
     # such a save must still hide and protect every foreign pending order.
     var privacy_source: Object = ClassDB.instantiate("ProvinceBridge")
     privacy_source.load_scenario(data_directory, 1200, 6)
-    privacy_source.set_ai_enabled(false, "caelus")
+    var privacy_configured: Variant = privacy_source.set_ai_enabled(false, "caelus")
     for initial_order: Dictionary in privacy_source.get_pending_orders("caelus"):
         privacy_source.cancel_order(initial_order.get("order_id", ""))
     var player_order: Dictionary = privacy_source.recruit_army(
@@ -260,7 +298,8 @@ func _initialize() -> void:
     var privacy_load: Dictionary = privacy_loaded.load_game(privacy_path)
     var foreign_orders: Array = privacy_loaded.get_pending_orders("auroria")
     var foreign_cancel: Dictionary = privacy_loaded.cancel_order(foreign_order_id)
-    if not player_order.get("accepted", false) or not privacy_save.get("accepted", false) or \
+    if privacy_configured != true or not privacy_source.get_last_error().is_empty() or \
+            not player_order.get("accepted", false) or not privacy_save.get("accepted", false) or \
             foreign_order_id.is_empty() or not privacy_load.get("accepted", false) or \
             privacy_document.get("player_country_id", "") != "caelus" or \
             privacy_document.get("ai_human_country_id", "not-null") != null or \
@@ -273,6 +312,49 @@ func _initialize() -> void:
         bridge.free()
         quit(1)
         return
+
+    # A valid visible Caelus identity succeeds in both disabled and enabled
+    # modes. Rejected identities must preserve either mode exactly.
+    var valid_ai: Object = ClassDB.instantiate("ProvinceBridge")
+    var valid_ai_loaded: bool = valid_ai.load_scenario(data_directory, 1200, 6)
+    var valid_disabled: Variant = valid_ai.set_ai_enabled(false, "caelus")
+    var valid_disabled_save: Dictionary = valid_ai.save_game(ai_valid_disabled_path)
+    var valid_disabled_document := _read_json(ai_valid_disabled_path)
+    var valid_enabled: Variant = valid_ai.set_ai_enabled(true, "caelus")
+    var valid_enabled_save: Dictionary = valid_ai.save_game(ai_valid_enabled_path)
+    var valid_enabled_document := _read_json(ai_valid_enabled_path)
+    var no_scenario: Object = ClassDB.instantiate("ProvinceBridge")
+    var no_scenario_stable := true
+    for requested_enabled: bool in [false, true]:
+        for _attempt: int in range(8):
+            no_scenario_stable = no_scenario_stable and \
+                    no_scenario.set_ai_enabled(requested_enabled, "caelus") == false and \
+                    no_scenario.get_last_error() == "ai configuration could not be changed" and \
+                    not no_scenario.has_scenario() and not no_scenario.is_ai_enabled()
+    if not valid_ai_loaded or valid_disabled != true or \
+            not valid_disabled_save.get("accepted", false) or \
+            valid_disabled_document.get("player_country_id", "") != "caelus" or \
+            valid_disabled_document.get("ai_human_country_id", "unexpected") != null or \
+            valid_enabled != true or not valid_ai.is_ai_enabled() or \
+            not valid_enabled_save.get("accepted", false) or \
+            valid_enabled_document.get("player_country_id", "") != "caelus" or \
+            valid_enabled_document.get("ai_human_country_id", "") != "caelus" or \
+            not _ai_rejections_are_stable_and_transactional(
+                valid_ai, "caelus", ai_transaction_path, ai_transaction_mirror_path
+            ) or not _ai_rejections_are_stable_and_transactional(
+                privacy_loaded, "caelus",
+                ai_disabled_transaction_path, ai_disabled_transaction_mirror_path
+            ) or not no_scenario_stable:
+        push_error("AI configuration boundary was unstable or non-transactional")
+        no_scenario.free()
+        valid_ai.free()
+        privacy_source.free()
+        privacy_loaded.free()
+        bridge.free()
+        quit(1)
+        return
+    no_scenario.free()
+    valid_ai.free()
 
 
     # Malformed schema 7 loads are fully transactional: state, order and event
@@ -307,6 +389,9 @@ func _initialize() -> void:
     for path: String in [
         save_path, mirror_path, progress_path, legacy_path, privacy_path,
         invalidated_path, transaction_path, transaction_mirror_path,
+        ai_valid_disabled_path, ai_valid_enabled_path,
+        ai_transaction_path, ai_transaction_mirror_path,
+        ai_disabled_transaction_path, ai_disabled_transaction_mirror_path,
     ]:
         DirAccess.remove_absolute(path)
     print("ProvinceBridge save game smoke test passed")
