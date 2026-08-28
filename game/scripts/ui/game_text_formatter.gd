@@ -329,6 +329,8 @@ static func order_failure_reason(reason: String) -> String:
             return "无法合并军队"
         "no scenario is loaded":
             return "尚未载入游戏场景"
+        "scenario could not be loaded":
+            return "游戏场景数据无法加载"
         "player country is not configured":
             return "尚未配置玩家国家"
         "unknown", "未知原因", "未知错误":
@@ -433,7 +435,7 @@ static func advance_stop_reason(reason: String) -> String:
         "strategy_limit":
             return "单步推进策略限制"
         _:
-            return reason
+            return "未知停止原因"
 
 
 static func movement_points(value: Variant) -> String:

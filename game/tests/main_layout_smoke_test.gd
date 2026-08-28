@@ -12,6 +12,19 @@ func _initialize() -> void:
     root.add_child(main_scene)
     await process_frame
 
+    var known_startup_error := String(main_scene.call(
+        "_scenario_load_failure_text", "scenario could not be loaded"
+    ))
+    var unknown_startup_error := String(main_scene.call(
+        "_scenario_load_failure_text", "future startup failure in English"
+    ))
+    if known_startup_error != "场景加载失败：游戏场景数据无法加载" or \
+            unknown_startup_error != "场景加载失败：未知错误":
+        push_error("Initial scenario load errors did not use stable Chinese text")
+        main_scene.free()
+        quit(1)
+        return
+
     var turn_bar := main_scene.get_node_or_null("TurnBar") as Control
     if turn_bar == null or turn_bar.get_parent() != main_scene:
         push_error("Turn controls must be a standalone top bar, not a map child")

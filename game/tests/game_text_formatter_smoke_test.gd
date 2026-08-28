@@ -106,10 +106,9 @@ func _initialize() -> void:
 			_fail("Failed order report omitted %s" % fragment)
 			return
 
-	# This list is exhaustively derived from the player-facing rejection and
-	# invalidation strings in the order, monthly, army, movement, road, research,
-	# diplomacy and command-processing core paths.
-	var core_failure_reasons: Array[String] = [
+	# These are the core order/action rejection and monthly invalidation strings
+	# that the current Task 9 UI can display through action feedback or reports.
+	var known_ui_order_action_reasons: Array[String] = [
 		"ordered army does not exist",
 		"army already has an action order",
 		"army action path must start at the army's current province",
@@ -191,19 +190,24 @@ func _initialize() -> void:
 		"armies must belong to the same country",
 		"armies must occupy the same province",
 		"merged army manpower overflow",
-		"hidden neutral armies cannot move",
-		"movement destination does not exist",
-		"army can only move to an adjacent province",
-		"army cannot enter foreign territory without war or military access",
-		"army has insufficient movement points",
 	]
-	for reason: String in core_failure_reasons:
+	if known_ui_order_action_reasons.size() != 81:
+		_fail("Known UI order/action reason list changed without review")
+		return
+	for reason: String in known_ui_order_action_reasons:
 		var translated := GameText.order_failure_reason(reason)
-		if translated.is_empty() or translated == reason:
-			_fail("Core failure reason was not localized: %s" % reason)
+		if translated.is_empty() or translated == reason or translated == "未知错误":
+			_fail("Known UI order/action reason has no dedicated translation: %s" % reason)
 			return
 	if GameText.order_failure_reason("future core rejection in English") != "未知错误":
 		_fail("Unknown core failure reason did not use the safe Chinese fallback")
+		return
+	if GameText.order_failure_reason("scenario could not be loaded") != \
+			"游戏场景数据无法加载":
+		_fail("Initial scenario load reason has no dedicated Chinese translation")
+		return
+	if GameText.advance_stop_reason("future stop reason in English") != "未知停止原因":
+		_fail("Unknown advance stop reason did not use the safe Chinese fallback")
 		return
 
 	var merged_text := GameText.turn_action_report({

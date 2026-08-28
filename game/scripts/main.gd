@@ -59,8 +59,11 @@ func _ready() -> void:
         return
     var data_directory := ProjectSettings.globalize_path("res://data")
     if not bridge.load_scenario(data_directory, 1000, 1):
-        $RightPanel/Center/Status.text = "场景加载失败：%s" % bridge.get_last_error()
-        push_error(bridge.get_last_error())
+        var scenario_error := _scenario_load_failure_text(
+            String(bridge.get_last_error())
+        )
+        $RightPanel/Center/Status.text = scenario_error
+        push_error(scenario_error)
         return
 
     _refresh_map_data()
@@ -300,6 +303,10 @@ func _player_pending_orders() -> Array:
 
 func _localized_failure(result: Dictionary, fallback := "未知错误") -> String:
     return GameText.order_failure_reason(String(result.get("error", fallback)))
+
+
+func _scenario_load_failure_text(reason: String) -> String:
+    return "场景加载失败：%s" % GameText.order_failure_reason(reason)
 
 
 func _refresh_pending_orders() -> void:
