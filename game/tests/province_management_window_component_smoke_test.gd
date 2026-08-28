@@ -113,12 +113,15 @@ func _initialize() -> void:
         ],
         "auroria",
         "army_1",
-        4000
+        10000
     )
     window.set_technology({
         "economy_level": 1,
         "military_level": 2,
         "roads_level": 3,
+        "economy_cost": 5000,
+        "military_cost": 5000,
+        "roads_cost": 5000,
     })
     window.set_reachable_targets([
         {
@@ -148,6 +151,84 @@ func _initialize() -> void:
         _fail(window, "Province management component controls are missing")
         return
 
+    if reachable.item_count != 3 or reachable.get_item_metadata(0) != null:
+        _fail(window, "Reachable target selector has no explicit placeholder")
+        return
+    # Activate PopupMenu's native index signal. OptionButton itself must update
+    # `selected` and then emit `item_selected`; the test never emits that signal.
+    reachable.get_popup().index_pressed.emit(1)
+    if reachable.selected != 1 or observed["reachable_destination"] != "rivergate":
+        _fail(window, "First reachable target was not selected through the real popup flow")
+        return
+    window.set_reachable_targets([
+        {
+            "province_id": "enemy_border",
+            "province_name": "敌境",
+            "movement_cost": 3.0,
+            "is_attack": true,
+        },
+        {
+            "province_id": "rivergate",
+            "province_name": "河间",
+            "movement_cost": 2.5,
+            "is_attack": false,
+        },
+    ])
+    if reachable.selected != 2 or \
+            String(reachable.get_selected_metadata().get("province_id", "")) != \
+            "rivergate":
+        _fail(window, "Reachable target refresh did not preserve selection by province ID")
+        return
+    reachable.get_popup().index_pressed.emit(1)
+    if reachable.selected != 1 or observed["reachable_destination"] != "enemy_border":
+        _fail(window, "Second reachable target was not selected through the real popup flow")
+        return
+    window.set_reachable_targets([
+        {
+            "province_id": "rivergate",
+            "province_name": "河间",
+            "movement_cost": 2.5,
+            "is_attack": false,
+        },
+        {
+            "province_id": "enemy_border",
+            "province_name": "敌境",
+            "movement_cost": 3.0,
+            "is_attack": true,
+        },
+    ])
+    if reachable.selected != 2 or \
+            String(reachable.get_selected_metadata().get("province_id", "")) != \
+            "enemy_border":
+        _fail(window, "Second reachable target refresh lost its province ID selection")
+        return
+    window.set_reachable_targets([{
+        "province_id": "rivergate",
+        "province_name": "河间",
+        "movement_cost": 2.5,
+        "is_attack": false,
+    }])
+    if reachable.selected != 0 or \
+            not window.get_node("DirectDestination").text.contains("尚未选择") or \
+            not window.get_node("ArmyActions/MoveArmy").disabled:
+        _fail(window, "Removed reachable target did not clear visual/internal selection")
+        return
+    window.set_reachable_targets([
+        {
+            "province_id": "rivergate",
+            "province_name": "河间",
+            "movement_cost": 2.5,
+            "is_attack": false,
+        },
+        {
+            "province_id": "enemy_border",
+            "province_name": "敌境",
+            "movement_cost": 3.0,
+            "is_attack": true,
+        },
+    ])
+    reachable.get_popup().index_pressed.emit(2)
+
     economy.pressed.emit()
     window.set_pending_orders([
         {
@@ -165,8 +246,12 @@ func _initialize() -> void:
             "paid_cost": 2000,
         },
     ])
-    reachable.select(1)
-    reachable.item_selected.emit(1)
+    if not economy.disabled or \
+            not window.get_node("Technology/Buttons/Military").disabled or \
+            not window.get_node("Technology/Buttons/Roads").disabled or \
+            not economy.tooltip_text.contains("已有研究订单"):
+        _fail(window, "Existing research order did not lock all research tracks")
+        return
     select_advance.pressed.emit()
     advance_plans.meta_clicked.emit("pause:army_1")
     window.get_node("Recruitment/Open").pressed.emit()
@@ -230,12 +315,49 @@ func _initialize() -> void:
         [],
         "auroria",
         "",
+        4000
+    )
+    window.set_technology({
+        "economy_level": 1,
+        "military_level": 5,
+        "roads_level": 3,
+        "economy_cost": 5000,
+        "military_cost": 0,
+        "roads_cost": 4000,
+    })
+    if not window.get_node("Technology/Buttons/Economy").disabled or \
+            not window.get_node("Technology/Buttons/Military").disabled or \
+            window.get_node("Technology/Buttons/Roads").disabled or \
+            not window.get_node("Technology/Buttons/Economy").tooltip_text.contains(
+                "不足"
+            ) or \
+            not window.get_node("Technology/Buttons/Military").text.contains("满级") or \
+            not window.get_node("Technology/Buttons/Roads").text.contains("4000"):
+        _fail(window, "Research buttons ignored authoritative cost/max/treasury state")
+        return
+
+    window.display_province(
+        {
+            "id": "capital_auroria",
+            "name": "奥罗里亚首都",
+            "owner_id": "auroria",
+            "population": 120000,
+            "recruitable_population": 1000,
+            "economy": 120000,
+            "fiscal_income": 1200,
+        },
+        [],
+        "auroria",
+        "",
         -1
     )
     window.set_technology({
         "economy_level": 1,
         "military_level": 2,
         "roads_level": 3,
+        "economy_cost": 5000,
+        "military_cost": 5000,
+        "roads_cost": 5000,
     })
     window.set_pending_orders([])
     if not window.get_node("Recruitment/Open").disabled or \

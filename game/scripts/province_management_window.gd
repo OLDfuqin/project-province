@@ -26,6 +26,7 @@ var _reserved_recruitment := 0
 var _can_manage := false
 var _has_pending_research := false
 var _army_with_order: Dictionary = {}
+var _technology: Dictionary = {}
 
 
 func _ready() -> void:
@@ -105,6 +106,11 @@ func set_destination(
         _clear_destination()
         return
     _destination_id = province_id
+    for index: int in range(1, $ReachableDestination.item_count):
+        var target: Dictionary = $ReachableDestination.get_item_metadata(index)
+        if String(target.get("province_id", "")) == province_id:
+            $ReachableDestination.select(index)
+            break
     $DirectDestination.text = "订单目的地：%s · %s · 预留移动%s" % [
         province_name,
         "进攻" if is_attack else "调动",
@@ -115,6 +121,7 @@ func set_destination(
 
 
 func set_technology(technology: Dictionary) -> void:
+    _technology = technology.duplicate(true)
     $Technology/Status.text = "经济 %d | 军事 %d | 道路 %d" % [
         technology.get("economy_level", 0),
         technology.get("military_level", 0),
@@ -153,7 +160,12 @@ func set_pending_orders(orders: Array) -> void:
 
 
 func set_reachable_targets(targets: Array) -> void:
+    var selected_destination_id := _destination_id
     $ReachableDestination.clear()
+    $ReachableDestination.add_item("请选择可达目的地")
+    $ReachableDestination.set_item_disabled(0, true)
+    $ReachableDestination.set_item_metadata(0, null)
+    var selected_index := -1
     for target: Dictionary in targets:
         var destination_id := String(target.get("province_id", ""))
         if destination_id.is_empty():
@@ -168,8 +180,16 @@ func set_reachable_targets(targets: Array) -> void:
             $ReachableDestination.item_count - 1,
             target
         )
-    $ReachableDestination.disabled = $ReachableDestination.item_count == 0
-    if $ReachableDestination.item_count == 0:
+        if destination_id == selected_destination_id:
+            selected_index = $ReachableDestination.item_count - 1
+    $ReachableDestination.disabled = $ReachableDestination.item_count == 1
+    if selected_index >= 1:
+        $ReachableDestination.select(selected_index)
+    else:
+        $ReachableDestination.select(0)
+        if not selected_destination_id.is_empty():
+            _clear_destination()
+    if $ReachableDestination.item_count == 1:
         $ReachableDestination.tooltip_text = "当前军队没有可创建订单的目的地"
     else:
         $ReachableDestination.tooltip_text = "选择核心验证后的可达目的地"
@@ -208,6 +228,7 @@ func clear() -> void:
     _advance_target_id = ""
     _army_by_id.clear()
     _army_with_order.clear()
+    _technology.clear()
     _close_recruitment()
     _clear_destination()
     set_advance_target("", "")
@@ -293,11 +314,34 @@ func _refresh_paid_action_state() -> void:
     $Recruitment/Open.disabled = (
         not _can_manage or _player_treasury < 0 or _maximum_recruitment() <= 0
     )
-    var research_disabled := not _can_manage or _player_treasury < 0 or \
-        _has_pending_research
-    $Technology/Buttons/Economy.disabled = research_disabled
-    $Technology/Buttons/Military.disabled = research_disabled
-    $Technology/Buttons/Roads.disabled = research_disabled
+    _refresh_research_button("economy", $Technology/Buttons/Economy)
+    _refresh_research_button("military", $Technology/Buttons/Military)
+    _refresh_research_button("roads", $Technology/Buttons/Roads)
+
+
+func _refresh_research_button(track: String, button: Button) -> void:
+    var track_name := GameText.technology_track_name(track)
+    var cost := int(_technology.get("%s_cost" % track, 0))
+    var reason := ""
+    if not _can_manage:
+        reason = "只能在己方地区规划研究"
+    elif _has_pending_research:
+        reason = "已有研究订单，完成或取消后才能新建"
+    elif cost <= 0:
+        reason = "%s科技已达到当前等级上限" % track_name
+    elif _player_treasury < 0:
+        reason = "国库负债时不能创建研究订单"
+    elif _player_treasury < cost:
+        reason = "国库不足：研究%s需要%d，当前%d" % [
+            track_name, cost, _player_treasury,
+        ]
+    button.disabled = not reason.is_empty()
+    button.text = (
+        "%s已满级" % track_name if cost <= 0
+        else "研究%s（%d）" % [track_name, cost]
+    )
+    button.tooltip_text = reason if not reason.is_empty() else \
+        "创建%s研究订单，预付%d" % [track_name, cost]
 
 
 func _on_recruit_open_pressed() -> void:
@@ -409,7 +453,7 @@ func _on_army_selected(index: int) -> void:
 
 
 func _on_reachable_destination_selected(index: int) -> void:
-    if index < 0 or index >= $ReachableDestination.item_count or \
+    if index <= 0 or index >= $ReachableDestination.item_count or \
             _selected_army_id.is_empty():
         return
     var target: Dictionary = $ReachableDestination.get_item_metadata(index)

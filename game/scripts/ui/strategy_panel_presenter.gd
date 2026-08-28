@@ -129,7 +129,9 @@ static func _advance_status(
     if not is_enabled:
         return "已暂停"
     if not path_preview.get("accepted", false):
-        return "受阻：%s" % path_preview.get("error", "未知错误")
+        return "受阻：%s" % GameText.order_failure_reason(
+            String(path_preview.get("error", "未知错误"))
+        )
     var preview_destination_id: String = path_preview.get(
         "preview_destination_id",
         origin_id

@@ -279,6 +279,8 @@ func _refresh_management_window(
                 break
     if not selected_army_id.is_empty():
         _select_army(selected_army_id)
+    else:
+        _clear_local_managed_army_state()
     _refresh_advance_plans()
     _refresh_management_action_state()
     if not status_message.is_empty():
@@ -294,6 +296,10 @@ func _player_treasury() -> int:
 
 func _player_pending_orders() -> Array:
     return bridge.get_pending_orders(PLAYER_COUNTRY_ID)
+
+
+func _localized_failure(result: Dictionary, fallback := "未知错误") -> String:
+    return GameText.order_failure_reason(String(result.get("error", fallback)))
 
 
 func _refresh_pending_orders() -> void:
@@ -335,6 +341,10 @@ func _refresh_pending_orders() -> void:
     if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
         province_management_window.set_pending_orders(orders)
         _refresh_management_action_state()
+    elif workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION and (
+            not road_start_id.is_empty() or _player_treasury() < 0
+        ):
+        _refresh_road_workspace_state()
 
 
 func _on_cancel_order_pressed(order_id: String) -> void:
@@ -342,7 +352,7 @@ func _on_cancel_order_pressed(order_id: String) -> void:
         return
     var result: Dictionary = bridge.cancel_order(order_id)
     if not result.get("accepted", false):
-        event_log.text = "取消订单失败：%s" % result.get("error", "未知错误")
+        event_log.text = "取消订单失败：%s" % _localized_failure(result)
         if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
             province_management_window.set_status(event_log.text)
         return
@@ -376,7 +386,7 @@ func _on_management_recruit_requested(province_id: String, manpower: int) -> voi
         manpower
     )
     if not result.get("accepted", false):
-        var error_message := "招募失败：%s" % result.get("error", "未知错误")
+        var error_message := "招募失败：%s" % _localized_failure(result)
         event_log.text = error_message
         province_management_window.set_status(error_message)
         return
@@ -405,7 +415,7 @@ func _on_management_rename_requested(
     var result: Dictionary = bridge.rename_army(army_id, formation_number)
     if not result.get("accepted", false):
         province_management_window.set_status(
-            "更名失败：%s" % result.get("error", "未知错误")
+            "更名失败：%s" % _localized_failure(result)
         )
         return
     var message := "军队已更名为%s" % result.get("display_name", army_id)
@@ -426,7 +436,7 @@ func _on_management_merge_requested(
     )
     if not result.get("accepted", false):
         province_management_window.set_status(
-            "合并失败：%s" % result.get("error", "未知错误")
+            "合并失败：%s" % _localized_failure(result)
         )
         return
     var primary := _find_army_by_id(primary_army_id)
@@ -550,7 +560,7 @@ func _select_management_advance_target(province_id: String) -> void:
     )
     if not result.get("accepted", false):
         province_management_window.set_status(
-            "设置推进目标失败：%s" % result.get("error", "未知错误")
+            "设置推进目标失败：%s" % _localized_failure(result)
         )
         return
     auto_advance_target_id = province_id
@@ -567,7 +577,7 @@ func _on_management_move_requested(army_id: String, destination_id: String) -> v
         return
     var result: Dictionary = bridge.move_army(army_id, destination_id)
     if not result.get("accepted", false):
-        var error_message := "调动失败：%s" % result.get("error", "未知错误")
+        var error_message := "调动失败：%s" % _localized_failure(result)
         event_log.text = error_message
         province_management_window.set_status(error_message)
         return
@@ -616,7 +626,7 @@ func _on_management_auto_advance_requested(
         return
     var result: Dictionary = bridge.auto_advance_army_to(army_id, target_id)
     if not result.get("accepted", false):
-        event_log.text = "自动推进失败：%s" % result.get("error", "未知错误")
+        event_log.text = "自动推进失败：%s" % _localized_failure(result)
         province_management_window.set_status(event_log.text)
         return
     event_log.text = "事件 #%d：自动推进订单已创建，本月目标%s，预留移动%s，剩余1个月" % [
@@ -787,7 +797,9 @@ func _select_road_endpoint(province_id: String) -> void:
     var can_build := bool(quote.get("accepted", false))
     var estimated_cost := int(quote.get("cost", _estimated_road_build_cost()))
     var status: String = "路线合法，可以创建修路订单" if can_build else \
-        "当前无法下单：%s" % quote.get("error", "未知原因")
+        "当前无法下单：%s" % GameText.order_failure_reason(
+            String(quote.get("error", "未知原因"))
+        )
     road_construction_window.set_end_province(
         province.get("name", province_id),
         estimated_cost,
@@ -968,7 +980,7 @@ func _on_declare_war_pressed() -> void:
     var defender_id: String = war_target.get_selected_metadata()
     var result: Dictionary = bridge.declare_war(PLAYER_COUNTRY_ID, defender_id)
     if not result.get("accepted", false):
-        event_log.text = "宣战失败：%s" % result.get("error", "未知错误")
+        event_log.text = "宣战失败：%s" % _localized_failure(result)
         return
     event_log.text = "事件 #%d：%s 向 %s 宣战" % [
         result["event_sequence"],
@@ -990,7 +1002,7 @@ func _on_make_peace_pressed() -> void:
         annex
     )
     if not result.get("accepted", false):
-        event_log.text = "议和失败：%s" % result.get("error", "未知错误")
+        event_log.text = "议和失败：%s" % _localized_failure(result)
         return
     event_log.text = "和平协议达成：处理%d个地区，遣返%d支军队" % [
         result.get("provinces", []).size(),
@@ -1007,7 +1019,7 @@ func _on_make_peace_pressed() -> void:
 func _on_research_technology(track: String) -> void:
     var result: Dictionary = bridge.research_technology(PLAYER_COUNTRY_ID, track)
     if not result.get("accepted", false):
-        event_log.text = "科技研究失败：%s" % result.get("error", "未知错误")
+        event_log.text = "科技研究失败：%s" % _localized_failure(result)
         if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
             province_management_window.set_status(event_log.text)
         return
@@ -1045,7 +1057,7 @@ func _on_quick_save_pressed() -> void:
     var path := ProjectSettings.globalize_path(QUICK_SAVE_PATH)
     var result: Dictionary = bridge.save_game(path)
     if not result.get("accepted", false):
-        event_log.text = "保存失败：%s" % result.get("error", "未知错误")
+        event_log.text = "保存失败：%s" % _localized_failure(result)
         return
     event_log.text = "游戏已保存至 quick_save.json"
     _record_event(event_log.text)
@@ -1056,7 +1068,7 @@ func _on_quick_load_pressed() -> void:
     var path := ProjectSettings.globalize_path(QUICK_SAVE_PATH)
     var result: Dictionary = bridge.load_game(path)
     if not result.get("accepted", false):
-        event_log.text = "读取失败：%s" % result.get("error", "未知错误")
+        event_log.text = "读取失败：%s" % _localized_failure(result)
         return
     _clear_movement_selection()
     _clear_road_selection()
@@ -1083,6 +1095,8 @@ func _refresh_map_data() -> void:
     province_map.set_frontlines(bridge.get_frontline_edges())
     province_map.set_armies(bridge.get_army_summaries())
     _refresh_advance_plans()
+    if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+        _refresh_road_workspace_state()
 
 
 func _select_army(army_id: String) -> void:
@@ -1144,7 +1158,7 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
         var army_id := command.trim_prefix("clear:")
         var result: Dictionary = bridge.clear_army_advance_target(army_id)
         if not result.get("accepted", false):
-            event_log.text = "清除推进计划失败：%s" % result.get("error", "未知错误")
+            event_log.text = "清除推进计划失败：%s" % _localized_failure(result)
             return
         if army_id == moving_army_id:
             auto_advance_target_id = ""
@@ -1162,7 +1176,7 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
         var army_id := command.substr(separator + 1)
         var result: Dictionary = bridge.set_army_advance_enabled(army_id, enabled)
         if not result.get("accepted", false):
-            event_log.text = "切换推进计划状态失败：%s" % result.get("error", "未知错误")
+            event_log.text = "切换推进计划状态失败：%s" % _localized_failure(result)
             return
         _refresh_map_data()
         _refresh_advance_plans()
@@ -1182,7 +1196,7 @@ func _on_advance_plan_clicked(meta: Variant) -> void:
         var strategy := String(parts[2])
         var result: Dictionary = bridge.set_army_advance_strategy(army_id, strategy)
         if not result.get("accepted", false):
-            event_log.text = "设置推进策略失败：%s" % result.get("error", "未知错误")
+            event_log.text = "设置推进策略失败：%s" % _localized_failure(result)
             return
         _refresh_map_data()
         _refresh_advance_plans()
@@ -1214,7 +1228,7 @@ func _on_advance_turn_pressed() -> void:
     _close_transient_workspace()
     var result: Dictionary = bridge.advance_turn()
     if not result.get("accepted", false):
-        event_log.text = "命令被拒绝：%s" % result.get("error", "未知错误")
+        event_log.text = "命令被拒绝：%s" % _localized_failure(result)
         return
 
     _refresh_date()
@@ -1245,8 +1259,6 @@ func _on_advance_turn_pressed() -> void:
         event_log.text += " | 回合行动：%d" % turn_action_count
         _record_turn_actions(turn_actions)
     _record_event(event_log.text)
-    if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
-        road_construction_window.set_status("本月已结算，可继续规划新的修路订单")
 
 
 func _refresh_date() -> void:
@@ -1282,7 +1294,9 @@ func _on_build_road_pressed() -> void:
         road_end_id
     )
     if not result.get("accepted", false):
-        event_log.text = "修路失败：%s" % result.get("error", "未知错误")
+        event_log.text = "修路失败：%s" % GameText.order_failure_reason(
+            String(result.get("error", "未知错误"))
+        )
         if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
             road_construction_window.set_status(event_log.text)
         return
@@ -1327,6 +1341,15 @@ func _clear_movement_selection() -> void:
     _refresh_management_action_state()
 
 
+func _clear_local_managed_army_state() -> void:
+    moving_army_id = ""
+    movement_origin_id = ""
+    movement_destination_id = ""
+    auto_advance_target_id = ""
+    map_input_mode = MapInputMode.NORMAL
+    province_map.set_auto_advance_path([])
+
+
 func _refresh_movement_preview() -> bool:
     province_map.set_auto_advance_path([])
     if moving_army_id.is_empty() or auto_advance_target_id.is_empty():
@@ -1360,10 +1383,20 @@ func _refresh_management_action_state() -> void:
         return
     var reachable_targets := _available_order_targets(moving_army_id)
     province_management_window.set_reachable_targets(reachable_targets)
-    if not movement_destination_id.is_empty() and \
-            _find_order_target(moving_army_id, movement_destination_id).is_empty():
-        movement_destination_id = ""
-        province_management_window.set_destination("", "")
+    if not movement_destination_id.is_empty():
+        var selected_target := _find_order_target(
+            moving_army_id, movement_destination_id
+        )
+        if selected_target.is_empty():
+            movement_destination_id = ""
+            province_management_window.set_destination("", "")
+        else:
+            province_management_window.set_destination(
+                movement_destination_id,
+                String(selected_target.get("province_name", movement_destination_id)),
+                selected_target.get("movement_cost", 0),
+                selected_target.get("is_attack", false)
+            )
     var can_auto_advance := not reachable_targets.is_empty() and \
         _refresh_movement_preview()
     province_management_window.set_action_state(
@@ -1406,3 +1439,70 @@ func _refresh_road_selection() -> void:
             province_by_id[road_start_id]["name"],
             province_by_id[road_end_id]["name"],
         ]
+
+
+func _refresh_road_workspace_state() -> void:
+    if workspace_mode != WorkspaceMode.ROAD_CONSTRUCTION:
+        return
+    if road_start_id.is_empty():
+        province_map.set_road_selection("", "")
+        road_construction_window.reset_selection(
+            DEFAULT_ROAD_BUILD_COST,
+            "国库负债：不能创建修路订单" if _player_treasury() < 0
+            else "请选择道路起点"
+        )
+        return
+
+    var start: Dictionary = province_by_id.get(road_start_id, {})
+    if start.is_empty() or start.get("owner_id", "") != PLAYER_COUNTRY_ID:
+        _clear_road_selection()
+        road_construction_window.reset_selection(
+            DEFAULT_ROAD_BUILD_COST,
+            "原道路起点已失效或不再由玩家实际控制"
+        )
+        return
+    if road_end_id.is_empty():
+        road_construction_window.set_start(
+            String(start.get("name", road_start_id)),
+            _estimated_road_build_cost()
+        )
+        if _player_treasury() < 0:
+            road_construction_window.set_status("国库负债：不能创建修路订单")
+        return
+
+    var end: Dictionary = province_by_id.get(road_end_id, {})
+    if end.is_empty() or end.get("owner_id", "") != PLAYER_COUNTRY_ID:
+        _clear_road_selection()
+        road_construction_window.reset_selection(
+            DEFAULT_ROAD_BUILD_COST,
+            "原道路终点已失效或不再由玩家实际控制"
+        )
+        return
+    if not _are_provinces_adjacent(road_start_id, road_end_id):
+        _clear_road_selection()
+        road_construction_window.reset_selection(
+            DEFAULT_ROAD_BUILD_COST,
+            "原道路端点已不再相邻"
+        )
+        return
+    if _road_connection_exists(road_start_id, road_end_id):
+        _clear_road_selection()
+        road_construction_window.reset_selection(
+            DEFAULT_ROAD_BUILD_COST,
+            "这两个地区之间已经存在公路，原路线已清除"
+        )
+        return
+
+    var quote: Dictionary = bridge.get_road_order_quote(
+        PLAYER_COUNTRY_ID, road_start_id, road_end_id
+    )
+    var accepted := bool(quote.get("accepted", false))
+    var cost := int(quote.get("cost", _estimated_road_build_cost()))
+    var status := "路线合法，可以创建修路订单"
+    if not accepted:
+        status = "当前无法下单：%s" % GameText.order_failure_reason(
+            String(quote.get("error", "未知原因"))
+        )
+    road_construction_window.set_end_province(
+        String(end.get("name", road_end_id)), cost, accepted, status
+    )

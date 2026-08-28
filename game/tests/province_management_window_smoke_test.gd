@@ -127,23 +127,50 @@ func _initialize() -> void:
     await process_frame
     await process_frame
     province_map.province_double_clicked.emit("capital_auroria")
-    if army_selector.item_count != 1 or reachable.item_count == 0:
+    if army_selector.item_count != 1 or reachable.item_count <= 1:
         _fail(main_scene, "Completed army did not expose authoritative reachable targets")
         return
 
     var army_id := String(army_selector.get_selected_metadata())
     var origin_id: String = _army(bridge, army_id).get("province_id", "")
     var movement_before: float = float(_army(bridge, army_id).get("movement_points", 0.0))
-    var target: Dictionary = reachable.get_item_metadata(0)
+    var target: Dictionary = reachable.get_item_metadata(1)
     var destination_id: String = target.get("province_id", "")
-    reachable.select(0)
-    reachable.item_selected.emit(0)
+    reachable.get_popup().index_pressed.emit(1)
     if move_army.disabled or \
             not management.get_node("DirectDestination").text.contains(
                 target.get("province_name", destination_id)
             ):
         _fail(main_scene, "Reachable destination selection did not prepare an order")
         return
+
+    var saved_advance_target: Dictionary = bridge.set_army_advance_target(
+        army_id, destination_id
+    )
+    if not saved_advance_target.get("accepted", false):
+        _fail(main_scene, "Could not prepare the saved advance target regression")
+        return
+    main_scene.auto_advance_target_id = destination_id
+    province_map.province_double_clicked.emit(destination_id)
+    await process_frame
+    if not main_scene.moving_army_id.is_empty() or \
+            not main_scene.movement_origin_id.is_empty() or \
+            not main_scene.movement_destination_id.is_empty() or \
+            not main_scene.auto_advance_target_id.is_empty() or \
+            main_scene.map_input_mode_name() != "normal" or \
+            String(_army(bridge, army_id).get("advance_target_id", "")) != \
+            destination_id or \
+            reachable.item_count != 1 or not reachable.disabled or \
+            not move_army.disabled or \
+            not management.get_node("AdvanceActions/AdvanceNow").disabled:
+        _fail(main_scene, "Opening a province without a player army retained stale army state")
+        return
+
+    province_map.province_double_clicked.emit(origin_id)
+    await process_frame
+    target = reachable.get_item_metadata(1)
+    destination_id = String(target.get("province_id", ""))
+    reachable.get_popup().index_pressed.emit(1)
 
     move_army.pressed.emit()
     await process_frame
@@ -166,8 +193,7 @@ func _initialize() -> void:
         _fail(main_scene, "Cancelling a movement order did not restore reserved movement")
         return
 
-    reachable.select(0)
-    reachable.item_selected.emit(0)
+    reachable.get_popup().index_pressed.emit(1)
     move_army.pressed.emit()
     await process_frame
     advance_turn.pressed.emit()

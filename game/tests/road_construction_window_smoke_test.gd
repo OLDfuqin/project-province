@@ -34,6 +34,58 @@ func _eligible_pair(bridge: Object) -> Array[String]:
     return []
 
 
+func _enemy_province(bridge: Object) -> String:
+    for province: Dictionary in bridge.get_province_summaries():
+        if province.get("owner_id", "") != "auroria":
+            return String(province.get("id", ""))
+    return ""
+
+
+func _non_adjacent_owned_province(bridge: Object, origin_id: String) -> String:
+    var neighbors: Array = []
+    for province: Dictionary in bridge.get_province_summaries():
+        if province.get("id", "") == origin_id:
+            neighbors = province.get("neighbors", [])
+            break
+    for province: Dictionary in bridge.get_province_summaries():
+        var province_id := String(province.get("id", ""))
+        if province.get("owner_id", "") == "auroria" and \
+                province_id != origin_id and not neighbors.has(province_id):
+            return province_id
+    return ""
+
+
+func _read_json(path: String) -> Dictionary:
+    var file := FileAccess.open(path, FileAccess.READ)
+    if file == null:
+        return {}
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    return parsed if parsed is Dictionary else {}
+
+
+func _normalize_json_numbers(value: Variant) -> Variant:
+    if value is float and is_equal_approx(value, round(value)):
+        return int(value)
+    if value is Array:
+        var result: Array = []
+        for item: Variant in value:
+            result.append(_normalize_json_numbers(item))
+        return result
+    if value is Dictionary:
+        var result: Dictionary = {}
+        for key: Variant in value:
+            result[key] = _normalize_json_numbers(value[key])
+        return result
+    return value
+
+
+func _write_json(path: String, document: Dictionary) -> void:
+    var file := FileAccess.open(path, FileAccess.WRITE)
+    file.store_string(JSON.stringify(_normalize_json_numbers(document)))
+    file.close()
+
+
 func _fail(main_scene: Node, message: String) -> void:
     push_error(message)
     main_scene.free()
@@ -95,6 +147,14 @@ func _initialize() -> void:
         return
 
     select_start.pressed.emit()
+    var enemy_id := _enemy_province(bridge)
+    province_map.province_clicked.emit(enemy_id)
+    province_map.province_selected.emit(enemy_id)
+    if not main_scene.road_start_id.is_empty() or \
+            main_scene.map_input_mode_name() != "road_start" or \
+            not road_window.get_node("Status").text.contains("玩家实际控制"):
+        _fail(main_scene, "Enemy-controlled road start was incorrectly accepted")
+        return
     province_map.province_clicked.emit(pair[0])
     province_map.province_selected.emit(pair[0])
     if main_scene.map_input_mode_name() != "normal" or select_end.disabled:
@@ -102,6 +162,14 @@ func _initialize() -> void:
         return
 
     select_end.pressed.emit()
+    var non_adjacent_id := _non_adjacent_owned_province(bridge, pair[0])
+    province_map.province_clicked.emit(non_adjacent_id)
+    province_map.province_selected.emit(non_adjacent_id)
+    if not main_scene.road_end_id.is_empty() or \
+            main_scene.map_input_mode_name() != "road_end" or \
+            not road_window.get_node("Status").text.contains("相邻"):
+        _fail(main_scene, "Non-adjacent road endpoint was incorrectly accepted")
+        return
     province_map.province_clicked.emit(pair[1])
     province_map.province_selected.emit(pair[1])
     var authoritative_quote: Dictionary = bridge.get_road_order_quote(
@@ -145,6 +213,105 @@ func _initialize() -> void:
             not bridge.get_pending_orders("auroria").is_empty() or \
             not main_scene.get_node("RightPanel/Center/EventHistory").text.contains("道路订单完成"):
         _fail(main_scene, "Road order did not complete in the following project phase")
+        return
+
+    pair = _eligible_pair(bridge)
+    for _level: int in range(3):
+        if not pair.is_empty():
+            break
+        var additional_research: Dictionary = bridge.research_technology(
+            "auroria", "roads"
+        )
+        if not additional_research.get("accepted", false):
+            break
+        for _month: int in range(int(additional_research.get("remaining_months", 0))):
+            advance_turn.pressed.emit()
+            await process_frame
+            await process_frame
+        pair = _eligible_pair(bridge)
+    if pair.is_empty():
+        _fail(main_scene, "No second route was available for refresh revalidation")
+        return
+    select_start.pressed.emit()
+    province_map.province_clicked.emit(pair[0])
+    province_map.province_selected.emit(pair[0])
+    select_end.pressed.emit()
+    province_map.province_clicked.emit(pair[1])
+    province_map.province_selected.emit(pair[1])
+
+    var baseline_path := ProjectSettings.globalize_path(
+        "res://../build/task9_road_refresh_baseline.json"
+    )
+    var debt_path := baseline_path + ".debt"
+    var takeover_path := baseline_path + ".takeover"
+    if not bridge.save_game(baseline_path).get("accepted", false):
+        _fail(main_scene, "Could not save road refresh baseline")
+        return
+    var baseline_document := _read_json(baseline_path)
+    var debt_document := baseline_document.duplicate(true)
+    for country: Dictionary in debt_document.get("countries", []):
+        if country.get("id", "") == "auroria":
+            country["treasury"] = -1
+    _write_json(debt_path, debt_document)
+    if not bridge.load_game(debt_path).get("accepted", false):
+        _fail(main_scene, "Could not load debt road refresh fixture")
+        return
+    main_scene.call("_refresh_map_data")
+    main_scene.call("_refresh_pending_orders")
+    if build_road.disabled == false or main_scene.road_start_id != pair[0] or \
+            main_scene.road_end_id != pair[1] or \
+            not road_window.get_node("Status").text.contains("负债"):
+        _fail(main_scene, "Debt did not re-quote and disable the selected road route")
+        return
+
+    if not bridge.load_game(baseline_path).get("accepted", false):
+        _fail(main_scene, "Could not restore road refresh baseline after debt")
+        return
+    main_scene.call("_refresh_map_data")
+    if build_road.disabled:
+        _fail(main_scene, "Restoring authoritative funds did not re-enable the route")
+        return
+
+    var takeover_document := baseline_document.duplicate(true)
+    var occupations: Array = []
+    for occupation: Dictionary in takeover_document.get("occupations", []):
+        if occupation.get("province_id", "") != pair[1]:
+            occupations.append(occupation)
+    occupations.append({"province_id": pair[1], "controller_id": "caelus"})
+    takeover_document["occupations"] = occupations
+    _write_json(takeover_path, takeover_document)
+    if not bridge.load_game(takeover_path).get("accepted", false):
+        _fail(main_scene, "Could not load endpoint takeover road refresh fixture")
+        return
+    main_scene.call("_refresh_map_data")
+    if not build_road.disabled or not main_scene.road_start_id.is_empty() or \
+            not main_scene.road_end_id.is_empty() or \
+            not road_window.get_node("Status").text.contains("不再由玩家实际控制"):
+        _fail(main_scene, "Endpoint takeover did not invalidate and clear the route")
+        return
+
+    if not bridge.load_game(baseline_path).get("accepted", false):
+        _fail(main_scene, "Could not restore road refresh baseline after takeover")
+        return
+    main_scene.call("_refresh_map_data")
+    select_start.pressed.emit()
+    province_map.province_clicked.emit(pair[0])
+    province_map.province_selected.emit(pair[0])
+    select_end.pressed.emit()
+    province_map.province_clicked.emit(pair[1])
+    province_map.province_selected.emit(pair[1])
+    var externally_queued: Dictionary = bridge.build_road("auroria", pair[0], pair[1])
+    if not externally_queued.get("accepted", false):
+        _fail(main_scene, "Could not prepare an externally invalidated road quote")
+        return
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
+    if not _road_exists(bridge, pair[0], pair[1]) or not build_road.disabled or \
+            not main_scene.road_start_id.is_empty() or \
+            not main_scene.road_end_id.is_empty() or \
+            not road_window.get_node("Status").text.contains("已经存在公路"):
+        _fail(main_scene, "Road workspace did not re-quote and clear an invalid route")
         return
 
     print("Road construction monthly order window smoke test passed")
