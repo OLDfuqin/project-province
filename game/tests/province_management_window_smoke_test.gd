@@ -1,6 +1,35 @@
 extends SceneTree
 
 
+func _army(bridge: Object, army_id: String) -> Dictionary:
+    for summary: Dictionary in bridge.get_army_summaries():
+        if summary.get("id", "") == army_id:
+            return summary
+    return {}
+
+
+func _pending_rows(main_scene: Node) -> Array[Node]:
+    var rows: Array[Node] = []
+    for child: Node in main_scene.get_node(
+        "RightPanel/Center/PendingOrders/Content/OrderList/Orders"
+    ).get_children():
+        rows.append(child)
+    return rows
+
+
+func _pending_row(main_scene: Node, order_type: String) -> Control:
+    for row: Node in _pending_rows(main_scene):
+        if row.get_meta("order_type", "") == order_type:
+            return row as Control
+    return null
+
+
+func _fail(main_scene: Node, message: String) -> void:
+    push_error(message)
+    main_scene.free()
+    quit(1)
+
+
 func _initialize() -> void:
     var packed_scene := load("res://scenes/main/main.tscn") as PackedScene
     if packed_scene == null:
@@ -12,20 +41,22 @@ func _initialize() -> void:
     root.add_child(main_scene)
     await process_frame
 
+    var bridge := main_scene.get_node("SimulationBridge")
     var province_map := main_scene.get_node("MapPanel/ProvinceMap")
     var management := main_scene.get_node_or_null(
         "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow"
     ) as Control
+    var advance_turn := main_scene.get_node(
+        "TurnBar/TurnControls/AdvanceTurn"
+    ) as Button
     if management == null:
-        push_error("Province management window was not embedded in the workspace")
-        main_scene.free()
-        quit(1)
+        _fail(main_scene, "Province management window was not embedded in the workspace")
         return
 
     province_map.province_double_clicked.emit("capital_auroria")
     var recruit := management.get_node("Recruitment/Open") as Button
     var army_selector := management.get_node("ArmySelector") as OptionButton
-    var select_destination := management.get_node("ArmyActions/SelectDestination") as Button
+    var reachable := management.get_node("ReachableDestination") as OptionButton
     var move_army := management.get_node("ArmyActions/MoveArmy") as Button
     if main_scene.workspace_mode_name() != "province_management" or \
             not management.visible or \
@@ -34,113 +65,119 @@ func _initialize() -> void:
             not management.get_node("Placeholders/EconomyInvestment").disabled or \
             not management.get_node("Placeholders/CivilInvestment").disabled or \
             not management.get_node("Placeholders/BuildingManagement").disabled:
-        push_error("Province management window did not show the initial province state")
-        main_scene.free()
-        quit(1)
+        _fail(main_scene, "Province management window did not show the initial province state")
         return
 
     var technology_status := management.get_node("Technology/Status") as Label
+    var technology_pending := management.get_node("Technology/Pending") as Label
     var economy_research := management.get_node(
         "Technology/Buttons/Economy"
     ) as Button
     if not technology_status.text.contains("经济 0"):
-        push_error("Management page did not display technology")
-        main_scene.free()
-        quit(1)
+        _fail(main_scene, "Management page did not display technology")
         return
     economy_research.pressed.emit()
     await process_frame
-    if not technology_status.text.contains("经济 1"):
-        push_error("Technology research did not refresh management page")
-        main_scene.free()
-        quit(1)
+    var research_orders: Array = bridge.get_pending_orders("auroria")
+    var research_row := _pending_row(main_scene, "research")
+    if research_orders.size() != 1 or research_orders[0].get("type", "") != "research" or \
+            research_orders[0].get("remaining_months", 0) != 2 or \
+            not technology_status.text.contains("经济 0") or \
+            not technology_pending.text.contains("经济 → 1") or \
+            not technology_pending.text.contains("剩余2个月") or \
+            research_row == null or \
+            not (research_row.get_node("Description") as Label).text.contains("预付5000"):
+        _fail(main_scene, "Technology did not create and display a delayed research order")
+        return
+
+    (research_row.get_node("Cancel") as Button).pressed.emit()
+    await process_frame
+    if not bridge.get_pending_orders("auroria").is_empty() or \
+            not main_scene.get_node("RightPanel/Center/EventLog").text.contains("退款5000"):
+        _fail(main_scene, "Pending research could not be cancelled with its prepayment refunded")
         return
 
     recruit.pressed.emit()
     management.get_node("Recruitment/Amount").value = 500
     management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
-    if main_scene.workspace_mode_name() != "province_management" or \
-            army_selector.item_count != 1 or \
-            not management.get_node("ProvinceSummary").text.contains("可招募士兵："):
-        push_error("Recruitment did not refresh the open management window")
-        main_scene.free()
-        quit(1)
+    await process_frame
+    var recruitment_orders: Array = bridge.get_pending_orders("auroria")
+    var recruitment_row := _pending_row(main_scene, "recruitment")
+    if army_selector.item_count != 0 or recruitment_orders.size() != 1 or \
+            recruitment_orders[0].get("type", "") != "recruitment" or \
+            recruitment_orders[0].get("remaining_months", 0) != 1 or \
+            recruitment_row == null or \
+            not (recruitment_row.get_node("Description") as Label).text.contains("预付2000") or \
+            not management.get_node("Recruitment/Pending").text.contains("预留500人") or \
+            not management.get_node("Status").text.contains("订单已创建"):
+        _fail(main_scene, "Recruitment did not stay pending for one month")
         return
 
-    recruit.pressed.emit()
-    management.get_node("Recruitment/Amount").value = 500
-    management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
-    await process_frame
-    management.get_node("Rename/FormationNumber").value = 5
-    management.get_node("Rename/Confirm").pressed.emit()
-    await process_frame
-    var merge_candidates := management.get_node("Merge/Candidates") as ItemList
-    merge_candidates.select(0, false)
-    merge_candidates.multi_selected.emit(0, true)
-    management.get_node("Merge/Confirm").pressed.emit()
-    await process_frame
-    var merged_summary: Dictionary = {}
-    for summary: Dictionary in main_scene.get_node("SimulationBridge").get_army_summaries():
-        if summary.get("owner_id", "") == "auroria":
-            merged_summary = summary
-    if army_selector.item_count != 1 or \
-            merged_summary.get("manpower", 0) != 1000 or \
-            merged_summary.get("display_name", "") != "奥·第5军":
-        push_error("Rename and merge did not refresh the management window")
-        main_scene.free()
-        quit(1)
-        return
-
-    var advance_turn := main_scene.get_node(
-        "TurnBar/TurnControls/AdvanceTurn"
-    ) as Button
     advance_turn.pressed.emit()
-    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
     province_map.province_double_clicked.emit("capital_auroria")
-    if army_selector.item_count != 1 or select_destination.disabled:
-        push_error("The recruited army was not available after reopening management")
-        main_scene.free()
-        quit(1)
+    if army_selector.item_count != 1 or \
+            not bridge.get_pending_orders("auroria").is_empty() or \
+            not main_scene.get_node("RightPanel/Center/EventHistory").text.contains("征兵订单完成"):
+        _fail(main_scene, "Recruitment order did not complete in the next project phase")
         return
 
-    select_destination.pressed.emit()
-    if main_scene.map_input_mode_name() != "army_destination" or \
-            main_scene.workspace_mode_name() != "province_management":
-        push_error("Destination selection mode did not start from management")
-        main_scene.free()
-        quit(1)
-        return
-
-    province_map.province_clicked.emit("cell_1_2")
-    province_map.province_selected.emit("cell_1_2")
-    if main_scene.map_input_mode_name() != "normal" or move_army.disabled or \
-            not management.get_node("DirectDestination").text.contains("(1,2)"):
-        push_error("The management window did not accept an adjacent destination")
-        main_scene.free()
-        quit(1)
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
+    province_map.province_double_clicked.emit("capital_auroria")
+    if army_selector.item_count != 1 or reachable.item_count == 0:
+        _fail(main_scene, "Completed army did not expose authoritative reachable targets")
         return
 
     var army_id := String(army_selector.get_selected_metadata())
+    var origin_id: String = _army(bridge, army_id).get("province_id", "")
+    var movement_before: float = float(_army(bridge, army_id).get("movement_points", 0.0))
+    var target: Dictionary = reachable.get_item_metadata(0)
+    var destination_id: String = target.get("province_id", "")
+    reachable.select(0)
+    reachable.item_selected.emit(0)
+    if move_army.disabled or \
+            not management.get_node("DirectDestination").text.contains(
+                target.get("province_name", destination_id)
+            ):
+        _fail(main_scene, "Reachable destination selection did not prepare an order")
+        return
+
     move_army.pressed.emit()
-    var moved := false
-    for army: Dictionary in main_scene.get_node("SimulationBridge").get_army_summaries():
-        if army.get("id", "") == army_id and army.get("province_id", "") == "cell_1_2":
-            moved = true
-            break
-    if not moved or main_scene.workspace_mode_name() != "province_management" or \
-            army_selector.item_count != 0:
-        push_error("The selected army was not moved from the management window")
-        main_scene.free()
-        quit(1)
+    await process_frame
+    var movement_row := _pending_row(main_scene, "army_action")
+    if _army(bridge, army_id).get("province_id", "") != origin_id or \
+            movement_row == null or \
+            not (movement_row.get_node("Description") as Label).text.contains("预留移动") or \
+            not management.get_node("Status").text.contains("订单已创建"):
+        _fail(main_scene, "Army movement happened immediately instead of being queued")
         return
 
-    province_map.map_blank_clicked.emit()
-    if main_scene.workspace_mode_name() != "closed" or management.visible:
-        push_error("Blank map click did not close the province management window")
-        main_scene.free()
-        quit(1)
+    (movement_row.get_node("Cancel") as Button).pressed.emit()
+    await process_frame
+    if not bridge.get_pending_orders("auroria").is_empty() or \
+            not is_equal_approx(
+                float(_army(bridge, army_id).get("movement_points", 0.0)),
+                movement_before
+            ) or \
+            not main_scene.get_node("RightPanel/Center/EventLog").text.contains("退还移动"):
+        _fail(main_scene, "Cancelling a movement order did not restore reserved movement")
         return
 
-    print("Province management window smoke test passed")
+    reachable.select(0)
+    reachable.item_selected.emit(0)
+    move_army.pressed.emit()
+    await process_frame
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
+    if _army(bridge, army_id).get("province_id", "") != destination_id or \
+            not main_scene.get_node("RightPanel/Center/EventHistory").text.contains("调动订单完成"):
+        _fail(main_scene, "Queued movement did not resolve on the following month")
+        return
+
+    print("Province management window monthly order smoke test passed")
     main_scene.free()
     quit(0)

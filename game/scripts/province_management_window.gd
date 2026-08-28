@@ -8,6 +8,7 @@ signal merge_requested(primary_army_id: String, merged_army_ids: Array)
 signal technology_research_requested(track: String)
 signal army_selected(army_id: String)
 signal destination_selection_requested(army_id: String)
+signal reachable_destination_selected(army_id: String, destination_id: String)
 signal move_requested(army_id: String, destination_id: String)
 signal advance_destination_selection_requested(army_id: String)
 signal auto_advance_requested(army_id: String, target_id: String)
@@ -21,6 +22,10 @@ var _advance_target_id := ""
 var _army_by_id: Dictionary = {}
 var _recruitable_population := 0
 var _player_treasury := 0
+var _reserved_recruitment := 0
+var _can_manage := false
+var _has_pending_research := false
+var _army_with_order: Dictionary = {}
 
 
 func _ready() -> void:
@@ -40,6 +45,9 @@ func _ready() -> void:
         func() -> void: technology_research_requested.emit("roads")
     )
     $ArmySelector.item_selected.connect(_on_army_selected)
+    $ReachableDestination.item_selected.connect(
+        _on_reachable_destination_selected
+    )
     $ArmyActions/SelectDestination.pressed.connect(_on_select_destination_pressed)
     $ArmyActions/MoveArmy.pressed.connect(_on_move_pressed)
     $AdvanceActions/SelectAdvanceTarget.pressed.connect(
@@ -66,24 +74,42 @@ func display_province(
         province.get("economy", 0),
         province.get("fiscal_income", 0),
     ]
-    var can_manage: bool = String(province.get("owner_id", "")) == player_country_id
+    _can_manage = String(province.get("owner_id", "")) == player_country_id
     _recruitable_population = int(province.get("recruitable_population", 0))
     _player_treasury = int(player_treasury)
-    $Recruitment/Open.disabled = not can_manage or _maximum_recruitment() <= 0
+    _reserved_recruitment = 0
+    _has_pending_research = false
+    _army_with_order.clear()
+    $Recruitment/Pending.text = "本地区暂无征兵订单"
+    $Technology/Pending.text = "暂无研究订单"
+    _refresh_paid_action_state()
     _close_recruitment()
     _populate_armies(armies, player_country_id, preferred_army_id)
     _clear_destination()
+    set_reachable_targets([])
     set_advance_target("", "")
-    $Status.text = "请选择地区操作"
+    $Status.text = (
+        "国库负债：禁止新建征兵、修路和研究订单"
+        if _player_treasury < 0 else "请选择地区操作"
+    )
     visible = true
 
 
-func set_destination(province_id: String, province_name: String) -> void:
+func set_destination(
+    province_id: String,
+    province_name: String,
+    movement_cost := 0.0,
+    is_attack := false
+) -> void:
     if province_id.is_empty():
         _clear_destination()
         return
     _destination_id = province_id
-    $DirectDestination.text = "直接调动目的地：%s" % province_name
+    $DirectDestination.text = "订单目的地：%s · %s · 预留移动%s" % [
+        province_name,
+        "进攻" if is_attack else "调动",
+        GameText.movement_points(movement_cost),
+    ]
     $ArmyActions/MoveArmy.disabled = _selected_army_id.is_empty()
     $Status.text = "目的地已选择，可确认调动"
 
@@ -94,6 +120,59 @@ func set_technology(technology: Dictionary) -> void:
         technology.get("military_level", 0),
         technology.get("roads_level", 0),
     ]
+    _refresh_paid_action_state()
+
+
+func set_pending_orders(orders: Array) -> void:
+    _reserved_recruitment = 0
+    _has_pending_research = false
+    _army_with_order.clear()
+    var research_text := "暂无研究订单"
+    for order: Dictionary in orders:
+        match String(order.get("type", order.get("order_type", ""))):
+            "recruitment":
+                if order.get("province_id", "") == _province_id:
+                    _reserved_recruitment += int(order.get("manpower", 0))
+            "research":
+                _has_pending_research = true
+                research_text = "%s → %d · 剩余%d个月 · 已预付%d" % [
+                    GameText.technology_track_name(String(order.get("track", ""))),
+                    order.get("target_level", 0),
+                    order.get("remaining_months", 0),
+                    order.get("paid_cost", order.get("cost", 0)),
+                ]
+            "army_action":
+                _army_with_order[String(order.get("army_id", ""))] = true
+    $Recruitment/Pending.text = (
+        "本地区征兵订单：预留%d人" % _reserved_recruitment
+        if _reserved_recruitment > 0 else "本地区暂无征兵订单"
+    )
+    $Technology/Pending.text = research_text
+    _refresh_paid_action_state()
+    _refresh_rename_and_merge()
+
+
+func set_reachable_targets(targets: Array) -> void:
+    $ReachableDestination.clear()
+    for target: Dictionary in targets:
+        var destination_id := String(target.get("province_id", ""))
+        if destination_id.is_empty():
+            continue
+        var destination_name := String(target.get("province_name", destination_id))
+        $ReachableDestination.add_item("%s · %s · 预留移动%s" % [
+            destination_name,
+            "进攻" if target.get("is_attack", false) else "调动",
+            GameText.movement_points(target.get("movement_cost", 0)),
+        ])
+        $ReachableDestination.set_item_metadata(
+            $ReachableDestination.item_count - 1,
+            target
+        )
+    $ReachableDestination.disabled = $ReachableDestination.item_count == 0
+    if $ReachableDestination.item_count == 0:
+        $ReachableDestination.tooltip_text = "当前军队没有可创建订单的目的地"
+    else:
+        $ReachableDestination.tooltip_text = "选择核心验证后的可达目的地"
 
 
 func set_advance_target(province_id: String, province_name: String) -> void:
@@ -128,9 +207,11 @@ func clear() -> void:
     _destination_id = ""
     _advance_target_id = ""
     _army_by_id.clear()
+    _army_with_order.clear()
     _close_recruitment()
     _clear_destination()
     set_advance_target("", "")
+    set_reachable_targets([])
 
 
 func _populate_armies(
@@ -196,18 +277,35 @@ func _refresh_army_details() -> void:
 
 func _clear_destination() -> void:
     _destination_id = ""
-    $DirectDestination.text = "直接调动目的地：尚未选择"
+    $DirectDestination.text = "订单目的地：尚未选择"
     $ArmyActions/MoveArmy.disabled = true
 
 
 func _maximum_recruitment() -> int:
-    return min(_recruitable_population, _player_treasury)
+    var available_population: int = maxi(
+        0, _recruitable_population - _reserved_recruitment
+    )
+    var affordable_manpower: int = maxi(0, int(_player_treasury / 4))
+    return mini(available_population, affordable_manpower)
+
+
+func _refresh_paid_action_state() -> void:
+    $Recruitment/Open.disabled = (
+        not _can_manage or _player_treasury < 0 or _maximum_recruitment() <= 0
+    )
+    var research_disabled := not _can_manage or _player_treasury < 0 or \
+        _has_pending_research
+    $Technology/Buttons/Economy.disabled = research_disabled
+    $Technology/Buttons/Military.disabled = research_disabled
+    $Technology/Buttons/Roads.disabled = research_disabled
 
 
 func _on_recruit_open_pressed() -> void:
     var maximum := _maximum_recruitment()
-    $Recruitment/Details.text = "可招募士兵：%d | 国库：%d | 最大：%d" % [
-        _recruitable_population, _player_treasury, maximum
+    $Recruitment/Details.text = "可用兵员：%d | 国库：%d | 单价4 | 最大：%d" % [
+        max(0, _recruitable_population - _reserved_recruitment),
+        _player_treasury,
+        maximum,
     ]
     $Recruitment/Amount.max_value = max(1, maximum)
     $Recruitment/Amount.value = min(1000, max(1, maximum))
@@ -236,15 +334,20 @@ func _on_rename_pressed() -> void:
 
 
 func _refresh_rename_and_merge() -> void:
+    var order_locked := _army_with_order.has(_selected_army_id)
     $Rename/Confirm.disabled = _selected_army_id.is_empty()
     $Merge/Candidates.clear()
     if _selected_army_id.is_empty():
         $Merge/Preview.text = "当前没有可管理的军队"
         $Merge/Confirm.disabled = true
         return
+    if order_locked:
+        $Merge/Preview.text = "该军队已有待执行订单，不能手动合并"
+        $Merge/Confirm.disabled = true
+        return
     var primary: Dictionary = _army_by_id.get(_selected_army_id, {})
     for army_id: String in _army_by_id:
-        if army_id == _selected_army_id:
+        if army_id == _selected_army_id or _army_with_order.has(army_id):
             continue
         var army: Dictionary = _army_by_id[army_id]
         $Merge/Candidates.add_item("%s（%d 人）" % [
@@ -303,6 +406,23 @@ func _on_army_selected(index: int) -> void:
     _clear_destination()
     set_advance_target("", "")
     army_selected.emit(_selected_army_id)
+
+
+func _on_reachable_destination_selected(index: int) -> void:
+    if index < 0 or index >= $ReachableDestination.item_count or \
+            _selected_army_id.is_empty():
+        return
+    var target: Dictionary = $ReachableDestination.get_item_metadata(index)
+    var destination_id := String(target.get("province_id", ""))
+    if destination_id.is_empty():
+        return
+    set_destination(
+        destination_id,
+        String(target.get("province_name", destination_id)),
+        target.get("movement_cost", 0),
+        target.get("is_attack", false)
+    )
+    reachable_destination_selected.emit(_selected_army_id, destination_id)
 
 
 func _on_select_destination_pressed() -> void:

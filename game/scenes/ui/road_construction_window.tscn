@@ -11,7 +11,7 @@ script = ExtResource("1_road")
 
 [node name="Instructions" type="Label" parent="."]
 layout_mode = 2
-text = "依次选择两个相邻且由你控制的地区"
+text = "依次选择两个相邻且由你控制的地区；订单将在下月项目阶段完成"
 horizontal_alignment = 1
 autowrap_mode = 2
 
@@ -52,7 +52,7 @@ theme_override_constants/separation = 8
 [node name="BuildRoad" type="Button" parent="ActionButtons"]
 layout_mode = 2
 disabled = true
-text = "确认修建"
+text = "创建修路订单"
 
 [node name="Reset" type="Button" parent="ActionButtons"]
 layout_mode = 2

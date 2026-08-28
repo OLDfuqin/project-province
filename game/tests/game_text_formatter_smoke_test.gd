@@ -61,6 +61,71 @@ func _initialize() -> void:
 		_fail("Turn battle report did not prefer the visible army name")
 		return
 
+	var joint_battle: Dictionary = battle.duplicate(true)
+	joint_battle["order_ids"] = ["order_4", "order_7"]
+	if GameText.battle_action_report(joint_battle, provinces).find("联合战斗") == -1:
+		_fail("Grouped monthly battle was not identified as a joint battle")
+		return
+
+	var recruitment_order := {
+		"type": "recruitment",
+		"province_id": "capital_auroria",
+		"manpower": 100,
+		"paid_cost": 400,
+		"remaining_months": 1,
+		"status": "pending",
+	}
+	var recruitment_text := GameText.pending_order_text(recruitment_order, provinces)
+	for fragment: String in ["征兵", "奥罗里亚首都", "剩余1个月", "预付400", "预留兵员100", "待执行"]:
+		if recruitment_text.find(fragment) == -1:
+			_fail("Recruitment pending order omitted %s" % fragment)
+			return
+
+	var movement_text := GameText.pending_order_text({
+		"type": "army_action",
+		"destination": "capital_auroria",
+		"is_attack": true,
+		"reserved_movement_half": 7,
+		"remaining_months": 1,
+		"status": "pending",
+	}, provinces)
+	for fragment: String in ["进攻", "奥罗里亚首都", "预留移动3.5", "待执行"]:
+		if movement_text.find(fragment) == -1:
+			_fail("Army pending order omitted %s" % fragment)
+			return
+
+	var failed_text := GameText.turn_action_report({
+		"type": "order_cancelled",
+		"order_id": "order_9",
+		"reason": "path no longer legal",
+		"refunded_cost": 400,
+		"refunded_movement_half": 4,
+	}, provinces)
+	for fragment: String in ["订单失败", "原因", "路径已不再合法", "退款400", "退还移动2"]:
+		if failed_text.find(fragment) == -1:
+			_fail("Failed order report omitted %s" % fragment)
+			return
+
+	var merged_text := GameText.turn_action_report({
+		"type": "armies_merged",
+		"automatic": true,
+		"display_name": "奥·第1军",
+		"merged_army_ids": ["army_2"],
+		"current_manpower": 1400,
+	}, provinces)
+	if merged_text.find("自动整编") == -1 or merged_text.find("1400") == -1:
+		_fail("Automatic consolidation report was incomplete")
+		return
+
+	for completion: Dictionary in [
+		{"type": "army_recruited", "province_id": "capital_auroria", "manpower": 100},
+		{"type": "road_built", "province_a": "capital_auroria", "province_b": "capital_auroria"},
+		{"type": "technology_researched", "track": "economy", "current_level": 1},
+	]:
+		if GameText.turn_action_report(completion, provinces).find("完成") == -1:
+			_fail("Project completion report omitted completion state")
+			return
+
 	for expected: Dictionary in [
 		{"result": "defender_victory", "label": "防守方胜利"},
 		{"result": "attacker_victory", "label": "进攻方胜利"},

@@ -53,7 +53,7 @@ horizontal_scroll_mode = 0
 vertical_scroll_mode = 1
 
 [node name="Center" type="VBoxContainer" parent="RightPanel"]
-custom_minimum_size = Vector2(340, 1120)
+custom_minimum_size = Vector2(340, 1420)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 16
@@ -93,6 +93,42 @@ text = "快速读取"
 [node name="RoadConstructionEntry" type="Button" parent="RightPanel/Center"]
 layout_mode = 2
 text = "修建道路"
+
+[node name="PendingOrders" type="PanelContainer" parent="RightPanel/Center"]
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="RightPanel/Center/PendingOrders"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="RightPanel/Center/PendingOrders/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "玩家待执行订单"
+horizontal_alignment = 1
+
+[node name="PlanningStatus" type="Label" parent="RightPanel/Center/PendingOrders/Content"]
+layout_mode = 2
+text = "规划状态：可创建付费订单"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Empty" type="Label" parent="RightPanel/Center/PendingOrders/Content"]
+layout_mode = 2
+text = "暂无玩家待执行订单（AI订单不可见）"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="OrderList" type="ScrollContainer" parent="RightPanel/Center/PendingOrders/Content"]
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 1
+
+[node name="Orders" type="VBoxContainer" parent="RightPanel/Center/PendingOrders/Content/OrderList"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
 
 [node name="CountryList" type="VBoxContainer" parent="RightPanel/Center"]
 layout_mode = 2
@@ -237,12 +273,9 @@ theme_override_constants/separation = 12
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 
-[node name="TurnLength" type="OptionButton" parent="TurnBar/TurnControls"]
-layout_mode = 2
-
 [node name="AdvanceTurn" type="Button" parent="TurnBar/TurnControls"]
 layout_mode = 2
-text = "下一回合"
+text = "进入下一回合（1个月）"
 
 [node name="EventLog" type="Label" parent="RightPanel/Center"]
 layout_mode = 2

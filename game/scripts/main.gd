@@ -23,7 +23,6 @@ enum MapInputMode {
 
 @onready var bridge := $SimulationBridge
 @onready var date_label: Label = $TurnBar/TurnControls/DateLabel
-@onready var turn_length: OptionButton = $TurnBar/TurnControls/TurnLength
 @onready var advance_turn_button: Button = $TurnBar/TurnControls/AdvanceTurn
 @onready var event_log: Label = $RightPanel/Center/EventLog
 @onready var event_history: RichTextLabel = $RightPanel/Center/EventHistory
@@ -92,6 +91,9 @@ func _ready() -> void:
     province_management_window.destination_selection_requested.connect(
         _on_management_destination_requested
     )
+    province_management_window.reachable_destination_selected.connect(
+        _on_management_reachable_destination_selected
+    )
     province_management_window.move_requested.connect(
         _on_management_move_requested
     )
@@ -126,11 +128,6 @@ func _ready() -> void:
     ]
     _refresh_province_summary()
 
-    for months: int in [1, 3, 6, 12]:
-        turn_length.add_item("%d个月" % months)
-        turn_length.set_item_metadata(turn_length.item_count - 1, months)
-    turn_length.select(0)
-    turn_length.item_selected.connect(_on_turn_length_selected)
     advance_turn_button.pressed.connect(_on_advance_turn_pressed)
     _refresh_turn_controls()
     _refresh_date()
@@ -140,6 +137,7 @@ func _ready() -> void:
     _refresh_war_overview()
     _refresh_game_status()
     _refresh_technology_status()
+    _refresh_pending_orders()
     _populate_war_targets()
     peace_policy.add_item("恢复战前边界")
     peace_policy.set_item_metadata(0, false)
@@ -271,6 +269,7 @@ func _refresh_management_window(
         _player_treasury()
     )
     province_management_window.set_technology(_player_technology())
+    province_management_window.set_pending_orders(_player_pending_orders())
     var selected_army_id := preferred_army_id
     if selected_army_id.is_empty():
         for army: Dictionary in bridge.get_army_summaries():
@@ -293,6 +292,80 @@ func _player_treasury() -> int:
     return 0
 
 
+func _player_pending_orders() -> Array:
+    return bridge.get_pending_orders(PLAYER_COUNTRY_ID)
+
+
+func _refresh_pending_orders() -> void:
+    var orders := _player_pending_orders()
+    var container := $RightPanel/Center/PendingOrders/Content/OrderList/Orders
+    for child: Node in container.get_children():
+        child.queue_free()
+    $RightPanel/Center/PendingOrders/Content/Empty.visible = orders.is_empty()
+    $RightPanel/Center/PendingOrders/Content/OrderList.visible = not orders.is_empty()
+    var debt := _player_treasury() < 0
+    $RightPanel/Center/PendingOrders/Content/PlanningStatus.text = (
+        "规划状态：国库负债，禁止新建征兵、修路和研究订单"
+        if debt else "规划状态：可创建付费订单"
+    )
+    road_construction_entry.disabled = debt
+    road_construction_entry.tooltip_text = (
+        "国库负债时不能创建修路订单" if debt else "打开道路建设规划"
+    )
+    for order: Dictionary in orders:
+        var row := HBoxContainer.new()
+        row.set_meta("order_id", String(order.get("order_id", "")))
+        row.set_meta("order_type", String(order.get("type", "")))
+        row.add_theme_constant_override("separation", 6)
+        var description := Label.new()
+        description.name = "Description"
+        description.text = GameText.pending_order_text(order, province_by_id)
+        description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        description.tooltip_text = "订单ID：%s" % order.get("order_id", "")
+        row.add_child(description)
+        var cancel := Button.new()
+        cancel.name = "Cancel"
+        cancel.text = "取消订单"
+        cancel.pressed.connect(
+            _on_cancel_order_pressed.bind(String(order.get("order_id", "")))
+        )
+        row.add_child(cancel)
+        container.add_child(row)
+    if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
+        province_management_window.set_pending_orders(orders)
+        _refresh_management_action_state()
+
+
+func _on_cancel_order_pressed(order_id: String) -> void:
+    if order_id.is_empty():
+        return
+    var result: Dictionary = bridge.cancel_order(order_id)
+    if not result.get("accepted", false):
+        event_log.text = "取消订单失败：%s" % result.get("error", "未知错误")
+        if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
+            province_management_window.set_status(event_log.text)
+        return
+    event_log.text = "订单已取消：%s" % order_id
+    var refunded_cost := int(result.get("refunded_cost", 0))
+    var refunded_movement_half := int(result.get("refunded_movement_half", 0))
+    if refunded_cost > 0:
+        event_log.text += "，退款%d" % refunded_cost
+    if refunded_movement_half > 0:
+        event_log.text += "，退还移动%s" % GameText.movement_points(
+            float(refunded_movement_half) / 2.0
+        )
+    if refunded_cost == 0 and refunded_movement_half == 0:
+        event_log.text += "，无退款"
+    _record_event(event_log.text)
+    _refresh_country_list()
+    _refresh_country_details()
+    _refresh_map_data()
+    _refresh_pending_orders()
+    if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
+        _refresh_management_window(moving_army_id, event_log.text)
+
+
 func _on_management_recruit_requested(province_id: String, manpower: int) -> void:
     if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or \
             province_id != managed_province_id:
@@ -308,22 +381,19 @@ func _on_management_recruit_requested(province_id: String, manpower: int) -> voi
         province_management_window.set_status(error_message)
         return
 
-    event_log.text = "事件 #%d：%s 招募%d人，支出%d" % [
-        result["event_sequence"],
-        result.get("display_name", result["army_id"]),
-        result["manpower"],
-        result["cost"],
+    event_log.text = "事件 #%d：征兵订单已创建，目标%s，预留%d人，预付%d，剩余%d个月" % [
+        result.get("event_sequence", 0),
+        _province_name(province_id),
+        result.get("manpower", manpower),
+        result.get("cost", 0),
+        result.get("remaining_months", 1),
     ]
     _record_event(event_log.text)
-    moving_army_id = result["army_id"]
-    movement_origin_id = province_id
-    movement_destination_id = ""
-    auto_advance_target_id = ""
     _refresh_country_list()
     _refresh_country_details()
-    _refresh_map_data()
     _refresh_province_summary()
-    _refresh_management_window(result["army_id"], event_log.text)
+    _refresh_pending_orders()
+    _refresh_management_window("", "订单已创建：征兵将在下月项目阶段完成")
 
 
 func _on_management_rename_requested(
@@ -386,7 +456,59 @@ func _on_management_destination_requested(army_id: String) -> void:
         province_management_window.set_status("无法选择该军队")
         return
     map_input_mode = MapInputMode.ARMY_DESTINATION
-    province_management_window.set_status("请在地图上点击一个相邻地区")
+    province_management_window.set_status("请在地图上点击列表中的可达目的地")
+
+
+func _on_management_reachable_destination_selected(
+    army_id: String,
+    destination_id: String
+) -> void:
+    if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or \
+            army_id != moving_army_id:
+        return
+    _apply_management_order_destination(destination_id)
+
+
+func _available_order_targets(army_id: String) -> Array:
+    var targets: Array = []
+    if army_id.is_empty():
+        return targets
+    for value: Dictionary in bridge.get_army_order_targets(army_id):
+        var target := value.duplicate(true)
+        var province_id := String(target.get("province_id", ""))
+        target["province_name"] = _province_name(province_id)
+        targets.append(target)
+    return targets
+
+
+func _find_order_target(army_id: String, destination_id: String) -> Dictionary:
+    for target: Dictionary in _available_order_targets(army_id):
+        if target.get("province_id", "") == destination_id:
+            return target
+    return {}
+
+
+func _apply_management_order_destination(destination_id: String) -> void:
+    var target := _find_order_target(moving_army_id, destination_id)
+    if target.is_empty():
+        province_management_window.set_status("该地区不在当前权威可达目标中")
+        return
+    movement_destination_id = destination_id
+    auto_advance_target_id = ""
+    bridge.clear_army_advance_target(moving_army_id)
+    map_input_mode = MapInputMode.NORMAL
+    province_management_window.set_destination(
+        destination_id,
+        String(target.get("province_name", destination_id)),
+        target.get("movement_cost", 0),
+        target.get("is_attack", false)
+    )
+    province_management_window.set_status(
+        "%s目标已选择，可创建订单" % (
+            "进攻" if target.get("is_attack", false) else "调动"
+        )
+    )
+    _refresh_management_action_state()
 
 
 func _on_management_advance_destination_requested(army_id: String) -> void:
@@ -411,20 +533,7 @@ func _select_management_destination(province_id: String) -> void:
     if province_id == movement_origin_id:
         province_management_window.set_status("目的地不能与军队所在地相同")
         return
-    if not _are_provinces_adjacent(movement_origin_id, province_id):
-        province_management_window.set_status("首版调动只能选择相邻地区")
-        return
-    movement_destination_id = province_id
-    auto_advance_target_id = ""
-    bridge.clear_army_advance_target(moving_army_id)
-    map_input_mode = MapInputMode.NORMAL
-    province_management_window.set_destination(
-        province_id,
-        province_by_id.get(province_id, {"name": province_id}).get(
-            "name", province_id
-        )
-    )
-    _refresh_management_action_state()
+    _apply_management_order_destination(province_id)
 
 
 func _select_management_advance_target(province_id: String) -> void:
@@ -463,22 +572,25 @@ func _on_management_move_requested(army_id: String, destination_id: String) -> v
         province_management_window.set_status(error_message)
         return
 
-    _record_movement_result(result)
+    event_log.text = "事件 #%d：%s订单已创建，%s → %s，预留移动%s，剩余%d个月" % [
+        result.get("event_sequence", 0),
+        "进攻" if result.get("is_attack", false) else "调动",
+        _province_name(result.get("origin", movement_origin_id)),
+        _province_name(result.get("destination", destination_id)),
+        GameText.movement_points(result.get("movement_cost", 0)),
+        result.get("remaining_months", 1),
+    ]
+    _record_event(event_log.text)
     bridge.clear_army_advance_target(army_id)
     movement_destination_id = ""
     auto_advance_target_id = ""
     map_input_mode = MapInputMode.NORMAL
     _refresh_map_data()
+    _refresh_country_list()
     _refresh_country_details()
-    _refresh_game_status()
-    _refresh_province_summary()
     _refresh_advance_plans()
-    if result.get("army_destroyed", false):
-        _clear_movement_selection()
-    else:
-        movement_origin_id = result.get("army_province_id", result["destination"])
-        _refresh_management_action_state()
-    _refresh_management_window("", event_log.text)
+    _refresh_pending_orders()
+    _refresh_management_window(army_id, "订单已创建：将在下月军事阶段执行")
 
 
 func _record_movement_result(result: Dictionary) -> void:
@@ -507,26 +619,22 @@ func _on_management_auto_advance_requested(
         event_log.text = "自动推进失败：%s" % result.get("error", "未知错误")
         province_management_window.set_status(event_log.text)
         return
-    _record_movement_result(result)
-    if result.get("army_destroyed", false):
-        _clear_movement_selection()
-        _refresh_map_data()
-        _close_workspace()
-        return
-    var new_province_id: String = result.get(
-        "army_province_id",
-        result.get("destination", "")
-    )
-    movement_origin_id = new_province_id
+    event_log.text = "事件 #%d：自动推进订单已创建，本月目标%s，预留移动%s，剩余1个月" % [
+        result.get("event_sequence", 0),
+        _province_name(result.get("destination", target_id)),
+        GameText.movement_points(result.get("movement_cost", 0)),
+    ]
+    _record_event(event_log.text)
     movement_destination_id = ""
-    auto_advance_target_id = String(
-        _find_army_by_id(army_id).get("advance_target_id", "")
-    )
     map_input_mode = MapInputMode.NORMAL
     _refresh_map_data()
+    _refresh_country_list()
     _refresh_country_details()
-    _refresh_game_status()
-    _open_management_for_army(army_id, new_province_id, event_log.text)
+    _refresh_pending_orders()
+    _refresh_management_window(
+        army_id,
+        "订单已创建：自动推进将在下月军事阶段执行"
+    )
 
 
 func _on_management_movement_clear_requested(army_id: String) -> void:
@@ -541,6 +649,9 @@ func _on_management_movement_clear_requested(army_id: String) -> void:
 
 
 func _on_road_construction_entry_pressed() -> void:
+    if _player_treasury() < 0:
+        event_log.text = "国库负债：不能创建修路订单"
+        return
     _clear_road_selection()
     map_input_mode = MapInputMode.NORMAL
     _open_workspace(
@@ -668,16 +779,18 @@ func _select_road_endpoint(province_id: String) -> void:
     road_end_id = province_id
     map_input_mode = MapInputMode.NORMAL
     _refresh_road_selection()
-    var required_level: int = _road_required_level(
-        province_by_id.get(road_start_id, {}).get("terrain", "plains"),
-        province.get("terrain", "plains")
+    var quote: Dictionary = bridge.get_road_order_quote(
+        PLAYER_COUNTRY_ID,
+        road_start_id,
+        road_end_id
     )
-    var can_build: bool = _player_roads_level() >= required_level
-    var status: String = "路线合法，可以确认修建" if can_build else \
-        "需要道路科技%d级（当前%d级）" % [required_level, _player_roads_level()]
+    var can_build := bool(quote.get("accepted", false))
+    var estimated_cost := int(quote.get("cost", _estimated_road_build_cost()))
+    var status: String = "路线合法，可以创建修路订单" if can_build else \
+        "当前无法下单：%s" % quote.get("error", "未知原因")
     road_construction_window.set_end_province(
         province.get("name", province_id),
-        _estimated_road_build_cost(),
+        estimated_cost,
         can_build,
         status
     )
@@ -718,49 +831,58 @@ func _province_name(province_id: String) -> String:
 
 func _record_turn_actions(actions: Array) -> void:
     for action: Dictionary in actions:
-        match String(action.get("type", "other")):
-            "army_recruited":
-                _record_event("回合行动：%s 招募了一支军队" % _country_name(
-                    action.get("country_id", "?")
-                ))
+        var action_type := String(action.get("type", "other"))
+        match action_type:
+            "maintenance_resolved":
+                var total_maintenance := 0
+                for charge: Dictionary in action.get("charges", []):
+                    total_maintenance += int(charge.get("amount", 0))
+                _record_event("月度维护阶段：军队维护费合计%d" % total_maintenance)
+            "movement_points_granted":
+                _record_event("月度移动阶段：%d支军队获得或偿还移动点" % action.get(
+                    "grants", []
+                ).size())
             "war_declared":
                 _record_event("回合行动：%s 向 %s 宣战" % [
                     _country_name(action.get("country_id", "?")),
                     _country_name(action.get("target_id", "?")),
                 ])
-            "army_moved":
-                _record_event("回合行动：%s 从 %s 调动至 %s，消耗%d移动点，剩余%s移动点" % [
-                    action.get("army_id", "?"),
-                    _province_name(action.get("origin", "?")),
-                    _province_name(action.get("destination", "?")),
-                    action.get("movement_cost", 0),
-                    GameText.movement_points(action.get("remaining_points", 0)),
-                ])
-            "battle_resolved":
-                _record_event(_battle_action_report(action))
-            "technology_researched":
-                _record_event("回合行动：%s 完成了一项科技研究" % _country_name(
-                    action.get("country_id", "?")
-                ))
+            _:
+                var report := GameText.turn_action_report(action, province_by_id)
+                if not report.is_empty():
+                    _record_event(report)
 
 
 func _refresh_turn_controls() -> void:
-    var months := 1
-    if turn_length.item_count > 0:
-        months = int(turn_length.get_selected_metadata())
-    advance_turn_button.text = "进入下一回合（%d个月）" % months
+    advance_turn_button.text = "进入下一回合（1个月）"
+
+
+func _monthly_maintenance_by_country() -> Dictionary:
+    var manpower_by_country: Dictionary = {}
+    for army: Dictionary in bridge.get_army_summaries():
+        var country_id := String(army.get("owner_id", ""))
+        manpower_by_country[country_id] = int(manpower_by_country.get(
+            country_id, 0
+        )) + int(army.get("manpower", 0))
+    var maintenance: Dictionary = {}
+    for country_id: String in manpower_by_country:
+        maintenance[country_id] = int(manpower_by_country[country_id] / 2)
+    return maintenance
 
 
 func _refresh_country_list() -> void:
     for child: Node in $RightPanel/Center/CountryList.get_children():
         child.free()
 
+    var maintenance := _monthly_maintenance_by_country()
     for country: Dictionary in bridge.get_country_summaries():
         var label := Label.new()
         var rgb: int = country["color_rgb"]
-        label.text = "%s · 国库 %d · 地区 %d · 经济 %d · 财政收入 %d" % [
+        label.text = "%s · 国库 %d（%s）· 维护费 %d/月 · 地区 %d · 经济 %d · 财政收入 %d" % [
             country["name"],
             country["treasury"],
+            "负债" if int(country["treasury"]) < 0 else "无负债",
+            maintenance.get(String(country["id"]), 0),
             country["province_count"],
             country.get("economy", 0),
             country.get("fiscal_income", 0),
@@ -889,14 +1011,20 @@ func _on_research_technology(track: String) -> void:
         if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
             province_management_window.set_status(event_log.text)
         return
-    event_log.text = "科技提升至%d级，支出%d" % [
-        result["current_level"], result["cost"]
+    event_log.text = "研究订单已创建：%s → %d级，预付%d，剩余%d个月" % [
+        GameText.technology_track_name(track),
+        result.get("target_level", result.get("current_level", 0)),
+        result.get("cost", 0),
+        result.get("remaining_months", 0),
     ]
     _record_event(event_log.text)
     _refresh_country_list()
     _refresh_country_details()
-    _refresh_technology_status()
-    _refresh_management_window(moving_army_id, event_log.text)
+    _refresh_pending_orders()
+    _refresh_management_window(
+        moving_army_id,
+        "订单已创建：研究将在倒计时结束后完成"
+    )
 
 
 func _player_technology() -> Dictionary:
@@ -939,6 +1067,7 @@ func _on_quick_load_pressed() -> void:
     _refresh_province_summary()
     _refresh_technology_status()
     _refresh_game_status()
+    _refresh_pending_orders()
     event_log.text = "已从 quick_save.json 读取游戏"
     _record_event(event_log.text)
 
@@ -995,9 +1124,6 @@ func _open_management_for_army(
 
 
 func _refresh_advance_plans() -> void:
-    var preview_months := 1
-    if turn_length.item_count > 0:
-        preview_months = int(turn_length.get_selected_metadata())
     if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
         province_management_window.set_advance_plans(
             StrategyPresenter.advance_plans(
@@ -1005,7 +1131,7 @@ func _refresh_advance_plans() -> void:
                 bridge.get_army_summaries(),
                 province_by_id,
                 PLAYER_COUNTRY_ID,
-                preview_months
+                1
             )
         )
 
@@ -1084,16 +1210,9 @@ func _refresh_province_summary() -> void:
     ]
 
 
-func _on_turn_length_selected(_index: int) -> void:
-    _close_transient_workspace()
-    _refresh_turn_controls()
-    _refresh_advance_plans()
-
-
 func _on_advance_turn_pressed() -> void:
     _close_transient_workspace()
-    var months: int = turn_length.get_selected_metadata()
-    var result: Dictionary = bridge.advance_turn(months)
+    var result: Dictionary = bridge.advance_turn()
     if not result.get("accepted", false):
         event_log.text = "命令被拒绝：%s" % result.get("error", "未知错误")
         return
@@ -1104,6 +1223,8 @@ func _on_advance_turn_pressed() -> void:
     _refresh_map_data()
     _refresh_game_status()
     _refresh_province_summary()
+    _refresh_technology_status()
+    _refresh_pending_orders()
     var total_income := 0
     for income: Dictionary in result["fiscal_incomes"]:
         total_income += int(income["amount"])
@@ -1124,6 +1245,8 @@ func _on_advance_turn_pressed() -> void:
         event_log.text += " | 回合行动：%d" % turn_action_count
         _record_turn_actions(turn_actions)
     _record_event(event_log.text)
+    if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+        road_construction_window.set_status("本月已结算，可继续规划新的修路订单")
 
 
 func _refresh_date() -> void:
@@ -1164,19 +1287,23 @@ func _on_build_road_pressed() -> void:
             road_construction_window.set_status(event_log.text)
         return
 
-    event_log.text = "事件 #%d：公路建成，支出%d" % [
-        result["event_sequence"], result["cost"]
+    event_log.text = "事件 #%d：修路订单已创建，%s → %s，预付%d，剩余%d个月" % [
+        result.get("event_sequence", 0),
+        _province_name(road_start_id),
+        _province_name(road_end_id),
+        result.get("cost", 0),
+        result.get("remaining_months", 1),
     ]
     _record_event(event_log.text)
     _refresh_country_list()
     _refresh_country_details()
-    _refresh_map_data()
+    _refresh_pending_orders()
     _clear_road_selection()
     map_input_mode = MapInputMode.NORMAL
     if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
         road_construction_window.reset_selection(
             _estimated_road_build_cost(),
-            "公路已建成，选择已自动重置"
+            "已下单，剩余1个月；道路将在下月项目阶段完成"
         )
 
 
@@ -1210,13 +1337,10 @@ func _refresh_movement_preview() -> bool:
         if army["id"] == moving_army_id:
             movement_points = float(army["movement_points"])
             break
-    var preview_months := 1
-    if turn_length.item_count > 0:
-        preview_months = int(turn_length.get_selected_metadata())
     var path_preview: Dictionary = bridge.get_auto_advance_path_for_months(
         moving_army_id,
         auto_advance_target_id,
-        preview_months
+        1
     )
     if not path_preview.get("accepted", false):
         return false
@@ -1234,7 +1358,14 @@ func _refresh_movement_preview() -> bool:
 func _refresh_management_action_state() -> void:
     if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT:
         return
-    var can_auto_advance := _refresh_movement_preview()
+    var reachable_targets := _available_order_targets(moving_army_id)
+    province_management_window.set_reachable_targets(reachable_targets)
+    if not movement_destination_id.is_empty() and \
+            _find_order_target(moving_army_id, movement_destination_id).is_empty():
+        movement_destination_id = ""
+        province_management_window.set_destination("", "")
+    var can_auto_advance := not reachable_targets.is_empty() and \
+        _refresh_movement_preview()
     province_management_window.set_action_state(
         not moving_army_id.is_empty() and not movement_destination_id.is_empty(),
         can_auto_advance

@@ -35,10 +35,22 @@ func _initialize() -> void:
     management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
     await process_frame
     var selector := management.get_node("ArmySelector") as OptionButton
+    if selector.item_count != 0:
+        _fail(main_scene, "Recruitment created an army before monthly settlement")
+        return
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
+    province_map.province_double_clicked.emit("capital_auroria")
+    if selector.item_count != 1:
+        _fail(main_scene, "Recruitment order did not complete after one month")
+        return
     var army_id := String(selector.get_item_metadata(0))
 
-    for _month: int in range(3):
+    for _month: int in range(2):
         advance_turn.pressed.emit()
+        await process_frame
+        await process_frame
     province_map.province_double_clicked.emit("capital_auroria")
 
     var select_advance := management.get_node(
@@ -83,18 +95,24 @@ func _initialize() -> void:
     select_advance.pressed.emit()
     province_map.province_selected.emit("cell_4_4")
     await process_frame
+    var origin_id: String = _army(bridge, army_id).get("province_id", "")
     advance_now.pressed.emit()
     await process_frame
+    if _army(bridge, army_id).get("province_id", "") != origin_id or \
+            bridge.get_pending_orders("auroria").size() != 1 or \
+            not management.get_node("Status").text.contains("订单已创建"):
+        _fail(main_scene, "Automatic advance did not create a delayed army order")
+        return
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
     var moved_army := _army(bridge, army_id)
-    if moved_army.is_empty() or moved_army.get("province_id", "") == "capital_auroria":
-        _fail(main_scene, "Immediate automatic advance did not move the army")
+    if moved_army.is_empty() or moved_army.get("province_id", "") == origin_id:
+        _fail(main_scene, "Queued automatic advance did not move the army next month")
         return
 
     var moved_province_id: String = moved_army.get("province_id", "")
     var moved_name: String = main_scene.province_by_id[moved_province_id]["name"]
-    select_advance.pressed.emit()
-    province_map.province_selected.emit("capital_auroria")
-    await process_frame
     province_map.province_double_clicked.emit("capital_auroria")
     await process_frame
     advance_plans.meta_clicked.emit("select:%s" % army_id)

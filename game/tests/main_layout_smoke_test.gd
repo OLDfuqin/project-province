@@ -19,6 +19,19 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var removed_turn_length := main_scene.get_node_or_null(
+        "TurnBar/TurnControls/TurnLength"
+    )
+    var fixed_advance_turn := main_scene.get_node_or_null(
+        "TurnBar/TurnControls/AdvanceTurn"
+    ) as Button
+    if removed_turn_length != null or fixed_advance_turn == null or \
+            fixed_advance_turn.text != "进入下一回合（1个月）":
+        push_error("Turn controls must expose one fixed month and no month selector")
+        main_scene.free()
+        quit(1)
+        return
+
     var map_panel := main_scene.get_node_or_null("MapPanel") as PanelContainer
     if map_panel == null or map_panel.get_child_count() != 1 or \
             map_panel.get_child(0).name != "ProvinceMap":
@@ -46,6 +59,28 @@ func _initialize() -> void:
     if workspace_panel == null or road_entry == null or \
             legacy_road_controls == null or legacy_road_controls.visible:
         push_error("Main UI did not reserve a workspace and isolate road controls")
+        main_scene.free()
+        quit(1)
+        return
+
+    var pending_order_panel := main_scene.get_node_or_null(
+        "RightPanel/Center/PendingOrders"
+    ) as PanelContainer
+    var pending_order_scroll := main_scene.get_node_or_null(
+        "RightPanel/Center/PendingOrders/Content/OrderList"
+    ) as ScrollContainer
+    var pending_order_rows := main_scene.get_node_or_null(
+        "RightPanel/Center/PendingOrders/Content/OrderList/Orders"
+    ) as VBoxContainer
+    var pending_order_empty := main_scene.get_node_or_null(
+        "RightPanel/Center/PendingOrders/Content/Empty"
+    ) as Label
+    if pending_order_panel == null or pending_order_scroll == null or \
+            pending_order_rows == null or pending_order_empty == null or \
+            pending_order_scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED or \
+            pending_order_scroll.custom_minimum_size.y < 120.0 or \
+            pending_order_rows.get_child_count() != 0 or not pending_order_empty.visible:
+        push_error("Scrollable player-only pending order panel is incomplete")
         main_scene.free()
         quit(1)
         return
@@ -117,7 +152,9 @@ func _initialize() -> void:
         var country_label := child as Label
         if country_label.text.contains("中立守军") or \
                 not country_label.text.contains("经济") or \
-                not country_label.text.contains("财政收入"):
+                not country_label.text.contains("财政收入") or \
+                not country_label.text.contains("维护费") or \
+                not country_label.text.contains("负债"):
             push_error("Country summary leaked neutral data or omitted economy fields")
             main_scene.free()
             quit(1)
@@ -198,6 +235,12 @@ func _initialize() -> void:
     var event_log := main_scene.get_node("RightPanel/Center/EventLog") as Label
     if not event_log.text.contains("财政收入"):
         push_error("Turn report did not display total fiscal income")
+        main_scene.free()
+        quit(1)
+        return
+    var event_history := main_scene.get_node("RightPanel/Center/EventHistory") as RichTextLabel
+    if not event_history.text.contains("维护费"):
+        push_error("Turn report did not include the maintenance settlement phase")
         main_scene.free()
         quit(1)
         return

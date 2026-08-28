@@ -23,6 +23,8 @@ func _initialize() -> void:
         "recruit_requested",
         "rename_requested",
         "merge_requested",
+        "destination_selection_requested",
+        "reachable_destination_selected",
         "advance_destination_selection_requested",
         "auto_advance_requested",
         "movement_clear_requested",
@@ -36,6 +38,7 @@ func _initialize() -> void:
     var observed := {
         "research_track": "",
         "advance_army": "",
+        "reachable_destination": "",
         "plan_command": "",
         "recruit_manpower": 0,
         "rename_number": 0,
@@ -47,6 +50,10 @@ func _initialize() -> void:
     )
     window.advance_destination_selection_requested.connect(
         func(army_id: String) -> void: observed["advance_army"] = army_id
+    )
+    window.reachable_destination_selected.connect(
+        func(_army_id: String, destination_id: String) -> void:
+            observed["reachable_destination"] = destination_id
     )
     window.advance_plan_action_requested.connect(
         func(command: String) -> void: observed["plan_command"] = command
@@ -106,13 +113,27 @@ func _initialize() -> void:
         ],
         "auroria",
         "army_1",
-        10000
+        4000
     )
     window.set_technology({
         "economy_level": 1,
         "military_level": 2,
         "roads_level": 3,
     })
+    window.set_reachable_targets([
+        {
+            "province_id": "rivergate",
+            "province_name": "河间",
+            "movement_cost": 2.5,
+            "is_attack": false,
+        },
+        {
+            "province_id": "enemy_border",
+            "province_name": "敌境",
+            "movement_cost": 3.0,
+            "is_attack": true,
+        },
+    ])
     window.set_advance_target("rivergate", "河间")
     window.set_advance_plans("[url=pause:army_1]暂停[/url]")
 
@@ -121,11 +142,31 @@ func _initialize() -> void:
         "AdvanceActions/SelectAdvanceTarget"
     ) as Button
     var advance_plans := window.get_node_or_null("AdvancePlans") as RichTextLabel
-    if economy == null or select_advance == null or advance_plans == null:
+    var reachable := window.get_node_or_null("ReachableDestination") as OptionButton
+    if economy == null or select_advance == null or advance_plans == null or \
+            reachable == null:
         _fail(window, "Province management component controls are missing")
         return
 
     economy.pressed.emit()
+    window.set_pending_orders([
+        {
+            "type": "research",
+            "track": "economy",
+            "target_level": 2,
+            "remaining_months": 3,
+            "paid_cost": 10000,
+        },
+        {
+            "type": "recruitment",
+            "province_id": "capital_auroria",
+            "manpower": 500,
+            "remaining_months": 1,
+            "paid_cost": 2000,
+        },
+    ])
+    reachable.select(1)
+    reachable.item_selected.emit(1)
     select_advance.pressed.emit()
     advance_plans.meta_clicked.emit("pause:army_1")
     window.get_node("Recruitment/Open").pressed.emit()
@@ -139,21 +180,70 @@ func _initialize() -> void:
     window.get_node("Merge/Confirm").pressed.emit()
 
     var technology_status := window.get_node("Technology/Status") as Label
+    var technology_pending := window.get_node("Technology/Pending") as Label
+    var recruitment_pending := window.get_node("Recruitment/Pending") as Label
     var advance_target := window.get_node("AdvanceTarget") as Label
     var province_summary := window.get_node("ProvinceSummary") as Label
     if observed["research_track"] != "economy" or \
             observed["advance_army"] != "army_1" or \
+            observed["reachable_destination"] != "enemy_border" or \
             observed["plan_command"] != "pause:army_1" or \
             observed["recruit_manpower"] != 125 or \
             observed["rename_number"] != 5 or \
             observed["merge_primary"] != "army_1" or \
             observed["merge_ids"] != ["army_2"] or \
             merge_candidates.item_count != 1 or \
+            int(window.get_node("Recruitment/Amount").max_value) != 500 or \
             not province_summary.text.contains("120000") or \
             not province_summary.text.ends_with("1200") or \
             not technology_status.text.contains("道路 3") or \
+            not technology_pending.text.contains("经济 → 2") or \
+            not technology_pending.text.contains("剩余3个月") or \
+            not recruitment_pending.text.contains("预留500人") or \
+            not window.get_node("DirectDestination").text.contains("敌境") or \
+            not window.get_node("DirectDestination").text.contains("预留移动3") or \
             not advance_target.text.contains("河间"):
         _fail(window, "Province management component contract is incomplete")
+        return
+
+    window.set_pending_orders([{
+        "type": "army_action",
+        "army_id": "army_2",
+        "destination": "rivergate",
+        "remaining_months": 1,
+        "reserved_movement_half": 2,
+    }])
+    if merge_candidates.item_count != 0:
+        _fail(window, "An army with a pending action remained mergeable")
+        return
+
+    window.display_province(
+        {
+            "id": "capital_auroria",
+            "name": "奥罗里亚首都",
+            "owner_id": "auroria",
+            "population": 120000,
+            "recruitable_population": 1000,
+            "economy": 120000,
+            "fiscal_income": 1200,
+        },
+        [],
+        "auroria",
+        "",
+        -1
+    )
+    window.set_technology({
+        "economy_level": 1,
+        "military_level": 2,
+        "roads_level": 3,
+    })
+    window.set_pending_orders([])
+    if not window.get_node("Recruitment/Open").disabled or \
+            not window.get_node("Technology/Buttons/Economy").disabled or \
+            not window.get_node("Technology/Buttons/Military").disabled or \
+            not window.get_node("Technology/Buttons/Roads").disabled or \
+            not window.get_node("Status").text.contains("负债"):
+        _fail(window, "Debt did not disable new paid planning actions")
         return
 
     print("Province management component smoke test passed")

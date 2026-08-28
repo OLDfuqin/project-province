@@ -24,7 +24,13 @@ layout_mode = 2
 
 [node name="Open" type="Button" parent="Recruitment"]
 layout_mode = 2
-text = "招募军队"
+text = "创建征兵订单"
+
+[node name="Pending" type="Label" parent="Recruitment"]
+layout_mode = 2
+text = "本地区暂无征兵订单"
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="Details" type="Label" parent="Recruitment"]
 visible = false
@@ -66,6 +72,12 @@ text = "国家科技"
 layout_mode = 2
 text = "经济 0 | 军事 0 | 道路 0"
 horizontal_alignment = 1
+
+[node name="Pending" type="Label" parent="Technology"]
+layout_mode = 2
+text = "暂无研究订单"
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="Buttons" type="HBoxContainer" parent="Technology"]
 layout_mode = 2
@@ -139,8 +151,12 @@ text = "确认合并"
 
 [node name="DirectDestination" type="Label" parent="."]
 layout_mode = 2
-text = "直接调动目的地：尚未选择"
+text = "订单目的地：尚未选择"
 horizontal_alignment = 1
+
+[node name="ReachableDestination" type="OptionButton" parent="."]
+layout_mode = 2
+disabled = true
 
 [node name="ArmyActions" type="HBoxContainer" parent="."]
 layout_mode = 2
@@ -149,12 +165,12 @@ alignment = 1
 [node name="SelectDestination" type="Button" parent="ArmyActions"]
 layout_mode = 2
 disabled = true
-text = "在地图选择目的地"
+text = "在地图选择可达目的地"
 
 [node name="MoveArmy" type="Button" parent="ArmyActions"]
 layout_mode = 2
 disabled = true
-text = "确认调动"
+text = "创建调动订单"
 
 [node name="AdvanceTarget" type="Label" parent="."]
 layout_mode = 2
@@ -173,7 +189,7 @@ text = "在地图选择推进目标"
 [node name="AdvanceNow" type="Button" parent="AdvanceActions"]
 layout_mode = 2
 disabled = true
-text = "立即自动推进"
+text = "按计划下单（1个月）"
 
 [node name="ClearMovement" type="Button" parent="AdvanceActions"]
 layout_mode = 2
