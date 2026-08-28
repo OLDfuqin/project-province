@@ -67,7 +67,7 @@ C++ 模拟核心
 
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
-| `stable_id.hpp` | 仅头文件 | 定义国家、地区、军队的强类型稳定字符串 ID，避免不同 ID 混用。 |
+| `stable_id.hpp` | 仅头文件 | 定义国家、地区、军队和订单使用的强类型稳定字符串 ID 基础，避免不同 ID 混用。 |
 | `country.hpp` | 仅头文件 | 定义国家状态，例如名称、单字代号、国库和控制信息所需的国家数据。 |
 | `province.hpp` | 仅头文件 | 定义地区状态，包括归属、控制、人口、可招募士兵、基础经济、地形和邻接。 |
 | `army.hpp` | 仅头文件 | 定义军队状态，包括所有者、本国编制编号、位置、兵力、移动点和自动推进计划。 |
@@ -76,17 +76,20 @@ C++ 模拟核心
 | `diplomacy.hpp` | 仅头文件 | 定义外交状态、和平结算策略和无序国家关系键。 |
 | `technology.hpp` | 仅头文件 | 定义经济0–3级、军事0–8级、道路0–4级科技分支及国家科技等级。 |
 | `road.hpp` | `road.cpp` | 定义道路等级、无序地区连接键，以及道路字符串转换等基础逻辑。 |
+| `game_order.hpp` | 仅头文件 | 定义稳定订单 ID，以及军队行动、征兵、修路、研究和 AI 宣战五种强类型持久订单载荷。 |
 | `version.hpp` | 仅头文件 | 保存核心或数据兼容性所需的版本常量。 |
 
 ### 3.2 游戏总状态与命令链
 
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
-| `game_state.hpp` | `game_state.cpp` | 权威运行时状态容器；保存国家、地区、军队、道路、外交、科技和时钟，并提供查询、校验及受控修改入口。 |
-| `game_clock.hpp` | `game_clock.cpp` | 管理游戏年月和按 1、3、6、12 个月推进的日期计算。 |
-| `game_command.hpp` | 由命令处理器实现 | 定义推进回合、修路、征兵、更名、合并、移动、宣战、议和和研究科技等命令数据。 |
-| `game_event.hpp` | 由各系统产生 | 定义操作和月度结算事件，用于结果反馈、回合行动摘要和战斗报告。 |
-| `command_processor.hpp` | `command_processor.cpp` | 所有外部状态变更的统一入口；校验并执行命令、编排各规则系统、返回事件和错误。 |
+| `game_state.hpp` | `game_state.cpp` | 权威运行时状态容器；保存国家、地区、军队、道路、外交、科技、时钟、待执行订单和下一个订单序号，并严格校验引用、唯一性与资源预留。 |
+| `game_clock.hpp` | `game_clock.cpp` | 管理游戏年月和跨年日期计算；外部回合长度由命令处理器固定为1个月。 |
+| `game_command.hpp` | 由命令处理器实现 | 定义固定月度推进、修路、征兵、更名、合并、移动、宣战、议和、研究科技和取消订单等命令数据。 |
+| `game_event.hpp` | 由各系统产生 | 定义订单创建/取消、维护、移动、战斗、项目完成、自动整编和月度结算事件，用于反馈与行动报告。 |
+| `command_processor.hpp` | `command_processor.cpp` | 所有外部状态变更的统一入口；创建或取消订单，并按固定月度顺序编排收入、维护、人口、移动、战斗、项目、整编和 AI 规划。 |
+| `order_system.hpp` | `order_system.cpp` | 事务式创建行动、征兵、修路、研究和宣战订单，负责资金、人口、移动点预留、唯一性限制以及玩家取消退款。 |
+| `monthly_order_system.hpp` | `monthly_order_system.cpp` | 分阶段重新校验并执行外交、普通移动、联合进攻和延迟项目，处理失效退款及月末自动整编。 |
 | `game_status.hpp` | `game_status.cpp` | 汇总国家是否仍存续、胜负状态及整局游戏状态。 |
 
 ### 3.3 经济、人口和科技
@@ -94,38 +97,39 @@ C++ 模拟核心
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
 | `economy_system.hpp` | `economy_system.cpp` | 按已保存的地区基础经济和控制国经济科技计算最终经济，汇总普通国家财政收入并执行月度入账。 |
+| `maintenance_system.hpp` | `maintenance_system.cpp` | 按普通国家全国总兵力的一半向下取整扣除月度维护费，允许国库为负并豁免隐藏中立国。 |
 | `population_system.hpp` | `population_system.cpp` | 执行月度人口与可招募士兵增长、上限和向下取整规则。 |
-| `technology_system.hpp` | `technology_system.cpp` | 校验研究条件、扣除费用并提升经济、军事或道路科技。 |
+| `technology_system.hpp` | `technology_system.cpp` | 提供研究费用与上限公式，并在研究订单到期时完成已预付的经济、军事或道路科技升级。 |
 
 ### 3.4 军事、移动、道路和和平
 
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
-| `army_system.hpp` | `army_system.cpp` | 处理征兵、兵源与人口扣减、编制编号、军队更名和同地军队合并规则。 |
-| `movement_system.hpp` | `movement_system.cpp` | 以半点单位发放并限制移动点，计算道路移动成本、寻路并执行军队移动。 |
-| `battle_calculator.hpp` | `battle_calculator.cpp` | 头文件定义纯战斗输入/输出契约；实现有效战力、伤亡、结果和防守方比例分配公式。 |
-| `battle_system.hpp` | `battle_system.cpp` | 收集战斗状态并应用计算结果；正式游戏从系统熵随机源取参数，测试可注入固定参数，随机状态不写入存档。该系统只撤回存活的进攻军，并执行军队销毁和必要的地区占领。 |
-| `road_system.hpp` | `road_system.cpp` | 按地形经济系数校验道路科技准入、计算两端基础费用与折扣，创建道路连接。 |
+| `army_system.hpp` | `army_system.cpp` | 处理预付征兵完成、兵源与人口扣减、编制编号、军队更名、订单锁定检查和同地军队合并规则。 |
+| `movement_system.hpp` | `movement_system.cpp` | 以半点单位发放并限制移动点，偿还防守债务，计算完整路径成本，并寻找只以敌区为终点的订单路径。 |
+| `battle_calculator.hpp` | `battle_calculator.cpp` | 头文件定义纯战斗输入/输出契约；实现联合进攻有效战力、双方比例伤亡、结果和稳定 ID 破平局。 |
+| `battle_system.hpp` | `battle_system.cpp` | 收集并应用同国多军联合进攻与共同防守结果；注入战斗随机参数，分配双方伤亡、扣除守军移动点、撤回进攻军并处理占领。 |
+| `road_system.hpp` | `road_system.cpp` | 按地形经济系数校验道路科技准入、计算费用与折扣，并在修路订单到期时完成已预付连接。 |
 | `peace_system.hpp` | `peace_system.cpp` | 结束战争、按策略恢复或保留领土，并遣返不合法驻留的军队。 |
 
 ### 3.5 AI、剧本和存档
 
 | 公共头文件 | 对应实现 | 用途 |
 | --- | --- | --- |
-| `ai_system.hpp` | `ai_system.cpp` | 为非玩家国家选择研究、征兵、宣战和军队行动等决策。 |
+| `ai_system.hpp` | `ai_system.cpp` | 在月度结算后为非玩家国家选择下个月的研究、征兵、宣战和军队行动订单，不直接执行即时行动。 |
 | `grid_map_layout.hpp` | `grid_map_layout.cpp` | 读取并严格校验共享9×9布局、四国放置区和2×2首都源格。 |
 | `map_cell_generator.hpp` | `map_cell_generator.cpp` | 按蛇形顺序、邻格权重、森林覆盖和离散人口规则生成81个随机原始格。 |
 | `map_scenario_generator.hpp` | `map_scenario_generator.cpp` | 把原始格组装为69地区场景，合并首都、推导邻接并创建隐藏中立国和17支守军。 |
 | `scenario_loader.hpp` | `scenario_loader.cpp` | 读取四国和共享布局；注入正式或测试随机源并创建新游戏状态。 |
-| `save_game.hpp` | `save_game.cpp` | 以严格schema 6序列化完整随机地图状态和布局ID，并从存档恢复游戏。 |
+| `save_game.hpp` | `save_game.cpp` | 以严格schema 7序列化完整随机地图、订单队列、预留与进度，并在恢复后执行跨引用和唯一性校验；拒绝schema 6及更早存档。 |
 
 ## 4. Godot 桥接层：`bridge/`
 
 | 文件 | 用途 |
 | --- | --- |
-| `bridge/src/province_bridge.hpp` | 声明暴露给 GDScript 的 `ProvinceBridge` 节点、公开方法和所持有的 C++ 游戏状态。 |
-| `bridge/src/province_bridge.cpp` | 实现剧本加载、状态查询、命令提交、路径预览、存档等 Godot API，并在 Godot `Variant` 与核心类型间转换。 |
-| `bridge/src/province_bridge_bindings.cpp` | 用 `ClassDB` 注册 `ProvinceBridge` 的公开方法；新增 GDScript 可调用 API 时必须同步绑定。 |
+| `bridge/src/province_bridge.hpp` | 声明暴露给 GDScript 的 `ProvinceBridge` 节点、订单查询/取消/报价 API 和所持有的 C++ 游戏状态。 |
+| `bridge/src/province_bridge.cpp` | 实现剧本、状态、schema 7存档与命令 API；序列化玩家本国订单、月度事件和联合战斗结果，并提供可达目标及征兵/修路报价。 |
+| `bridge/src/province_bridge_bindings.cpp` | 用 `ClassDB` 注册全部 `ProvinceBridge` 方法，包括 `get_pending_orders`、`cancel_order`、`get_army_order_targets` 和项目报价；新增 API 时必须同步绑定。 |
 | `bridge/src/register_types.hpp` | 声明 GDExtension 初始化和反初始化函数。 |
 | `bridge/src/register_types.cpp` | 实现扩展入口，在 Godot 场景初始化阶段注册 `ProvinceBridge`。 |
 
@@ -158,10 +162,10 @@ C++ 模拟核心
 
 | 文件 | 用途 |
 | --- | --- |
-| `scenes/main/main.tscn` | 主游戏页面；组织回合栏、地图区、国家/外交摘要和右侧功能窗口预留区。 |
+| `scenes/main/main.tscn` | 主游戏页面；组织固定1个月回合栏、地图区、国家/外交摘要、待执行订单列表和右侧功能窗口预留区。 |
 | `scenes/ui/province_info_window.tscn` | 单击地区后显示的只读地区信息窗口布局。 |
-| `scenes/ui/province_management_window.tscn` | 双击地区后显示的管理窗口布局，容纳征兵、部队调动、自动推进和科技操作。 |
-| `scenes/ui/road_construction_window.tscn` | 独立修路界面布局，显示起点、终点、成本、状态和重置操作。 |
+| `scenes/ui/province_management_window.tscn` | 双击地区后显示的管理窗口布局，容纳征兵预留、可达行动目标、军队订单锁、研究倒计时和推进计划。 |
+| `scenes/ui/road_construction_window.tscn` | 独立修路订单界面布局，显示端点、报价、订单剩余月份、状态和重置操作。 |
 
 `.tscn` 负责节点结构和基础布局；复杂行为应放在对应 `.gd` 脚本中。
 
@@ -169,11 +173,11 @@ C++ 模拟核心
 
 | 文件 | 用途 |
 | --- | --- |
-| `main.gd` | 主界面协调器；连接节点信号，切换功能窗口和地图输入模式，调用桥接 API，刷新日期、国家、外交、科技、地图和行动报告。 |
+| `main.gd` | 主界面协调器；连接节点信号，管理本国订单列表与取消按钮，提交订单，刷新维护/负债、固定回合按钮、地图和分阶段月度报告。 |
 | `province_map.gd` | `ProvinceMap` 自绘地图控件；从共享布局动态生成65个单格与4个首都多边形，执行缩放拖动、命中测试，并绘制国家颜色、城市/首都、地形、逐编制军队、道路、前线和推进路径。 |
 | `province_info_window.gd` | 把地区、国家、军队和道路查询结果格式化为单击地区的只读信息。 |
-| `province_management_window.gd` | 管理双击地区窗口的显示状态，发出自定义数量征兵、军队更名、多选合并、移动、自动推进、清除计划和科技操作信号。 |
-| `road_construction_window.gd` | 管理修路窗口的起终点选择流程、预计费用、提示文字和重置状态。 |
+| `province_management_window.gd` | 管理地区窗口状态，显示人口预留、可达目的地和研究订单，禁止合并已下单军队，并发出征兵、行动、取消计划和研究等信号。 |
+| `road_construction_window.gd` | 管理修路订单的端点选择、核心报价、待执行状态、负债禁用和重置流程。 |
 | `main.gd.uid` | Godot 为主脚本生成的资源 UID；当前已受版本控制，避免手工修改。 |
 
 `main.gd` 只负责编排。可独立测试的文字格式或只读摘要应继续下沉到 `game/scripts/ui/`，避免主协调器持续膨胀。
@@ -182,7 +186,7 @@ C++ 模拟核心
 
 | 文件 | 用途 |
 | --- | --- |
-| `game_text_formatter.gd` | `GameTextFormatter`；集中生成战斗、移动、回合行动等中文展示文本。 |
+| `game_text_formatter.gd` | `GameTextFormatter`；集中生成订单、退款、维护、联合战斗、移动、项目完成和回合行动等中文文本，并本地化稳定错误。 |
 | `strategy_panel_presenter.gd` | `StrategyPanelPresenter`；把国家战略摘要和军队推进计划转换为主界面可显示的文本。 |
 
 这类脚本可以组装只读视图，但不得拥有权威状态或重新实现 C++ 规则。
@@ -205,15 +209,16 @@ C++ 模拟核心
 
 | 文件 | 用途 |
 | --- | --- |
-| `battle_calculator_test.cpp` | 使用注入的固定随机参数验证战斗公式边界、结果判定、防守伤亡的余数优先级与稳定 ID 破平局。 |
-| `core_smoke_test.cpp` | 核心测试程序入口及综合规则测试，覆盖剧本、回合、经济、人口、道路、征兵、移动、战争、和平和科技。 |
-| `ai_smoke_test.cpp` | AI 决策、目标选择、寻路和回合行动测试。 |
-| `save_game_smoke_test.cpp` | 存档 schema、序列化/反序列化和状态往返一致性测试。 |
+| `battle_calculator_test.cpp` | 使用固定随机参数验证联合进攻战斗公式边界、结果判定、双方比例伤亡、余数优先级与稳定 ID 破平局。 |
+| `core_smoke_test.cpp` | 核心测试程序入口及综合规则测试，覆盖固定1个月回合、费用、维护、经济、人口、道路、征兵、移动、战争、和平和科技。 |
+| `order_system_test.cpp` | 集中验证五类订单、资源预留、取消/失效退款、路径与时序、联合战斗、防守移动债务、延迟项目、自动整编和 AI 次月执行。 |
+| `ai_smoke_test.cpp` | AI 决策、目标选择、寻路、订单创建和跨月延迟执行测试。 |
+| `save_game_smoke_test.cpp` | 严格schema 7、全部订单载荷与进度往返、历史schema拒绝和恶意预留/引用校验测试。 |
 | `grid_map_layout_test.cpp` | 验证布局schema、尺寸、四国范围、首都源格和非法布局拒绝规则。 |
 | `map_cell_generator_test.cpp` | 用固定随机索引验证蛇形顺序、相邻概率边界、森林覆盖、人口集合和基础经济。 |
 | `map_scenario_generator_test.cpp` | 验证69地区、四首都、17无主地区/守军、邻接和100次正式随机场景不变量。 |
-| `neutral_population_test.cpp` | 验证无主地区人口不增加、理论增长全部加入唯一守军且中立国不能主动操作。 |
-| `neutral_combat_test.cpp` | 验证普通国家与中立国天然敌对、守军战斗和胜利后的直接法理征服。 |
+| `neutral_population_test.cpp` | 验证无主地区人口不增加、理论增长全部加入唯一守军、中立维护豁免且中立国不能主动操作。 |
+| `neutral_combat_test.cpp` | 验证普通国家与中立国天然敌对、延迟进攻、守军移动债务和胜利后的直接法理征服。 |
 | `smoke_test_groups.hpp` | 声明拆分后的测试组函数，使单个测试程序统一调用各测试文件。 |
 
 运行 `scripts/build.cmd` 会构建并执行 `build/bin/province_core_tests.exe`。
@@ -223,18 +228,19 @@ C++ 模拟核心
 | 文件 | 用途 |
 | --- | --- |
 | `map_smoke_test.gd` | 验证地图几何加载、地区命中、城市/地形/军队图标布局、稳定ID排序和超量折叠。 |
-| `main_layout_smoke_test.gd` | 验证主页面关键控件、功能区边界和布局不重叠。 |
+| `main_layout_smoke_test.gd` | 验证移除月份选择器、固定1个月按钮、待执行订单区、功能区边界和布局不重叠。 |
 | `game_status_bridge_smoke_test.gd` | 验证游戏状态和国家存续信息能通过桥接层正确读取。 |
-| `army_bridge_smoke_test.gd` | 验证征兵、编制名称、更名、合并、移动、战斗和军队推进策略的桥接行为。 |
-| `road_bridge_smoke_test.gd` | 验证道路修建、费用、连接和移动效果的桥接行为。 |
-| `technology_bridge_smoke_test.gd` | 验证科技研究、费用和效果查询的桥接行为。 |
-| `ai_bridge_smoke_test.gd` | 验证 AI 回合行动通过桥接层执行并返回结果。 |
-| `save_game_bridge_smoke_test.gd` | 验证 Godot 侧快速存取所需的完整状态往返。 |
+| `army_bridge_smoke_test.gd` | 验证征兵与行动订单、取消退款、可达目标、联合战斗、编制名称、更名、合并和推进策略的桥接行为。 |
+| `road_bridge_smoke_test.gd` | 验证修路报价、订单创建/取消、延迟完成、费用、连接和移动效果。 |
+| `technology_bridge_smoke_test.gd` | 验证研究订单、5倍费用、倒计时、取消退款边界和完成后效果查询。 |
+| `ai_bridge_smoke_test.gd` | 验证 AI 只规划下月订单，不能在同一月度结算中即时行动。 |
+| `save_game_bridge_smoke_test.gd` | 验证 Godot 侧schema 7快速存取、订单进度与预留的完整状态往返。 |
+| `game_text_formatter_smoke_test.gd` | 验证订单、维护、退款、移动、联合战斗和项目事件的中文格式化及稳定错误本地化。 |
 | `province_info_window_smoke_test.gd` | 验证地区信息窗口的只读内容和清空行为。 |
-| `province_management_window_component_smoke_test.gd` | 验证地区管理窗口作为独立组件的节点、信号和基础状态。 |
-| `province_management_window_smoke_test.gd` | 验证管理窗口与主场景之间的地区选择和操作集成。 |
-| `province_management_advance_smoke_test.gd` | 验证管理窗口中的自动推进目标、策略和计划操作。 |
-| `road_construction_window_smoke_test.gd` | 验证修路窗口的起点、终点、重置和完成后状态流程。 |
+| `province_management_window_component_smoke_test.gd` | 验证地区管理窗口的订单节点、信号、负债禁用、研究倒计时和军队订单锁。 |
+| `province_management_window_smoke_test.gd` | 验证管理窗口与主场景之间的可达目标、订单创建、待执行列表和取消操作集成。 |
+| `province_management_advance_smoke_test.gd` | 验证长期推进目标、策略和创建下月行动订单的操作。 |
+| `road_construction_window_smoke_test.gd` | 验证修路订单端点、核心报价、负债状态、创建后倒计时、取消和完成流程。 |
 | `generated_scenario_helpers.gd` | 为随机场景测试按稳定ID选择首都、受控地区、相邻端点和无主邻格，避免依赖已删除的固定地区ID。 |
 
 Godot 测试是独立脚本，通常使用控制台版 Godot 以 `--headless --script` 运行。修改桥接 DLL 后，应先完成构建，再顺序运行相关 Godot 测试，避免加载旧 DLL。
@@ -294,10 +300,12 @@ Godot 测试是独立脚本，通常使用控制台版 Godot 以 `--headless --s
 | 需求 | 主要修改位置 | 必须同步检查 |
 | --- | --- | --- |
 | 修改经济或财政收入 | `economy_system.*` | `current-game-rules.md`、核心测试、国家/地区摘要 |
+| 修改维护或负债限制 | `maintenance_system.*`、`order_system.*` | 月度顺序、国家摘要、订单/UI禁用和核心测试 |
 | 修改人口或可招募士兵 | `population_system.*`、必要时 `army_system.*` | 规则文档、征兵测试、存档 |
 | 修改军队编号、更名或合并 | `army_system.*`、`game_command.hpp` | 存档、桥接 API、地区管理窗口和军队测试 |
-| 修改战斗、占领或撤退 | `battle_system.*`、`command_processor.cpp` | 军队桥接测试、事件文本、和平逻辑 |
-| 修改移动点或道路效率 | `movement_system.*`、`road_system.*` | 地图路径预览、道路测试、科技效果 |
+| 修改订单类型、预留或退款 | `game_order.hpp`、`order_system.*`、`monthly_order_system.*` | `game_state.cpp`校验、schema 7、桥接/UI和订单测试 |
+| 修改战斗、占领或撤退 | `battle_calculator.*`、`battle_system.*`、`monthly_order_system.*` | 订单测试、军队桥接测试、事件文本、和平逻辑 |
+| 修改移动点或道路效率 | `movement_system.*`、`road_system.*`、`monthly_order_system.*` | 行动预留、地图路径预览、道路测试、科技效果 |
 | 修改宣战或和平 | `diplomacy.hpp`、`peace_system.*`、`command_processor.cpp` | 外交 UI、国家关系和军队遣返测试 |
 | 修改科技 | `technology_system.*`、`technology.hpp` | `technologies.json`、管理窗口、科技测试 |
 | 修改 AI | `ai_system.*` | AI 核心测试、AI 桥接测试、回合行动摘要 |
