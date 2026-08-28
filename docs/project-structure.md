@@ -173,23 +173,23 @@ C++ 模拟核心
 
 | 文件 | 用途 |
 | --- | --- |
-| `main.gd` | 主界面协调器；连接节点信号，管理本国订单列表与取消按钮，提交订单，刷新维护/负债、固定回合按钮、地图和分阶段月度报告。 |
+| `main.gd` | 主界面协调器；连接节点信号，管理本国订单列表与取消按钮并提交订单。当前还直接汇总军队兵力并以 `floor(兵力/2)` 派生国家维护费，生成维护/负债摘要和月度维护日志文字，并保留道路报价的地形费用、科技门槛和折扣回退计算，同时刷新固定回合按钮、地图和分阶段报告。 |
 | `province_map.gd` | `ProvinceMap` 自绘地图控件；从共享布局动态生成65个单格与4个首都多边形，执行缩放拖动、命中测试，并绘制国家颜色、城市/首都、地形、逐编制军队、道路、前线和推进路径。 |
 | `province_info_window.gd` | 把地区、国家、军队和道路查询结果格式化为单击地区的只读信息。 |
-| `province_management_window.gd` | 管理地区窗口状态，显示人口预留、可达目的地和研究订单，禁止合并已下单军队，并发出征兵、行动、取消计划和研究等信号。 |
-| `road_construction_window.gd` | 管理修路订单的端点选择、核心报价、待执行状态、负债禁用和重置流程。 |
+| `province_management_window.gd` | 管理地区窗口状态，显示人口预留、可达目的地和研究订单，禁止合并已下单军队，并发出征兵、行动、取消计划和研究等信号；当前以每人4费用在本地计算最大可征兵数。 |
+| `road_construction_window.gd` | 发出修路端点选择、提交和重置信号，并呈现 `main.gd` 传入的端点、预计费用、可提交状态、待执行状态和提示；脚本本身不拥有道路报价或负债规则。 |
 | `main.gd.uid` | Godot 为主脚本生成的资源 UID；当前已受版本控制，避免手工修改。 |
 
-`main.gd` 只负责编排。可独立测试的文字格式或只读摘要应继续下沉到 `game/scripts/ui/`，避免主协调器持续膨胀。
+`main.gd` 以界面编排为主要职责，但维护费摘要、公式和对应文字仍在其中重复实现，道路报价回退计算也复制了核心的地形费用、科技门槛与折扣；`province_management_window.gd` 还以固定单价4计算可负担征兵人数。这些是当前实现边界和同步负担，不是理想依赖方向。权威扣款、报价、资格与订单执行仍以 C++ 核心及桥接返回结果为准；修改这些规则时必须同步核对对应 GDScript。后续可由桥接层提供只读维护摘要和完整报价/可负担信息，并把纯展示文字下沉到 `game/scripts/ui/`，逐步移除 UI 中的规则副本。
 
 ### 5.5 UI 辅助脚本：`game/scripts/ui/`
 
 | 文件 | 用途 |
 | --- | --- |
-| `game_text_formatter.gd` | `GameTextFormatter`；集中生成订单、退款、维护、联合战斗、移动、项目完成和回合行动等中文文本，并本地化稳定错误。 |
+| `game_text_formatter.gd` | `GameTextFormatter`；集中生成待执行订单、退款、联合战斗、移动、项目完成和自动整编等中文文本，并本地化稳定错误。维护费摘要、负债标签和维护阶段日志当前由 `main.gd` 生成。 |
 | `strategy_panel_presenter.gd` | `StrategyPanelPresenter`；把国家战略摘要和军队推进计划转换为主界面可显示的文本。 |
 
-这类脚本可以组装只读视图，但不得拥有权威状态或重新实现 C++ 规则。
+这类脚本可以组装只读视图，但不得成为权威状态来源。上节列出的维护、道路报价回退和征兵可负担人数是现存的重复显示/校验逻辑，必须与核心同步；最终拒绝或执行结果仍由桥接层和 C++ 核心决定。
 
 ### 5.6 美术资源：`game/assets/`
 
@@ -210,15 +210,15 @@ C++ 模拟核心
 | 文件 | 用途 |
 | --- | --- |
 | `battle_calculator_test.cpp` | 使用固定随机参数验证联合进攻战斗公式边界、结果判定、双方比例伤亡、余数优先级与稳定 ID 破平局。 |
-| `core_smoke_test.cpp` | 核心测试程序入口及综合规则测试，覆盖固定1个月回合、费用、维护、经济、人口、道路、征兵、移动、战争、和平和科技。 |
-| `order_system_test.cpp` | 集中验证五类订单、资源预留、取消/失效退款、路径与时序、联合战斗、防守移动债务、延迟项目、自动整编和 AI 次月执行。 |
+| `core_smoke_test.cpp` | 核心测试程序入口，串行调用本节各 C++ 测试组；自身验证时钟与稳定 ID、随机剧本集成、固定月度命令、征兵/移动/修路/研究订单、费用、维护事件顺序、自动整编、首都地形和版本。 |
+| `order_system_test.cpp` | 集中验证军队行动与征兵、修路、研究项目订单，覆盖资源预留、取消/失效退款、路径与时序、进攻目标锁、联合战斗、防守移动债务、延迟项目、自动整编和整编后的 AI 规划。宣战订单的持久化变体由 `save_game_smoke_test.cpp` 覆盖，AI 延迟宣战由 `ai_smoke_test.cpp` 覆盖。 |
 | `ai_smoke_test.cpp` | AI 决策、目标选择、寻路、订单创建和跨月延迟执行测试。 |
 | `save_game_smoke_test.cpp` | 严格schema 7、全部订单载荷与进度往返、历史schema拒绝和恶意预留/引用校验测试。 |
 | `grid_map_layout_test.cpp` | 验证布局schema、尺寸、四国范围、首都源格和非法布局拒绝规则。 |
 | `map_cell_generator_test.cpp` | 用固定随机索引验证蛇形顺序、相邻概率边界、森林覆盖、人口集合和基础经济。 |
 | `map_scenario_generator_test.cpp` | 验证69地区、四首都、17无主地区/守军、邻接和100次正式随机场景不变量。 |
-| `neutral_population_test.cpp` | 验证无主地区人口不增加、理论增长全部加入唯一守军、中立维护豁免且中立国不能主动操作。 |
-| `neutral_combat_test.cpp` | 验证普通国家与中立国天然敌对、延迟进攻、守军移动债务和胜利后的直接法理征服。 |
+| `neutral_population_test.cpp` | 验证人口增减同步地形基础经济、无主地区增长转入守军及缺失守军重建、无中立财政收入，以及普通国家可因维护负债与隐藏中立国维护豁免。 |
+| `neutral_combat_test.cpp` | 验证普通国家与中立国天然敌对、中立守军不可移动、延迟进攻、同归于尽、无守军占领和胜利后的直接法理征服。 |
 | `smoke_test_groups.hpp` | 声明拆分后的测试组函数，使单个测试程序统一调用各测试文件。 |
 
 运行 `scripts/build.cmd` 会构建并执行 `build/bin/province_core_tests.exe`。
@@ -231,16 +231,16 @@ C++ 模拟核心
 | `main_layout_smoke_test.gd` | 验证移除月份选择器、固定1个月按钮、待执行订单区、功能区边界和布局不重叠。 |
 | `game_status_bridge_smoke_test.gd` | 验证游戏状态和国家存续信息能通过桥接层正确读取。 |
 | `army_bridge_smoke_test.gd` | 验证征兵与行动订单、取消退款、可达目标、联合战斗、编制名称、更名、合并和推进策略的桥接行为。 |
-| `road_bridge_smoke_test.gd` | 验证修路报价、订单创建/取消、延迟完成、费用、连接和移动效果。 |
+| `road_bridge_smoke_test.gd` | 验证修路报价、订单预付创建、取消退款、延迟完成、结算事件和道路连接查询。 |
 | `technology_bridge_smoke_test.gd` | 验证研究订单、5倍费用、倒计时、取消退款边界和完成后效果查询。 |
-| `ai_bridge_smoke_test.gd` | 验证 AI 只规划下月订单，不能在同一月度结算中即时行动。 |
+| `ai_bridge_smoke_test.gd` | 验证可玩剧本启用 AI，连续月度推进能通过桥接返回 AI 行动，并且隐藏中立国不会出现在这些行动或公开国家摘要中。AI 订单的延迟时序由 C++ `ai_smoke_test.cpp` 覆盖。 |
 | `save_game_bridge_smoke_test.gd` | 验证 Godot 侧schema 7快速存取、订单进度与预留的完整状态往返。 |
-| `game_text_formatter_smoke_test.gd` | 验证订单、维护、退款、移动、联合战斗和项目事件的中文格式化及稳定错误本地化。 |
+| `game_text_formatter_smoke_test.gd` | 验证待执行订单、退款、移动、联合战斗、项目完成、自动整编等中文格式化，以及已知/未知稳定错误的本地化回退。 |
 | `province_info_window_smoke_test.gd` | 验证地区信息窗口的只读内容和清空行为。 |
 | `province_management_window_component_smoke_test.gd` | 验证地区管理窗口的订单节点、信号、负债禁用、研究倒计时和军队订单锁。 |
 | `province_management_window_smoke_test.gd` | 验证管理窗口与主场景之间的可达目标、订单创建、待执行列表和取消操作集成。 |
 | `province_management_advance_smoke_test.gd` | 验证长期推进目标、策略和创建下月行动订单的操作。 |
-| `road_construction_window_smoke_test.gd` | 验证修路订单端点、核心报价、负债状态、创建后倒计时、取消和完成流程。 |
+| `road_construction_window_smoke_test.gd` | 验证修路窗口的端点权限与邻接校验、权威报价、手动重置、订单延迟完成，以及负债、端点易手和外部建成后的重新报价与清理。取消退款由 `road_bridge_smoke_test.gd` 覆盖。 |
 | `generated_scenario_helpers.gd` | 为随机场景测试按稳定ID选择首都、受控地区、相邻端点和无主邻格，避免依赖已删除的固定地区ID。 |
 
 Godot 测试是独立脚本，通常使用控制台版 Godot 以 `--headless --script` 运行。修改桥接 DLL 后，应先完成构建，再顺序运行相关 Godot 测试，避免加载旧 DLL。
@@ -300,7 +300,7 @@ Godot 测试是独立脚本，通常使用控制台版 Godot 以 `--headless --s
 | 需求 | 主要修改位置 | 必须同步检查 |
 | --- | --- | --- |
 | 修改经济或财政收入 | `economy_system.*` | `current-game-rules.md`、核心测试、国家/地区摘要 |
-| 修改维护或负债限制 | `maintenance_system.*`、`order_system.*` | 月度顺序、国家摘要、订单/UI禁用和核心测试 |
+| 修改维护或负债限制 | `maintenance_system.*`、`order_system.*` | 月度顺序、`main.gd` 中重复的维护摘要/公式/文字、订单/UI禁用和核心测试 |
 | 修改人口或可招募士兵 | `population_system.*`、必要时 `army_system.*` | 规则文档、征兵测试、存档 |
 | 修改军队编号、更名或合并 | `army_system.*`、`game_command.hpp` | 存档、桥接 API、地区管理窗口和军队测试 |
 | 修改订单类型、预留或退款 | `game_order.hpp`、`order_system.*`、`monthly_order_system.*` | `game_state.cpp`校验、schema 7、桥接/UI和订单测试 |
