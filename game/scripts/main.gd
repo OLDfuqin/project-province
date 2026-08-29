@@ -306,27 +306,29 @@ func _authoritative_recruitment_quote(province_id: String) -> Dictionary:
     var high := maxi(0, int(province.get("recruitable_population", 0)))
     var low := 0
     var best: Dictionary = {}
-    while low < high:
-        var candidate := low + int((high - low + 1) / 2)
+    var maximum_manpower := 0
+    while low <= high:
+        var candidate := low + int((high - low) / 2)
         var quote: Dictionary = bridge.get_recruitment_order_quote(
             player_country_id, province_id, candidate
         )
         if quote.get("accepted", false):
-            low = candidate
             best = quote
+            maximum_manpower = candidate
+            low = candidate + 1
         else:
             high = candidate - 1
-    if low <= 0:
+    if maximum_manpower <= 0:
         return {
             "accepted": false,
             "maximum_manpower": 0,
             "cost": 0,
         }
-    if best.is_empty() or int(best.get("manpower", 0)) != low:
+    if best.is_empty() or int(best.get("manpower", 0)) != maximum_manpower:
         best = bridge.get_recruitment_order_quote(
-            player_country_id, province_id, low
+            player_country_id, province_id, maximum_manpower
         )
-    best["maximum_manpower"] = low
+    best["maximum_manpower"] = maximum_manpower
     return best
 
 
@@ -1007,12 +1009,34 @@ func _on_make_peace_pressed() -> void:
         result.get("provinces", []).size(),
         result.get("armies", []).size(),
     ]
+    var cancelled_orders: Array = result.get("cancelled_orders", [])
+    if not cancelled_orders.is_empty():
+        var refund_details: Array[String] = []
+        for cancellation: Dictionary in cancelled_orders:
+            var order_label := String(cancellation.get("order_id", "订单"))
+            var refunded_cost := int(cancellation.get("refunded_cost", 0))
+            var refunded_movement_half := int(
+                cancellation.get("refunded_movement_half", 0)
+            )
+            if refunded_cost > 0:
+                refund_details.append("%s国库%d" % [order_label, refunded_cost])
+            if refunded_movement_half > 0:
+                refund_details.append("%s移动%s" % [
+                    order_label,
+                    GameText.movement_points(float(refunded_movement_half) / 2.0),
+                ])
+        event_log.text += "；取消%d个行动订单" % cancelled_orders.size()
+        if refund_details.is_empty():
+            event_log.text += "，无退款"
+        else:
+            event_log.text += "，退还%s" % "、".join(refund_details)
     _record_event(event_log.text)
     _clear_movement_selection()
     _refresh_map_data()
     _refresh_country_list()
     _refresh_country_details()
     _refresh_game_status()
+    _refresh_pending_orders()
 
 
 func _on_research_technology(track: String) -> void:

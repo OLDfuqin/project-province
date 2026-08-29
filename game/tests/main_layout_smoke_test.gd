@@ -1,6 +1,40 @@
 extends SceneTree
 
 
+func _read_json(path: String) -> Dictionary:
+    var file := FileAccess.open(path, FileAccess.READ)
+    if file == null:
+        return {}
+    var parsed: Variant = JSON.parse_string(file.get_as_text())
+    file.close()
+    return parsed if parsed is Dictionary else {}
+
+
+func _normalize_json_numbers(value: Variant) -> Variant:
+    if value is float and is_equal_approx(value, round(value)):
+        return int(value)
+    if value is Array:
+        var normalized_array: Array = []
+        for item: Variant in value:
+            normalized_array.append(_normalize_json_numbers(item))
+        return normalized_array
+    if value is Dictionary:
+        var normalized_dictionary: Dictionary = {}
+        for key: Variant in value:
+            normalized_dictionary[key] = _normalize_json_numbers(value[key])
+        return normalized_dictionary
+    return value
+
+
+func _write_json(path: String, document: Dictionary) -> bool:
+    var file := FileAccess.open(path, FileAccess.WRITE)
+    if file == null:
+        return false
+    file.store_string(JSON.stringify(_normalize_json_numbers(document)))
+    file.close()
+    return true
+
+
 func _initialize() -> void:
     var packed_scene := load("res://scenes/main/main.tscn") as PackedScene
     if packed_scene == null:
@@ -209,7 +243,8 @@ func _initialize() -> void:
                 province.get("id", "") != preserved_origin_id:
             preserved_target_id = String(province.get("id", ""))
             break
-    if preserved_army_id.is_empty() or preserved_target_id.is_empty() or \
+    if main_scene.player_country_id != "auroria" or \
+            preserved_army_id.is_empty() or preserved_target_id.is_empty() or \
             not bridge.set_army_advance_target(
                 preserved_army_id, preserved_target_id
             ).get("accepted", false):
@@ -220,19 +255,81 @@ func _initialize() -> void:
     main_scene.moving_army_id = preserved_army_id
     main_scene.get_node("RightPanel/Center/SaveControls/Save").pressed.emit()
     bridge.clear_army_advance_target(preserved_army_id)
+    var cleared_target := "not-found"
+    var owner_before_load := ""
+    for army: Dictionary in bridge.get_army_summaries():
+        if army.get("id", "") == preserved_army_id:
+            cleared_target = String(army.get("advance_target_id", ""))
+            owner_before_load = String(army.get("owner_id", ""))
+            break
+    if main_scene.moving_army_id != preserved_army_id or \
+            owner_before_load != main_scene.player_country_id or \
+            not cleared_target.is_empty():
+        push_error("Quick-load fixture did not retain the same authorized local army ID")
+        main_scene.free()
+        quit(1)
+        return
     main_scene.get_node("RightPanel/Center/SaveControls/Load").pressed.emit()
     await process_frame
     var restored_target := ""
+    var restored_owner := ""
     for army: Dictionary in bridge.get_army_summaries():
         if army.get("id", "") == preserved_army_id:
             restored_target = String(army.get("advance_target_id", ""))
+            restored_owner = String(army.get("owner_id", ""))
             break
     if restored_target != preserved_target_id or \
+            restored_owner != main_scene.player_country_id or \
             not main_scene.moving_army_id.is_empty():
         push_error("Quick-load mutated the loaded advance target or kept stale local selection")
         main_scene.free()
         quit(1)
         return
+
+    var quick_path := ProjectSettings.globalize_path("user://quick_save.json")
+    var extreme_quote_path := ProjectSettings.globalize_path(
+        "res://../build/round2-extreme-recruitment-quote.json"
+    )
+    if not bridge.save_game(extreme_quote_path).get("accepted", false):
+        push_error("Could not save the extreme recruitment quote fixture")
+        main_scene.free()
+        quit(1)
+        return
+    var extreme_document := _read_json(extreme_quote_path)
+    for country_document: Dictionary in extreme_document.get("countries", []):
+        if country_document.get("id", "") == "auroria":
+            country_document["treasury"] = 9223372036854775807
+            break
+    for province_document: Dictionary in extreme_document.get("provinces", []):
+        if province_document.get("id", "") == "capital_auroria":
+            province_document["population"] = 9223372036854775807
+            province_document["recruitable_population"] = 9223372036854775807
+            break
+    if not _write_json(extreme_quote_path, extreme_document) or \
+            not bridge.load_game(extreme_quote_path).get("accepted", false):
+        push_error("Could not load the extreme recruitment quote fixture")
+        main_scene.free()
+        quit(1)
+        return
+    main_scene.call("_refresh_map_data")
+    var extreme_quote: Dictionary = main_scene.call(
+        "_authoritative_recruitment_quote", "capital_auroria"
+    )
+    if not extreme_quote.get("accepted", false) or \
+            extreme_quote.get("maximum_manpower", 0) != 2305843009213693951 or \
+            extreme_quote.get("cost", 0) != 9223372036854775804:
+        push_error("Authoritative recruitment quote overflowed its upper midpoint: %s" % \
+            extreme_quote)
+        main_scene.free()
+        quit(1)
+        return
+    DirAccess.remove_absolute(extreme_quote_path)
+    if not bridge.load_game(quick_path).get("accepted", false):
+        push_error("Could not restore the quick-load fixture after extreme quote testing")
+        main_scene.free()
+        quit(1)
+        return
+    main_scene.call("_refresh_map_data")
 
     var removed_controls := [
         "RightPanel/Center/RegionDetails",
@@ -379,6 +476,101 @@ func _initialize() -> void:
         quit(1)
         return
 
+    bridge.clear_army_advance_target(preserved_army_id)
+    for order: Dictionary in bridge.get_pending_orders("auroria"):
+        bridge.cancel_order(String(order.get("order_id", "")))
+    var peace_target: Dictionary = {}
+    for _month: int in range(4):
+        peace_target = {}
+        for target: Dictionary in bridge.get_army_order_targets(preserved_army_id):
+            if not target.get("is_attack", true):
+                peace_target = target
+                break
+        if not peace_target.is_empty():
+            break
+        bridge.advance_turn()
+    var peace_origin := ""
+    for army: Dictionary in bridge.get_army_summaries():
+        if army.get("id", "") == preserved_army_id:
+            peace_origin = String(army.get("province_id", ""))
+            break
+    var peace_order: Dictionary = bridge.move_army(
+        preserved_army_id, peace_target.get("province_id", "")
+    )
+    if peace_target.is_empty() or peace_origin.is_empty() or \
+            not peace_order.get("accepted", false) or \
+            not bridge.save_game(quick_path).get("accepted", false):
+        push_error("Could not create the main UI peace-refund fixture")
+        main_scene.free()
+        quit(1)
+        return
+    var peace_document := _read_json(quick_path)
+    for province_document: Dictionary in peace_document.get("provinces", []):
+        if province_document.get("id", "") == peace_origin:
+            province_document["owner_id"] = "caelus"
+            break
+    var peace_occupations: Array = []
+    for occupation_document: Dictionary in peace_document.get("occupations", []):
+        if occupation_document.get("province_id", "") != peace_origin:
+            peace_occupations.append(occupation_document)
+    peace_occupations.append({
+        "province_id": peace_origin,
+        "controller_id": "auroria",
+    })
+    peace_document["occupations"] = peace_occupations
+    var found_peace_relation := false
+    for relation_document: Dictionary in peace_document.get("relations", []):
+        var relation_pair := [
+            String(relation_document.get("country_a", "")),
+            String(relation_document.get("country_b", "")),
+        ]
+        if "auroria" in relation_pair and "caelus" in relation_pair:
+            relation_document["status"] = "war"
+            found_peace_relation = true
+            break
+    if not found_peace_relation:
+        peace_document["relations"].append({
+            "country_a": "auroria",
+            "country_b": "caelus",
+            "status": "war",
+        })
+    if not _write_json(quick_path, peace_document):
+        push_error("Could not write the main UI peace-refund fixture")
+        main_scene.free()
+        quit(1)
+        return
+    main_scene.get_node("RightPanel/Center/SaveControls/Load").pressed.emit()
+    await process_frame
+    var peace_war_target := main_scene.get_node(
+        "RightPanel/Center/DiplomacyControls/WarTarget"
+    ) as OptionButton
+    var caelus_target_index := -1
+    for index: int in range(peace_war_target.item_count):
+        if peace_war_target.get_item_metadata(index) == "caelus":
+            caelus_target_index = index
+            break
+    if caelus_target_index < 0 or \
+            bridge.get_pending_orders("auroria").size() != 1 or \
+            pending_order_rows.get_child_count() != 1:
+        push_error("Loaded peace-refund fixture did not expose its pending action order")
+        main_scene.free()
+        quit(1)
+        return
+    peace_war_target.select(caelus_target_index)
+    peace_policy.select(0)
+    main_scene.get_node("RightPanel/Center/DiplomacyControls/MakePeace").pressed.emit()
+    await process_frame
+    var peace_event_log := main_scene.get_node("RightPanel/Center/EventLog") as Label
+    if not bridge.get_pending_orders("auroria").is_empty() or \
+            pending_order_rows.get_child_count() != 0 or \
+            not peace_event_log.text.contains("取消1个行动订单") or \
+            not peace_event_log.text.contains("退还"):
+        push_error("Main peace UI did not refresh pending orders and show refunds: %s" % \
+            peace_event_log.text)
+        main_scene.free()
+        quit(1)
+        return
+
     if bridge.set_ai_enabled(false, "caelus") != true:
         push_error("Could not switch the saved player identity to Caelus")
         main_scene.free()
@@ -389,7 +581,6 @@ func _initialize() -> void:
     var caelus_order: Dictionary = bridge.recruit_army(
         "caelus", "capital_caelus", 1
     )
-    var quick_path := ProjectSettings.globalize_path("user://quick_save.json")
     if not caelus_order.get("accepted", false) or \
             not bridge.save_game(quick_path).get("accepted", false):
         push_error("Could not save a Caelus UI authority fixture")

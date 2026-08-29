@@ -202,6 +202,17 @@ OrderOperationResult OrderSystem::queue_recruitment(
         manpower > province->recruitable_population - already_reserved) {
         return rejected("province population available for recruitment is insufficient");
     }
+    std::uint64_t pending_recruitments = 0;
+    for (const auto& [id, order] : state.orders()) {
+        static_cast<void>(id);
+        if (std::holds_alternative<RecruitmentOrder>(order)) {
+            ++pending_recruitments;
+        }
+    }
+    if (pending_recruitments >=
+        GameState::remaining_army_id_slots(state.next_army_sequence_)) {
+        return rejected("army ID capacity is reserved by pending recruitment orders");
+    }
     const std::int64_t cost = manpower * ArmySystem::recruitment_cost_per_soldier;
     if (country->treasury < cost) {
         return rejected("country treasury is insufficient for recruitment");

@@ -275,6 +275,99 @@ func _monthly_action_refund_dictionary_complete(data_directory: String) -> bool:
     return complete
 
 
+func _restore_peace_refund_dictionary_complete(data_directory: String) -> bool:
+    var peace_bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    if peace_bridge == null or not peace_bridge.load_scenario(data_directory, 1000, 1):
+        return false
+    _clear_initial_orders(peace_bridge)
+    peace_bridge.set_ai_enabled(false, "auroria")
+    var capital := Helpers.capital_id("auroria")
+    var recruited: Dictionary = peace_bridge.recruit_army("auroria", capital, 100)
+    var recruit_turn: Dictionary = peace_bridge.advance_turn()
+    var army_id := ""
+    for action: Dictionary in recruit_turn.get("turn_actions", []):
+        if action.get("type", "") == "army_recruited" and \
+                action.get("order_id", "") == recruited.get("order_id", "missing"):
+            army_id = String(action.get("army_id", ""))
+    for _month: int in range(3):
+        peace_bridge.advance_turn()
+    var target := _first_friendly_target(peace_bridge.get_army_order_targets(army_id))
+    var queued: Dictionary = peace_bridge.move_army(
+        army_id, target.get("province_id", "")
+    )
+    var movement_after_reservation := float(
+        _army(peace_bridge, army_id).get("movement_points", -1.0)
+    )
+    var save_path := ProjectSettings.globalize_path(
+        "res://../build/round2-peace-restore-order.json"
+    )
+    if army_id.is_empty() or target.is_empty() or not queued.get("accepted", false) or \
+            not peace_bridge.save_game(save_path).get("accepted", false):
+        peace_bridge.free()
+        return false
+
+    var document := _read_json(save_path)
+    for province_document: Dictionary in document.get("provinces", []):
+        if province_document.get("id", "") == capital:
+            province_document["owner_id"] = "caelus"
+            break
+    var occupations: Array = []
+    for occupation_document: Dictionary in document.get("occupations", []):
+        if occupation_document.get("province_id", "") != capital:
+            occupations.append(occupation_document)
+    occupations.append({"province_id": capital, "controller_id": "auroria"})
+    document["occupations"] = occupations
+    var found_relation := false
+    for relation_document: Dictionary in document.get("relations", []):
+        var pair := [
+            String(relation_document.get("country_a", "")),
+            String(relation_document.get("country_b", "")),
+        ]
+        if "auroria" in pair and "caelus" in pair:
+            relation_document["status"] = "war"
+            found_relation = true
+            break
+    if not found_relation:
+        document["relations"].append({
+            "country_a": "auroria",
+            "country_b": "caelus",
+            "status": "war",
+        })
+    if not _write_json(save_path, document) or \
+            not peace_bridge.load_game(save_path).get("accepted", false):
+        DirAccess.remove_absolute(save_path)
+        peace_bridge.free()
+        return false
+
+    var peace: Dictionary = peace_bridge.make_peace("auroria", "caelus", false)
+    var cancellations: Array = peace.get("cancelled_orders", [])
+    var cancellation: Dictionary = cancellations.front() if cancellations.size() == 1 else {}
+    var surviving_army := _army(peace_bridge, army_id)
+    var saved_after: Dictionary = peace_bridge.save_game(save_path)
+    var complete: bool = peace.get("accepted", false) and \
+            cancellations.size() == 1 and \
+            cancellation.get("event_type", "") == "order_cancelled" and \
+            cancellation.get("status", "") == "cancelled" and \
+            cancellation.get("order_id", "") == queued.get("order_id", "missing") and \
+            cancellation.get("country_id", "") == "auroria" and \
+            cancellation.get("army_id", "") == army_id and \
+            cancellation.get("refunded_cost", -1) == 0 and \
+            cancellation.get("refunded_movement_half", -1) == \
+                queued.get("reserved_movement_half", -2) and \
+            not String(cancellation.get("reason", "")).is_empty() and \
+            cancellation.get("event_sequence", 0) > peace.get("event_sequence", 0) and \
+            peace_bridge.get_pending_orders("auroria").is_empty() and \
+            surviving_army.get("province_id", "") != capital and \
+            is_equal_approx(
+                float(surviving_army.get("movement_points", -1.0)),
+                movement_after_reservation + \
+                    float(queued.get("reserved_movement_half", 0)) / 2.0
+            ) and saved_after.get("accepted", false)
+    DirAccess.remove_absolute(save_path)
+    peace_bridge.free()
+    return complete
+
+
 func _converted_attack_dictionary_complete(data_directory: String) -> bool:
     var converted_bridge: Object = ClassDB.instantiate("ProvinceBridge")
     if converted_bridge == null or not converted_bridge.load_scenario(data_directory, 1000, 1):
@@ -592,6 +685,12 @@ func _initialize() -> void:
 
     if not _monthly_action_refund_dictionary_complete(data_directory):
         push_error("Monthly invalidated army action lost refund metadata")
+        bridge.free()
+        quit(1)
+        return
+
+    if not _restore_peace_refund_dictionary_complete(data_directory):
+        push_error("Restore peace did not serialize exact action-order refunds")
         bridge.free()
         quit(1)
         return

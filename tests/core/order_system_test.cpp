@@ -1177,6 +1177,104 @@ bool test_peace_cancels_repatriated_and_disbanded_army_orders() {
     return true;
 }
 
+bool test_restore_peace_cancels_orders_for_armies_that_lose_occupied_ground() {
+    const auto make_state = [](const bool retain_home) {
+        GameState state{GameClock{1000, 1}};
+        const CountryId alpha{"alpha"};
+        const CountryId beta{"beta"};
+        const ProvinceId occupied{"occupied"};
+        const ProvinceId beta_home{"beta_home"};
+        state.add_country(Country{alpha, "Alpha", 0, 100'000, "ALP", false});
+        state.add_country(Country{beta, "Beta", 0, 100'000, "BET", false});
+        std::vector<ProvinceId> occupied_neighbors{beta_home};
+        if (retain_home) occupied_neighbors.push_back(ProvinceId{"alpha_home"});
+        state.add_province(Province{
+            occupied, "Occupied", beta, 10'000, 5'000, 10'000,
+            occupied_neighbors, 0, TerrainType::plains,
+        });
+        state.add_province(Province{
+            beta_home, "Beta Home", beta, 10'000, 5'000, 10'000,
+            {occupied}, 0, TerrainType::plains,
+        });
+        if (retain_home) {
+            state.add_province(Province{
+                ProvinceId{"alpha_home"}, "Alpha Home", alpha,
+                10'000, 5'000, 10'000, {occupied}, 0, TerrainType::plains,
+            });
+        }
+        state.set_occupation(occupied, alpha);
+        state.set_diplomatic_status(alpha, beta, DiplomaticStatus::war);
+        return state;
+    };
+
+    for (const bool retain_home : {true, false}) {
+        GameState state = make_state(retain_home);
+        const CountryId alpha{"alpha"};
+        const CountryId beta{"beta"};
+        const ProvinceId occupied{"occupied"};
+        const ProvinceId beta_home{"beta_home"};
+        const ArmyId army_id = state.create_army(alpha, occupied, 1'000);
+        state.find_army(army_id)->movement_points = 8;
+        const OrderOperationResult queued = OrderSystem{}.queue_army_action(
+            state, army_id, {occupied, beta_home}, true
+        );
+        if (!queued.accepted || !queued.order_id.has_value()) return false;
+        const auto* action = std::get_if<ArmyActionOrder>(
+            &state.orders().at(*queued.order_id)
+        );
+        if (action == nullptr) return false;
+        const std::int32_t reserved = action->reserved_movement_half;
+        const std::int32_t movement_after_reservation =
+            state.find_army(army_id)->movement_points;
+
+        CommandProcessor processor;
+        const CommandResult result = processor.execute(
+            state,
+            MakePeaceCommand{
+                alpha, beta, PeaceSettlementPolicy::restore_legal_owners,
+            }
+        );
+        const auto cancellation = std::find_if(
+            result.events.begin(), result.events.end(),
+            [](const GameEvent& event) {
+                return event.type == GameEventType::order_cancelled;
+            }
+        );
+        if (!result.accepted || cancellation == result.events.end() ||
+            result.events.front().type != GameEventType::peace_made ||
+            !state.orders().empty() || !state.validate().empty()) {
+            std::cerr << "Restore peace left an affected action order or rolled back\n";
+            return false;
+        }
+        const auto& cancelled = std::get<OrderCancelledEvent>(
+            cancellation->payload
+        );
+        if (cancelled.order_id != *queued.order_id ||
+            cancelled.army_id != std::optional<ArmyId>{army_id} ||
+            cancelled.refunded_cost != 0 ||
+            cancelled.refunded_movement_half != reserved ||
+            cancelled.reason !=
+                "peace settlement repatriated or disbanded the ordered army") {
+            std::cerr << "Restore peace lost exact cancellation metadata\n";
+            return false;
+        }
+        const Army* surviving_army = state.find_army(army_id);
+        if (retain_home) {
+            if (surviving_army == nullptr ||
+                surviving_army->province_id != ProvinceId{"alpha_home"} ||
+                surviving_army->movement_points !=
+                    movement_after_reservation + reserved) {
+                std::cerr << "Restore peace did not refund and repatriate the army\n";
+                return false;
+            }
+        } else if (surviving_army != nullptr) {
+            std::cerr << "Restore peace did not disband the army without a homeland\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 bool test_monthly_projects_complete_prepaid_recruitment_and_road_once() {
     GameState state = order_state();
     OrderSystem orders;
@@ -1472,6 +1570,7 @@ bool run_order_system_tests() {
         test_order_sequence_capacity_prevents_wraparound() &&
         test_hidden_country_cannot_queue_or_persist_army_actions() &&
         test_peace_cancels_repatriated_and_disbanded_army_orders() &&
+        test_restore_peace_cancels_orders_for_armies_that_lose_occupied_ground() &&
         test_monthly_projects_complete_prepaid_recruitment_and_road_once() &&
         test_monthly_research_uses_target_level_plus_one_months() &&
         test_invalidated_monthly_projects_refund_prepaid_costs() &&

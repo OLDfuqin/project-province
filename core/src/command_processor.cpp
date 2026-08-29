@@ -289,18 +289,34 @@ CommandResult CommandProcessor::execute_make_peace(
     GameState& state,
     const MakePeaceCommand& command
 ) {
-    GameState working_state = state;
+    const GameState before_settlement = state;
+    GameState settlement_preview = before_settlement;
+    PeaceSettlementResult preview = peace_system_.settle(
+        settlement_preview,
+        command.country_a,
+        command.country_b,
+        command.policy
+    );
+    if (!preview.accepted) {
+        return {false, preview.error, {}};
+    }
+
     std::vector<GameOrder> cancelled_army_orders;
-    for (const auto& [order_id, order] : working_state.orders()) {
+    for (const auto& [order_id, order] : before_settlement.orders()) {
         static_cast<void>(order_id);
         const auto* action = std::get_if<ArmyActionOrder>(&order);
         if (action == nullptr) continue;
-        const Army* army = working_state.find_army(action->army_id);
-        if (army != nullptr &&
-            working_state.controller_of(army->province_id) != army->owner_id) {
+        const Army* before_army = before_settlement.find_army(action->army_id);
+        const Army* after_army = settlement_preview.find_army(action->army_id);
+        if (before_army != nullptr &&
+            (after_army == nullptr ||
+             after_army->province_id != before_army->province_id ||
+             after_army->owner_id != before_army->owner_id)) {
             cancelled_army_orders.push_back(order);
         }
     }
+
+    GameState working_state = before_settlement;
     for (const GameOrder& order : cancelled_army_orders) {
         const OrderOperationResult cancelled = order_system_.cancel(
             working_state, order_id(order)

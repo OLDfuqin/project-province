@@ -1939,40 +1939,69 @@ godot::Dictionary ProvinceBridge::make_peace(
         response["accepted"] = result.accepted;
         response["error"] = godot::String::utf8(result.error.c_str());
         if (result.accepted) {
-            const province::core::GameEvent& event = result.events.front();
-            const auto& peace =
-                std::get<province::core::PeaceSettlementResult>(event.payload);
-            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
-            response["annexed"] =
-                peace.policy == province::core::PeaceSettlementPolicy::annex_occupied_provinces;
             godot::Array provinces;
-            for (const province::core::PeaceProvinceSettlement& settled : peace.provinces) {
-                godot::Dictionary summary;
-                summary["province_id"] =
-                    godot::String::utf8(settled.province_id.value().c_str());
-                summary["legal_owner_before"] =
-                    godot::String::utf8(settled.legal_owner_before.value().c_str());
-                summary["controller_before"] =
-                    godot::String::utf8(settled.controller_before.value().c_str());
-                summary["legal_owner_after"] =
-                    godot::String::utf8(settled.legal_owner_after.value().c_str());
-                provinces.push_back(summary);
-            }
             godot::Array armies;
-            for (const province::core::ArmyRepatriation& repatriated : peace.armies) {
-                godot::Dictionary summary;
-                summary["army_id"] =
-                    godot::String::utf8(repatriated.army_id.value().c_str());
-                summary["origin"] =
-                    godot::String::utf8(repatriated.origin.value().c_str());
-                summary["destination"] = repatriated.destination.has_value()
-                    ? godot::String::utf8(repatriated.destination->value().c_str())
-                    : godot::String{};
-                summary["disbanded"] = repatriated.disbanded;
-                armies.push_back(summary);
+            godot::Array cancelled_orders;
+            for (const province::core::GameEvent& event : result.events) {
+                if (event.type == province::core::GameEventType::peace_made) {
+                    const auto& peace =
+                        std::get<province::core::PeaceSettlementResult>(event.payload);
+                    response["event_sequence"] =
+                        static_cast<std::int64_t>(event.sequence);
+                    response["annexed"] = peace.policy ==
+                        province::core::PeaceSettlementPolicy::annex_occupied_provinces;
+                    for (const province::core::PeaceProvinceSettlement& settled :
+                         peace.provinces) {
+                        godot::Dictionary summary;
+                        summary["province_id"] = godot::String::utf8(
+                            settled.province_id.value().c_str()
+                        );
+                        summary["legal_owner_before"] = godot::String::utf8(
+                            settled.legal_owner_before.value().c_str()
+                        );
+                        summary["controller_before"] = godot::String::utf8(
+                            settled.controller_before.value().c_str()
+                        );
+                        summary["legal_owner_after"] = godot::String::utf8(
+                            settled.legal_owner_after.value().c_str()
+                        );
+                        provinces.push_back(summary);
+                    }
+                    for (const province::core::ArmyRepatriation& repatriated :
+                         peace.armies) {
+                        godot::Dictionary summary;
+                        summary["army_id"] = godot::String::utf8(
+                            repatriated.army_id.value().c_str()
+                        );
+                        summary["origin"] = godot::String::utf8(
+                            repatriated.origin.value().c_str()
+                        );
+                        summary["destination"] = repatriated.destination.has_value()
+                            ? godot::String::utf8(
+                                repatriated.destination->value().c_str()
+                            )
+                            : godot::String{};
+                        summary["disbanded"] = repatriated.disbanded;
+                        armies.push_back(summary);
+                    }
+                } else if (event.type ==
+                           province::core::GameEventType::order_cancelled) {
+                    godot::Dictionary cancellation;
+                    cancellation["event_type"] = "order_cancelled";
+                    cancellation["type"] = "order_cancelled";
+                    cancellation["status"] = "cancelled";
+                    cancellation["event_sequence"] =
+                        static_cast<std::int64_t>(event.sequence);
+                    append_order_cancellation_fields(
+                        cancellation,
+                        std::get<province::core::OrderCancelledEvent>(event.payload)
+                    );
+                    cancelled_orders.push_back(cancellation);
+                }
             }
             response["provinces"] = provinces;
             response["armies"] = armies;
+            response["cancelled_orders"] = cancelled_orders;
         }
     } catch (const std::exception&) {
         set_stable_rejection(response, "peace settlement could not be processed");

@@ -105,11 +105,18 @@ public:
     [[nodiscard]] const std::map<CountryRelationKey, DiplomaticStatus>& relations() const noexcept;
     [[nodiscard]] const std::map<OrderId, GameOrder>& orders() const noexcept;
     [[nodiscard]] std::vector<std::string> validate() const;
+    [[nodiscard]] static constexpr std::uint64_t remaining_army_id_slots(
+        const std::uint64_t next_sequence
+    ) noexcept {
+        constexpr std::uint64_t exhausted_sequence =
+            std::numeric_limits<std::uint64_t>::max() - 1;
+        if (next_sequence == 0 || next_sequence >= exhausted_sequence) return 0;
+        return exhausted_sequence - next_sequence;
+    }
     [[nodiscard]] static constexpr bool can_allocate_army_id(
         const std::uint64_t next_sequence
     ) noexcept {
-        return next_sequence > 0 &&
-            next_sequence < std::numeric_limits<std::uint64_t>::max() - 1;
+        return remaining_army_id_slots(next_sequence) > 0;
     }
 
 private:

@@ -516,6 +516,7 @@ std::vector<std::string> GameState::validate() const {
     std::set<CountryRelationKey> ordered_war_declarations;
     std::map<ProvinceId, CountryId> attack_locks;
     std::map<ProvinceId, std::int64_t> reserved_population;
+    std::uint64_t pending_recruitments = 0;
     if (next_order_sequence_ == 0 ||
         next_order_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
         issues.push_back("next order sequence must be positive and not exhausted");
@@ -632,6 +633,7 @@ std::vector<std::string> GameState::validate() const {
                     }
                 }
             } else if constexpr (std::is_same_v<OrderType, RecruitmentOrder>) {
+                ++pending_recruitments;
                 const Country* country = find_country(typed_order.country_id);
                 const Province* province = find_province(typed_order.province_id);
                 if (country == nullptr || province == nullptr) {
@@ -758,6 +760,9 @@ std::vector<std::string> GameState::validate() const {
             (reserved > province->population || reserved > province->recruitable_population)) {
             issues.push_back("recruitment orders over-reserve province population");
         }
+    }
+    if (pending_recruitments > remaining_army_id_slots(next_army_sequence_)) {
+        issues.push_back("recruitment orders exceed remaining army ID capacity");
     }
     return issues;
 }

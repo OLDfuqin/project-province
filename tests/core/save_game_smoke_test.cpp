@@ -396,6 +396,9 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     Json exhausted_next_army_sequence = document;
     exhausted_next_army_sequence["next_army_sequence"] =
         std::numeric_limits<std::uint64_t>::max();
+    Json recruitment_with_no_army_capacity = document;
+    recruitment_with_no_army_capacity["next_army_sequence"] =
+        std::numeric_limits<std::uint64_t>::max() - 1;
     Json exhausted_next_event_sequence = document;
     exhausted_next_event_sequence["next_event_sequence"] =
         std::numeric_limits<std::int64_t>::max();
@@ -469,6 +472,18 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         std::move(second_recruitment)
     );
     cumulatively_over_reserved_population["next_order_sequence"] = 7;
+    Json cumulatively_over_reserved_army_capacity = document;
+    Json capacity_recruitment =
+        cumulatively_over_reserved_army_capacity["orders"][recruitment_index];
+    capacity_recruitment["id"] = "order_6";
+    capacity_recruitment["manpower"] = 1;
+    capacity_recruitment["paid_cost"] = ArmySystem::recruitment_cost_per_soldier;
+    cumulatively_over_reserved_army_capacity["orders"].push_back(
+        std::move(capacity_recruitment)
+    );
+    cumulatively_over_reserved_army_capacity["next_order_sequence"] = 7;
+    cumulatively_over_reserved_army_capacity["next_army_sequence"] =
+        std::numeric_limits<std::uint64_t>::max() - 2;
     Json unknown_recruitment_province = document;
     unknown_recruitment_province["orders"][recruitment_index]["province_id"] =
         "missing_province";
@@ -543,6 +558,7 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&exhausted_next_sequence, "exhausted-next-sequence"},
         {&duplicate_next_army_sequence, "duplicate-next-army-sequence"},
         {&exhausted_next_army_sequence, "exhausted-next-army-sequence"},
+        {&recruitment_with_no_army_capacity, "recruitment-with-no-army-capacity"},
         {&exhausted_next_event_sequence, "exhausted-next-event-sequence"},
         {&unsigned_only_next_event_sequence, "unsigned-next-event-sequence"},
         {&extreme_military_level, "extreme-military-level"},
@@ -559,6 +575,8 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&fractional_recruitment_cost, "fractional-recruitment-cost"},
         {&over_reserved_population, "over-reserved-population"},
         {&cumulatively_over_reserved_population, "cumulative-over-reserved-population"},
+        {&cumulatively_over_reserved_army_capacity,
+         "cumulative-over-reserved-army-capacity"},
         {&unknown_recruitment_province, "unknown-recruitment-province"},
         {&forged_road_cost, "forged-road-cost"},
         {&future_road_technology_cost, "future-road-technology-cost"},
@@ -615,6 +633,44 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         return false;
     }
 
+    Json two_remaining_army_slots = document;
+    two_remaining_army_slots["next_army_sequence"] =
+        std::numeric_limits<std::uint64_t>::max() - 3;
+    const auto two_slots_path = std::filesystem::temp_directory_path() /
+        "province-schema7-two-remaining-army-slots.json";
+    {
+        std::ofstream two_slots_stream{two_slots_path};
+        two_slots_stream << two_remaining_army_slots.dump(2);
+    }
+    LoadedGame two_slots{
+        GameState{GameClock{1, 1}}, 1, CountryId{"auroria"}, std::nullopt
+    };
+    try {
+        two_slots = SaveGameSerializer::load(two_slots_path);
+    } catch (const SaveGameError& error) {
+        std::cerr << "Two remaining army slots did not load: " << error.what() << "\n";
+        std::filesystem::remove(two_slots_path);
+        return false;
+    }
+    std::filesystem::remove(two_slots_path);
+    const OrderOperationResult second_reserved_army = orders.queue_recruitment(
+        two_slots.state, human, ProvinceId{recruitment_province_id}, 1
+    );
+    const std::size_t two_orders_at_capacity = two_slots.state.orders().size();
+    const std::int64_t two_slots_treasury_at_capacity =
+        two_slots.state.find_country(human)->treasury;
+    const OrderOperationResult third_reserved_army = orders.queue_recruitment(
+        two_slots.state, human, ProvinceId{recruitment_province_id}, 1
+    );
+    if (!second_reserved_army.accepted || third_reserved_army.accepted ||
+        two_slots.state.orders().size() != two_orders_at_capacity ||
+        two_slots.state.find_country(human)->treasury !=
+            two_slots_treasury_at_capacity ||
+        !two_slots.state.validate().empty()) {
+        std::cerr << "Multiple recruitment orders did not reserve army ID slots exactly\n";
+        return false;
+    }
+
     Json last_safe_army = document;
     last_safe_army["next_army_sequence"] =
         std::numeric_limits<std::uint64_t>::max() - 2;
@@ -637,23 +693,72 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     }
     std::filesystem::remove(army_exhausted_path);
     const std::size_t armies_before_exhaustion = army_exhausted.state.armies().size();
-    const ArmyId final_army = army_exhausted.state.create_army(
-        human, ProvinceId{recruitment_province_id}, 1
-    );
-    bool second_allocation_rejected = false;
-    try {
-        static_cast<void>(army_exhausted.state.create_army(
-            human, ProvinceId{recruitment_province_id}, 1
-        ));
-    } catch (const std::overflow_error&) {
-        second_allocation_rejected = true;
+    const std::size_t orders_before_capacity_rejection =
+        army_exhausted.state.orders().size();
+    const std::int64_t treasury_before_capacity_rejection =
+        army_exhausted.state.find_country(human)->treasury;
+    const OrderOperationResult reserved_capacity_rejection =
+        orders.queue_recruitment(
+            army_exhausted.state,
+            human,
+            ProvinceId{recruitment_province_id},
+            1
+        );
+    if (reserved_capacity_rejection.accepted ||
+        army_exhausted.state.orders().size() != orders_before_capacity_rejection ||
+        army_exhausted.state.find_country(human)->treasury !=
+            treasury_before_capacity_rejection) {
+        std::cerr << "Pending recruitment did not reserve the last army ID slot\n";
+        return false;
     }
-    if (final_army.value() != "army_" + std::to_string(
-            std::numeric_limits<std::uint64_t>::max() - 2
-        ) ||
-        !second_allocation_rejected ||
-        army_exhausted.state.armies().size() != armies_before_exhaustion + 1) {
-        std::cerr << "Army allocator wrapped or partially mutated at exhaustion\n";
+
+    const auto pending_recruitment = std::find_if(
+        army_exhausted.state.orders().begin(),
+        army_exhausted.state.orders().end(),
+        [](const auto& entry) {
+            return std::holds_alternative<RecruitmentOrder>(entry.second);
+        }
+    );
+    if (pending_recruitment == army_exhausted.state.orders().end() ||
+        !orders.cancel(army_exhausted.state, pending_recruitment->first).accepted) {
+        std::cerr << "Could not cancel the recruitment reserving army ID capacity\n";
+        return false;
+    }
+    const OrderOperationResult final_recruitment = orders.queue_recruitment(
+        army_exhausted.state,
+        human,
+        ProvinceId{recruitment_province_id},
+        1
+    );
+    if (!final_recruitment.accepted || !final_recruitment.order_id.has_value()) {
+        std::cerr << "Cancelling recruitment did not release army ID capacity\n";
+        return false;
+    }
+    const std::int32_t month_before_final_recruitment =
+        army_exhausted.state.clock().month();
+    const CommandResult final_turn = CommandProcessor{}.execute(
+        army_exhausted.state, AdvanceTurnCommand{1}
+    );
+    const auto final_recruitment_event = std::find_if(
+        final_turn.events.begin(), final_turn.events.end(),
+        [](const GameEvent& event) {
+            return event.type == GameEventType::army_recruited;
+        }
+    );
+    const ArmyId expected_final_army{
+        "army_" + std::to_string(std::numeric_limits<std::uint64_t>::max() - 2)
+    };
+    if (!final_turn.accepted ||
+        final_recruitment_event == final_turn.events.end() ||
+        std::get<ArmyRecruitedEvent>(final_recruitment_event->payload).order_id !=
+            *final_recruitment.order_id ||
+        std::get<ArmyRecruitedEvent>(final_recruitment_event->payload).army_id !=
+            expected_final_army ||
+        army_exhausted.state.clock().month() != month_before_final_recruitment + 1 ||
+        army_exhausted.state.find_army(expected_final_army) == nullptr ||
+        army_exhausted.state.armies().size() != armies_before_exhaustion + 1 ||
+        !army_exhausted.state.validate().empty()) {
+        std::cerr << "Final recruitment rolled back or wrapped the army allocator\n";
         return false;
     }
     return true;
