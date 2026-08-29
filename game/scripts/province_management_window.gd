@@ -23,6 +23,7 @@ var _army_by_id: Dictionary = {}
 var _recruitable_population := 0
 var _player_treasury := 0
 var _reserved_recruitment := 0
+var _recruitment_quote: Dictionary = {}
 var _can_manage := false
 var _has_pending_research := false
 var _army_with_order: Dictionary = {}
@@ -64,7 +65,8 @@ func display_province(
     armies: Array,
     player_country_id: String,
     preferred_army_id := "",
-    player_treasury := 0
+    player_treasury := 0,
+    recruitment_quote: Dictionary = {}
 ) -> void:
     _province_id = province.get("id", "")
     _destination_id = ""
@@ -78,6 +80,7 @@ func display_province(
     _can_manage = String(province.get("owner_id", "")) == player_country_id
     _recruitable_population = int(province.get("recruitable_population", 0))
     _player_treasury = int(player_treasury)
+    _recruitment_quote = recruitment_quote.duplicate(true)
     _reserved_recruitment = 0
     _has_pending_research = false
     _army_with_order.clear()
@@ -303,11 +306,9 @@ func _clear_destination() -> void:
 
 
 func _maximum_recruitment() -> int:
-    var available_population: int = maxi(
-        0, _recruitable_population - _reserved_recruitment
-    )
-    var affordable_manpower: int = maxi(0, int(_player_treasury / 4))
-    return mini(available_population, affordable_manpower)
+    if not _recruitment_quote.get("accepted", false):
+        return 0
+    return maxi(0, int(_recruitment_quote.get("maximum_manpower", 0)))
 
 
 func _refresh_paid_action_state() -> void:
@@ -346,10 +347,11 @@ func _refresh_research_button(track: String, button: Button) -> void:
 
 func _on_recruit_open_pressed() -> void:
     var maximum := _maximum_recruitment()
-    $Recruitment/Details.text = "可用兵员：%d | 国库：%d | 单价4 | 最大：%d" % [
+    $Recruitment/Details.text = "可用兵员：%d | 国库：%d | 权威报价：最大%d人、费用%d" % [
         max(0, _recruitable_population - _reserved_recruitment),
         _player_treasury,
         maximum,
+        int(_recruitment_quote.get("cost", 0)),
     ]
     $Recruitment/Amount.max_value = max(1, maximum)
     $Recruitment/Amount.value = min(1000, max(1, maximum))

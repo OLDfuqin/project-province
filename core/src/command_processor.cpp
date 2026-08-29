@@ -85,40 +85,73 @@ std::uint64_t CommandProcessor::next_event_sequence() const noexcept {
 }
 
 void CommandProcessor::set_next_event_sequence(const std::uint64_t sequence) {
-    if (sequence == 0) {
-        throw std::invalid_argument{"event sequence must be positive"};
+    if (sequence == 0 || sequence > exhausted_event_sequence()) {
+        throw std::invalid_argument{
+            "event sequence must be positive and within the signed bridge range"
+        };
     }
     next_event_sequence_ = sequence;
 }
 
+std::uint64_t CommandProcessor::allocate_event_sequence() {
+    if (next_event_sequence_ == 0 ||
+        next_event_sequence_ >= exhausted_event_sequence()) {
+        throw std::overflow_error{"event ID sequence is exhausted"};
+    }
+    return next_event_sequence_++;
+}
+
 CommandResult CommandProcessor::execute(GameState& state, const GameCommand& command) {
-    return std::visit(
-        [this, &state](const auto& concrete_command) -> CommandResult {
-            using CommandType = std::decay_t<decltype(concrete_command)>;
-            if constexpr (std::is_same_v<CommandType, AdvanceTurnCommand>) {
-                return execute_advance_turn(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, BuildRoadCommand>) {
-                return execute_build_road(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, RecruitArmyCommand>) {
-                return execute_recruit_army(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, RenameArmyCommand>) {
-                return execute_rename_army(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, MergeArmiesCommand>) {
-                return execute_merge_armies(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, MoveArmyCommand>) {
-                return execute_move_army(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, DeclareWarCommand>) {
-                return execute_declare_war(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, MakePeaceCommand>) {
-                return execute_make_peace(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, ResearchTechnologyCommand>) {
-                return execute_research_technology(state, concrete_command);
-            } else if constexpr (std::is_same_v<CommandType, CancelOrderCommand>) {
-                return execute_cancel_order(state, concrete_command);
-            }
-        },
-        command
-    );
+    GameState working_state = state;
+    const std::uint64_t original_event_sequence = next_event_sequence_;
+    try {
+        CommandResult result = std::visit(
+            [this, &working_state](const auto& concrete_command) -> CommandResult {
+                using CommandType = std::decay_t<decltype(concrete_command)>;
+                if constexpr (std::is_same_v<CommandType, AdvanceTurnCommand>) {
+                    return execute_advance_turn(working_state, concrete_command);
+                } else if constexpr (std::is_same_v<CommandType, BuildRoadCommand>) {
+                    return execute_build_road(working_state, concrete_command);
+                } else if constexpr (std::is_same_v<CommandType, RecruitArmyCommand>) {
+                    return execute_recruit_army(working_state, concrete_command);
+                } else if constexpr (std::is_same_v<CommandType, RenameArmyCommand>) {
+                    return execute_rename_army(working_state, concrete_command);
+                } else if constexpr (std::is_same_v<CommandType, MergeArmiesCommand>) {
+                    return execute_merge_armies(working_state, concrete_command);
+                } else if constexpr (std::is_same_v<CommandType, MoveArmyCommand>) {
+                    return execute_move_army(working_state, concrete_command);
+                } else if constexpr (std::is_same_v<CommandType, DeclareWarCommand>) {
+                    return execute_declare_war(working_state, concrete_command);
+                } else if constexpr (std::is_same_v<CommandType, MakePeaceCommand>) {
+                    return execute_make_peace(working_state, concrete_command);
+                } else if constexpr (
+                    std::is_same_v<CommandType, ResearchTechnologyCommand>
+                ) {
+                    return execute_research_technology(working_state, concrete_command);
+                } else if constexpr (std::is_same_v<CommandType, CancelOrderCommand>) {
+                    return execute_cancel_order(working_state, concrete_command);
+                }
+            },
+            command
+        );
+        if (!result.accepted) {
+            next_event_sequence_ = original_event_sequence;
+            return result;
+        }
+        const std::vector<std::string> issues = working_state.validate();
+        if (!issues.empty()) {
+            next_event_sequence_ = original_event_sequence;
+            return {false, "command produced invalid state", {}};
+        }
+        state = std::move(working_state);
+        return result;
+    } catch (const std::exception&) {
+        next_event_sequence_ = original_event_sequence;
+        return {false, "command failed transactionally", {}};
+    } catch (...) {
+        next_event_sequence_ = original_event_sequence;
+        return {false, "command failed transactionally", {}};
+    }
 }
 
 CommandResult CommandProcessor::execute_rename_army(
@@ -135,7 +168,7 @@ CommandResult CommandProcessor::execute_rename_army(
         return {false, renamed.error, {}};
     }
     GameEvent event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::army_renamed,
         ArmyRenamedEvent{
             command.army_id,
@@ -162,7 +195,7 @@ CommandResult CommandProcessor::execute_merge_armies(
         return {false, merged.error, {}};
     }
     GameEvent event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::armies_merged,
         ArmiesMergedEvent{
             working_state.find_army(command.primary_army_id)->owner_id,
@@ -194,7 +227,7 @@ CommandResult CommandProcessor::execute_research_technology(
         return {false, queued.error, {}};
     }
     GameEvent event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::order_created,
         OrderCreatedEvent{*queued.order_id},
     };
@@ -219,7 +252,7 @@ CommandResult CommandProcessor::execute_cancel_order(
     const OrderOperationResult cancelled = order_system_.cancel(state, command.order_id);
     if (!cancelled.accepted) return {false, cancelled.error, {}};
     GameEvent event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::order_cancelled,
         std::move(event_payload),
     };
@@ -257,6 +290,25 @@ CommandResult CommandProcessor::execute_make_peace(
     const MakePeaceCommand& command
 ) {
     GameState working_state = state;
+    std::vector<GameOrder> cancelled_army_orders;
+    for (const auto& [order_id, order] : working_state.orders()) {
+        static_cast<void>(order_id);
+        const auto* action = std::get_if<ArmyActionOrder>(&order);
+        if (action == nullptr) continue;
+        const Army* army = working_state.find_army(action->army_id);
+        if (army != nullptr &&
+            working_state.controller_of(army->province_id) != army->owner_id) {
+            cancelled_army_orders.push_back(order);
+        }
+    }
+    for (const GameOrder& order : cancelled_army_orders) {
+        const OrderOperationResult cancelled = order_system_.cancel(
+            working_state, order_id(order)
+        );
+        if (!cancelled.accepted) {
+            return {false, cancelled.error, {}};
+        }
+    }
     PeaceSettlementResult settlement = peace_system_.settle(
         working_state,
         command.country_a,
@@ -266,13 +318,25 @@ CommandResult CommandProcessor::execute_make_peace(
     if (!settlement.accepted) {
         return {false, settlement.error, {}};
     }
-    GameEvent event{
-        next_event_sequence_++,
+    std::vector<GameEvent> events;
+    events.reserve(1 + cancelled_army_orders.size());
+    events.push_back(GameEvent{
+        allocate_event_sequence(),
         GameEventType::peace_made,
         settlement,
-    };
+    });
+    for (const GameOrder& order : cancelled_army_orders) {
+        events.push_back(GameEvent{
+            allocate_event_sequence(),
+            GameEventType::order_cancelled,
+            cancellation_event(
+                order,
+                "peace settlement repatriated or disbanded the ordered army"
+            ),
+        });
+    }
     state = std::move(working_state);
-    return {true, {}, {std::move(event)}};
+    return {true, {}, std::move(events)};
 }
 
 CommandResult CommandProcessor::execute_declare_war(
@@ -303,7 +367,7 @@ CommandResult CommandProcessor::execute_declare_war(
         DiplomaticStatus::war
     );
     GameEvent event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::war_declared,
         WarDeclaredEvent{std::nullopt, command.aggressor_id, command.defender_id},
     };
@@ -326,7 +390,7 @@ CommandResult CommandProcessor::execute_build_road(
     }
 
     GameEvent event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::order_created,
         OrderCreatedEvent{*queued.order_id},
     };
@@ -348,7 +412,7 @@ CommandResult CommandProcessor::execute_recruit_army(
     }
 
     GameEvent event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::order_created,
         OrderCreatedEvent{*queued.order_id},
     };
@@ -382,7 +446,7 @@ CommandResult CommandProcessor::execute_move_army(
         return {false, queued.error, {}};
     }
     GameEvent event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::order_created,
         OrderCreatedEvent{*queued.order_id},
     };
@@ -408,49 +472,39 @@ CommandResult CommandProcessor::execute_advance_turn(
     const std::int32_t previous_year = state.clock().year();
     const std::int32_t previous_month = state.clock().month();
     GameState working_state = state;
-    std::map<CountryId, std::int64_t> total_income;
-    std::map<CountryId, std::int64_t> total_maintenance;
-    std::map<ProvinceId, ProvincePopulationChange> population_changes;
-    std::map<ArmyId, ArmyMovementGrant> movement_grants;
     std::vector<GameEvent> ai_events;
 
     // Intentionally tick one month at a time so every month observes state
     // changes produced by all preceding monthly systems.
     for (std::int32_t month = 0; month < command.months; ++month) {
         const MonthlyFiscalReport monthly_report = economy_system_.resolve_month(working_state);
-        for (const CountryFiscalIncome& income : monthly_report.fiscal_incomes) {
-            total_income[income.country_id] += income.amount;
-        }
         const MonthlyMaintenanceReport maintenance_report =
             MaintenanceSystem{}.resolve_month(working_state);
-        for (const CountryMaintenanceCharge& charge : maintenance_report.charges) {
-            total_maintenance[charge.country_id] += charge.amount;
-        }
         const MonthlyPopulationReport population_report =
             population_system_.resolve_month(working_state);
-        for (const ProvincePopulationChange& change : population_report.changes) {
-            const auto existing = population_changes.find(change.province_id);
-            if (existing == population_changes.end()) {
-                population_changes.emplace(change.province_id, change);
-            } else {
-                existing->second.current_population = change.current_population;
-                existing->second.growth += change.growth;
-                existing->second.current_recruitable_population =
-                    change.current_recruitable_population;
-                existing->second.recruitable_growth += change.recruitable_growth;
-            }
-        }
         const MonthlyMovementReport movement_report =
             movement_system_.grant_monthly_points(working_state);
-        for (const ArmyMovementGrant& grant : movement_report.grants) {
-            const auto existing = movement_grants.find(grant.army_id);
-            if (existing == movement_grants.end()) {
-                movement_grants.emplace(grant.army_id, grant);
-            } else {
-                existing->second.amount += grant.amount;
-                existing->second.current_points = grant.current_points;
-            }
-        }
+
+        ai_events.push_back(GameEvent{
+            allocate_event_sequence(),
+            GameEventType::fiscal_income_resolved,
+            FiscalIncomeResolvedEvent{command.months, monthly_report.fiscal_incomes},
+        });
+        ai_events.push_back(GameEvent{
+            allocate_event_sequence(),
+            GameEventType::maintenance_resolved,
+            MaintenanceResolvedEvent{command.months, maintenance_report.charges},
+        });
+        ai_events.push_back(GameEvent{
+            allocate_event_sequence(),
+            GameEventType::population_resolved,
+            PopulationResolvedEvent{command.months, population_report.changes},
+        });
+        ai_events.push_back(GameEvent{
+            allocate_event_sequence(),
+            GameEventType::movement_points_granted,
+            MovementPointsGrantedEvent{command.months, movement_report.grants},
+        });
 
         std::set<OrderId> hidden_ai_orders;
         if (human_country_id_.has_value()) {
@@ -465,7 +519,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             monthly_order_system_.resolve_diplomacy(working_state);
         for (const ResolvedWarDeclaration& declaration : diplomacy_report.declarations) {
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::war_declared,
                 WarDeclaredEvent{
                     declaration.order_id,
@@ -478,7 +532,7 @@ CommandResult CommandProcessor::execute_advance_turn(
                 diplomacy_report.invalidations) {
             if (hidden_ai_orders.contains(invalidation.order_id)) continue;
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::order_cancelled,
                 OrderCancelledEvent{
                     invalidation.order_id,
@@ -495,7 +549,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             monthly_order_system_.resolve_movement(working_state);
         for (const ResolvedArmyMovement& movement : order_movement_report.movements) {
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::army_moved,
                 ArmyMovedEvent{
                     movement.order_id,
@@ -511,7 +565,7 @@ CommandResult CommandProcessor::execute_advance_turn(
         for (const RefundedArmyAction& refund : order_movement_report.refunds) {
             if (hidden_ai_orders.contains(refund.order_id)) continue;
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::order_cancelled,
                 OrderCancelledEvent{
                     refund.order_id,
@@ -528,7 +582,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             monthly_order_system_.resolve_combat(working_state, battle_system_);
         for (const ResolvedOrderCombat& battle : order_combat_report.battles) {
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::battle_resolved,
                 BattleResolvedEvent{battle.order_ids, battle.battle},
             });
@@ -536,7 +590,7 @@ CommandResult CommandProcessor::execute_advance_turn(
         for (const RefundedArmyAction& refund : order_combat_report.refunds) {
             if (hidden_ai_orders.contains(refund.order_id)) continue;
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::order_cancelled,
                 OrderCancelledEvent{
                     refund.order_id,
@@ -553,7 +607,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             monthly_order_system_.resolve_projects(working_state);
         for (const CompletedRecruitmentOrder& recruitment : project_report.recruitments) {
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::army_recruited,
                 ArmyRecruitedEvent{
                     recruitment.order_id,
@@ -567,7 +621,7 @@ CommandResult CommandProcessor::execute_advance_turn(
         }
         for (const CompletedRoadOrder& road : project_report.roads) {
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::road_built,
                 RoadBuiltEvent{
                     road.order_id,
@@ -581,7 +635,7 @@ CommandResult CommandProcessor::execute_advance_turn(
         }
         for (const CompletedResearchOrder& research : project_report.research) {
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::technology_researched,
                 TechnologyResearchedEvent{research.order_id, research.result},
             });
@@ -589,7 +643,7 @@ CommandResult CommandProcessor::execute_advance_turn(
         for (const RefundedProjectOrder& refund : project_report.refunds) {
             if (hidden_ai_orders.contains(refund.order_id)) continue;
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::order_cancelled,
                 OrderCancelledEvent{
                     refund.order_id,
@@ -606,7 +660,7 @@ CommandResult CommandProcessor::execute_advance_turn(
             monthly_order_system_.consolidate_armies(working_state);
         for (const AutomaticArmyMerge& merge : consolidation_report.merges) {
             ai_events.push_back(GameEvent{
-                next_event_sequence_++,
+                allocate_event_sequence(),
                 GameEventType::armies_merged,
                 ArmiesMergedEvent{
                     merge.country_id,
@@ -674,51 +728,8 @@ CommandResult CommandProcessor::execute_advance_turn(
         working_state.clock().advance_months(1);
     }
 
-    std::vector<CountryFiscalIncome> fiscal_incomes;
-    fiscal_incomes.reserve(total_income.size());
-    for (const auto& [country_id, amount] : total_income) {
-        fiscal_incomes.push_back(CountryFiscalIncome{country_id, amount});
-    }
-    std::vector<CountryMaintenanceCharge> maintenance_charges;
-    maintenance_charges.reserve(total_maintenance.size());
-    for (const auto& [country_id, amount] : total_maintenance) {
-        maintenance_charges.push_back(CountryMaintenanceCharge{country_id, amount});
-    }
-    std::vector<ProvincePopulationChange> changes;
-    changes.reserve(population_changes.size());
-    for (const auto& [province_id, change] : population_changes) {
-        static_cast<void>(province_id);
-        changes.push_back(change);
-    }
-    std::vector<ArmyMovementGrant> grants;
-    grants.reserve(movement_grants.size());
-    for (const auto& [army_id, grant] : movement_grants) {
-        static_cast<void>(army_id);
-        grants.push_back(grant);
-    }
-
-    GameEvent fiscal_income_event{
-        next_event_sequence_++,
-        GameEventType::fiscal_income_resolved,
-        FiscalIncomeResolvedEvent{command.months, std::move(fiscal_incomes)},
-    };
-    GameEvent maintenance_event{
-        next_event_sequence_++,
-        GameEventType::maintenance_resolved,
-        MaintenanceResolvedEvent{command.months, std::move(maintenance_charges)},
-    };
-    GameEvent population_event{
-        next_event_sequence_++,
-        GameEventType::population_resolved,
-        PopulationResolvedEvent{command.months, std::move(changes)},
-    };
-    GameEvent date_event{
-        next_event_sequence_++,
-        GameEventType::movement_points_granted,
-        MovementPointsGrantedEvent{command.months, std::move(grants)},
-    };
     GameEvent turn_event{
-        next_event_sequence_++,
+        allocate_event_sequence(),
         GameEventType::turn_advanced,
         TurnAdvancedEvent{
             previous_year,
@@ -729,10 +740,6 @@ CommandResult CommandProcessor::execute_advance_turn(
         },
     };
 
-    ai_events.push_back(std::move(fiscal_income_event));
-    ai_events.push_back(std::move(maintenance_event));
-    ai_events.push_back(std::move(population_event));
-    ai_events.push_back(std::move(date_event));
     ai_events.push_back(std::move(turn_event));
     state = std::move(working_state);
     return CommandResult{true, {}, std::move(ai_events)};

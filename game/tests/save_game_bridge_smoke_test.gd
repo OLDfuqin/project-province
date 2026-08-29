@@ -140,6 +140,9 @@ func _initialize() -> void:
     var ai_transaction_mirror_path := ai_transaction_path + ".mirror"
     var ai_disabled_transaction_path := save_path + ".ai-disabled-transaction"
     var ai_disabled_transaction_mirror_path := ai_disabled_transaction_path + ".mirror"
+    var overflow_path := save_path + ".overflow"
+    var overflow_baseline_path := overflow_path + ".baseline"
+    var overflow_mirror_path := overflow_path + ".mirror"
     var save_result: Dictionary = bridge.save_game(save_path)
     var saved_document := _read_json(save_path)
 
@@ -301,6 +304,7 @@ func _initialize() -> void:
     if privacy_configured != true or not privacy_source.get_last_error().is_empty() or \
             not player_order.get("accepted", false) or not privacy_save.get("accepted", false) or \
             foreign_order_id.is_empty() or not privacy_load.get("accepted", false) or \
+            privacy_load.get("player_country_id", "") != "caelus" or \
             privacy_document.get("player_country_id", "") != "caelus" or \
             privacy_document.get("ai_human_country_id", "not-null") != null or \
             privacy_loaded.is_ai_enabled() or \
@@ -312,6 +316,51 @@ func _initialize() -> void:
         bridge.free()
         quit(1)
         return
+
+    var authority_bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    authority_bridge.load_scenario(data_directory, 1200, 6)
+    authority_bridge.recruit_army("auroria", Helpers.capital_id("auroria"), 100)
+    authority_bridge.advance_turn()
+    authority_bridge.set_ai_enabled(false, "caelus")
+    authority_bridge.recruit_army("caelus", Helpers.capital_id("caelus"), 100)
+    authority_bridge.advance_turn()
+    var caelus_army_id := ""
+    for army: Dictionary in authority_bridge.get_army_summaries():
+        if army.get("owner_id", "") == "caelus":
+            caelus_army_id = String(army.get("id", ""))
+            break
+    var auroria_army_id := ""
+    for army: Dictionary in authority_bridge.get_army_summaries():
+        if army.get("owner_id", "") == "auroria":
+            auroria_army_id = String(army.get("id", ""))
+            break
+    var foreign_writes := [
+        authority_bridge.recruit_army("auroria", Helpers.capital_id("auroria"), 1),
+        authority_bridge.research_technology("auroria", "economy"),
+        authority_bridge.declare_war("auroria", "verdantia"),
+        authority_bridge.rename_army(auroria_army_id, 99),
+        authority_bridge.set_army_advance_target(
+            auroria_army_id, Helpers.capital_id("caelus")
+        ),
+    ]
+    for foreign_write: Dictionary in foreign_writes:
+        if foreign_write.get("accepted", true):
+            push_error("Caelus player identity did not reject a foreign write API")
+            authority_bridge.free()
+            privacy_source.free()
+            privacy_loaded.free()
+            bridge.free()
+            quit(1)
+            return
+    if caelus_army_id.is_empty() or auroria_army_id.is_empty():
+        push_error("Player authority fixture could not find both army owners")
+        authority_bridge.free()
+        privacy_source.free()
+        privacy_loaded.free()
+        bridge.free()
+        quit(1)
+        return
+    authority_bridge.free()
 
     # A valid visible Caelus identity succeeds in both disabled and enabled
     # modes. Rejected identities must preserve either mode exactly.
@@ -386,12 +435,47 @@ func _initialize() -> void:
     privacy_source.free()
     privacy_loaded.free()
 
+    var overflow_bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    overflow_bridge.load_scenario(data_directory, 1200, 6)
+    overflow_bridge.set_ai_enabled(false, "auroria")
+    overflow_bridge.save_game(overflow_path)
+    var overflow_document := _read_json(overflow_path)
+    for country: Dictionary in overflow_document.get("countries", []):
+        if country.get("id", "") == "auroria":
+            country["treasury"] = 9223372036854775807
+    _write_json(overflow_path, overflow_document)
+    var overflow_load: Dictionary = overflow_bridge.load_game(overflow_path)
+    var overflow_baseline_save: Dictionary = overflow_bridge.save_game(overflow_baseline_path)
+    var overflow_date: Dictionary = overflow_bridge.get_current_date()
+    var overflow_advance: Dictionary = overflow_bridge.advance_turn()
+    var overflow_save: Dictionary = overflow_bridge.save_game(overflow_mirror_path)
+    if not overflow_load.get("accepted", false) or \
+            not overflow_baseline_save.get("accepted", false) or \
+            overflow_advance.get("accepted", true) or \
+            overflow_advance.get("error", "") != "turn could not be advanced" or \
+            overflow_bridge.get_current_date() != overflow_date or \
+            not overflow_save.get("accepted", false) or \
+            FileAccess.get_file_as_string(overflow_mirror_path) != \
+                    FileAccess.get_file_as_string(overflow_baseline_path):
+        push_error("Extreme fiscal overflow crossed or mutated the bridge advance boundary: load=%s baseline=%s advance=%s date=%s/%s save=%s mirror_equal=%s" % [
+            overflow_load, overflow_baseline_save, overflow_advance, overflow_date,
+            overflow_bridge.get_current_date(), overflow_save,
+            FileAccess.get_file_as_string(overflow_mirror_path) == \
+                    FileAccess.get_file_as_string(overflow_baseline_path),
+        ])
+        overflow_bridge.free()
+        bridge.free()
+        quit(1)
+        return
+    overflow_bridge.free()
+
     for path: String in [
         save_path, mirror_path, progress_path, legacy_path, privacy_path,
         invalidated_path, transaction_path, transaction_mirror_path,
         ai_valid_disabled_path, ai_valid_enabled_path,
         ai_transaction_path, ai_transaction_mirror_path,
         ai_disabled_transaction_path, ai_disabled_transaction_mirror_path,
+        overflow_path, overflow_baseline_path, overflow_mirror_path,
     ]:
         DirAccess.remove_absolute(path)
     print("ProvinceBridge save game smoke test passed")

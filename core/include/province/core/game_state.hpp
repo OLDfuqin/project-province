@@ -10,6 +10,8 @@
 #include "province/core/technology.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -103,6 +105,12 @@ public:
     [[nodiscard]] const std::map<CountryRelationKey, DiplomaticStatus>& relations() const noexcept;
     [[nodiscard]] const std::map<OrderId, GameOrder>& orders() const noexcept;
     [[nodiscard]] std::vector<std::string> validate() const;
+    [[nodiscard]] static constexpr bool can_allocate_army_id(
+        const std::uint64_t next_sequence
+    ) noexcept {
+        return next_sequence > 0 &&
+            next_sequence < std::numeric_limits<std::uint64_t>::max() - 1;
+    }
 
 private:
     friend class SaveGameSerializer;

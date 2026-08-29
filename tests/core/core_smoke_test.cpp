@@ -14,9 +14,11 @@
 #include "province/core/version.hpp"
 #include "smoke_test_groups.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -123,11 +125,32 @@ int run_smoke_tests() {
             maintenance_event_index = index;
         }
     }
-    if (fiscal_event_index == turn.events.size() ||
+    std::size_t population_event_index = turn.events.size();
+    std::size_t movement_grant_event_index = turn.events.size();
+    std::size_t first_action_event_index = turn.events.size();
+    for (std::size_t index = 0; index < turn.events.size(); ++index) {
+        if (turn.events[index].type == GameEventType::population_resolved) {
+            population_event_index = index;
+        } else if (turn.events[index].type == GameEventType::movement_points_granted) {
+            movement_grant_event_index = index;
+        } else if (turn.events[index].type == GameEventType::army_recruited ||
+                   turn.events[index].type == GameEventType::army_moved ||
+                   turn.events[index].type == GameEventType::battle_resolved ||
+                   turn.events[index].type == GameEventType::road_built ||
+                   turn.events[index].type == GameEventType::technology_researched ||
+                   turn.events[index].type == GameEventType::armies_merged ||
+                   turn.events[index].type == GameEventType::war_declared) {
+            first_action_event_index = std::min(first_action_event_index, index);
+        }
+    }
+    if (fiscal_event_index != 0 ||
         maintenance_event_index != fiscal_event_index + 1 ||
+        population_event_index != maintenance_event_index + 1 ||
+        movement_grant_event_index != population_event_index + 1 ||
+        first_action_event_index <= movement_grant_event_index ||
         turn.events[maintenance_event_index].sequence !=
             turn.events[fiscal_event_index].sequence + 1) {
-        std::cerr << "Monthly maintenance event did not follow fiscal income\n";
+        std::cerr << "Monthly stage events did not precede diplomacy/actions/projects\n";
         return 1;
     }
     for (std::size_t index = 1; index < turn.events.size(); ++index) {
@@ -202,6 +225,53 @@ int run_smoke_tests() {
             std::cerr << "Advance turn accepted a non-monthly duration\n";
             return 1;
         }
+    }
+
+    GameState overflow_state = generated_state(GameClock{1000, 1});
+    Country* overflow_country = overflow_state.find_country(CountryId{"auroria"});
+    if (overflow_country == nullptr) return 1;
+    overflow_country->treasury = std::numeric_limits<std::int64_t>::max();
+    const std::int64_t treasury_before_overflow = overflow_country->treasury;
+    const std::int32_t year_before_overflow = overflow_state.clock().year();
+    const std::int32_t month_before_overflow = overflow_state.clock().month();
+    CommandProcessor overflow_processor;
+    CommandResult overflow_result;
+    try {
+        overflow_result = overflow_processor.execute(
+            overflow_state, AdvanceTurnCommand{1}
+        );
+    } catch (const std::exception& error) {
+        std::cerr << "Advance-turn overflow escaped the transactional command boundary: "
+                  << error.what() << "\n";
+        return 1;
+    }
+    if (overflow_result.accepted || !overflow_result.events.empty() ||
+        overflow_state.find_country(CountryId{"auroria"})->treasury !=
+            treasury_before_overflow ||
+        overflow_state.clock().year() != year_before_overflow ||
+        overflow_state.clock().month() != month_before_overflow ||
+        overflow_processor.next_event_sequence() != 1) {
+        std::cerr << "Advance-turn overflow was not rejected transactionally\n";
+        return 1;
+    }
+
+    CommandProcessor exhausted_event_processor;
+    exhausted_event_processor.set_next_event_sequence(
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max() - 1)
+    );
+    GameState exhausted_event_state = generated_state(GameClock{1000, 1});
+    const std::int64_t exhausted_treasury =
+        exhausted_event_state.find_country(CountryId{"auroria"})->treasury;
+    const CommandResult exhausted_event_result = exhausted_event_processor.execute(
+        exhausted_event_state,
+        RecruitArmyCommand{CountryId{"auroria"}, capital_id, 1}
+    );
+    if (exhausted_event_result.accepted ||
+        exhausted_event_state.find_country(CountryId{"auroria"})->treasury !=
+            exhausted_treasury ||
+        !exhausted_event_state.orders().empty()) {
+        std::cerr << "Exhausted signed event sequence mutated state or wrapped\n";
+        return 1;
     }
 
     if (RoadSystem::required_roads_level(TerrainType::capital, TerrainType::plains) != 1 ||

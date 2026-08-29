@@ -481,6 +481,16 @@ func _initialize() -> void:
         elif action.get("type", "") == "movement_points_granted":
             movement_grant_action = action
     var army_id := String(recruited_action.get("army_id", ""))
+    var auroria_maintenance := -1
+    for charge: Dictionary in completion_turn.get("maintenance_charges", []):
+        if charge.get("country_id", "") == "auroria":
+            auroria_maintenance = int(charge.get("amount", -1))
+    var auroria_summary := _country(bridge, "auroria")
+    var fiscal_sequence := int(completion_turn.get("fiscal_income_event_sequence", -1))
+    var maintenance_sequence := int(maintenance_action.get("event_sequence", -1))
+    var population_sequence := int(completion_turn.get("population_event_sequence", -1))
+    var movement_sequence := int(movement_grant_action.get("event_sequence", -1))
+    var recruitment_sequence := int(recruited_action.get("event_sequence", -1))
     if rejected_turn.get("accepted", true) or bridge.get_current_date().get("month", 0) != \
             ((int(date_before.get("month", 0)) % 12) + 1) or \
             not completion_turn.get("accepted", false) or recruited_action.is_empty() or \
@@ -492,6 +502,14 @@ func _initialize() -> void:
             not completion_turn.has("maintenance_charges") or \
             not completion_turn.has("population_changes") or \
             not completion_turn.has("movement_grants") or \
+            auroria_maintenance < 0 or \
+            not auroria_summary.get("has_last_maintenance_charge", false) or \
+            int(auroria_summary.get("last_maintenance_charge", -1)) != \
+                    auroria_maintenance or \
+            not (fiscal_sequence < maintenance_sequence and \
+                    maintenance_sequence < population_sequence and \
+                    population_sequence < movement_sequence and \
+                    movement_sequence < recruitment_sequence) or \
             _army(bridge, army_id).is_empty() or bridge.get_pending_orders("auroria").size() != 0:
         push_error("Recruitment order did not complete through the monthly event stream")
         bridge.free()

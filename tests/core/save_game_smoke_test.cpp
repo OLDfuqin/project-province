@@ -391,6 +391,17 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     Json exhausted_next_sequence = document;
     exhausted_next_sequence["next_order_sequence"] =
         std::numeric_limits<std::uint64_t>::max();
+    Json duplicate_next_army_sequence = document;
+    duplicate_next_army_sequence["next_army_sequence"] = 1;
+    Json exhausted_next_army_sequence = document;
+    exhausted_next_army_sequence["next_army_sequence"] =
+        std::numeric_limits<std::uint64_t>::max();
+    Json exhausted_next_event_sequence = document;
+    exhausted_next_event_sequence["next_event_sequence"] =
+        std::numeric_limits<std::int64_t>::max();
+    Json unsigned_only_next_event_sequence = document;
+    unsigned_only_next_event_sequence["next_event_sequence"] =
+        std::numeric_limits<std::uint64_t>::max();
     Json extreme_military_level = document;
     for (Json& technology_entry : extreme_military_level["technologies"]) {
         if (technology_entry.at("country_id") == human.value()) {
@@ -414,6 +425,16 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     unknown_army["orders"][action_index]["army_id"] = "missing_army";
     Json wrong_action_owner = document;
     wrong_action_owner["orders"][action_index]["country_id"] = "caelus";
+    Json hidden_neutral_action = document;
+    hidden_neutral_action["orders"][action_index]["country_id"] = "neutral";
+    const std::string action_army_id =
+        hidden_neutral_action["orders"][action_index]["army_id"].get<std::string>();
+    for (Json& army : hidden_neutral_action["armies"]) {
+        if (army.at("id") == action_army_id) {
+            army["owner_id"] = "neutral";
+            break;
+        }
+    }
     Json broken_path = document;
     broken_path["orders"][action_index]["path"][1] = "capital_caelus";
     broken_path["orders"][action_index]["destination"] = "capital_caelus";
@@ -520,6 +541,10 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&missing_technology, "missing-technology"},
         {&bad_next_sequence, "bad-next-sequence"},
         {&exhausted_next_sequence, "exhausted-next-sequence"},
+        {&duplicate_next_army_sequence, "duplicate-next-army-sequence"},
+        {&exhausted_next_army_sequence, "exhausted-next-army-sequence"},
+        {&exhausted_next_event_sequence, "exhausted-next-event-sequence"},
+        {&unsigned_only_next_event_sequence, "unsigned-next-event-sequence"},
         {&extreme_military_level, "extreme-military-level"},
         {&duplicate_id, "duplicate-order-id"},
         {&duplicate_army_order, "duplicate-army-order"},
@@ -527,6 +552,7 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&unknown_order_field, "unknown-order-field"},
         {&unknown_army, "unknown-army"},
         {&wrong_action_owner, "wrong-action-owner"},
+        {&hidden_neutral_action, "hidden-neutral-action"},
         {&broken_path, "broken-path"},
         {&forged_movement, "forged-movement"},
         {&forged_recruitment_cost, "forged-recruitment-cost"},
@@ -586,6 +612,48 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         exhausted.state.orders().size() != orders_before_exhausted_queue ||
         exhausted.state.find_country(human)->treasury != treasury_before_exhausted_queue) {
         std::cerr << "Exhausted order allocator wrapped or mutated prepaid resources\n";
+        return false;
+    }
+
+    Json last_safe_army = document;
+    last_safe_army["next_army_sequence"] =
+        std::numeric_limits<std::uint64_t>::max() - 2;
+    const auto army_exhausted_path = std::filesystem::temp_directory_path() /
+        "province-schema7-near-exhausted-armies.json";
+    {
+        std::ofstream exhausted_stream{army_exhausted_path};
+        exhausted_stream << last_safe_army.dump(2);
+    }
+    LoadedGame army_exhausted{
+        GameState{GameClock{1, 1}}, 1, CountryId{"auroria"}, std::nullopt
+    };
+    try {
+        army_exhausted = SaveGameSerializer::load(army_exhausted_path);
+    } catch (const SaveGameError& error) {
+        std::cerr << "Last allocatable army sequence did not load: "
+                  << error.what() << "\n";
+        std::filesystem::remove(army_exhausted_path);
+        return false;
+    }
+    std::filesystem::remove(army_exhausted_path);
+    const std::size_t armies_before_exhaustion = army_exhausted.state.armies().size();
+    const ArmyId final_army = army_exhausted.state.create_army(
+        human, ProvinceId{recruitment_province_id}, 1
+    );
+    bool second_allocation_rejected = false;
+    try {
+        static_cast<void>(army_exhausted.state.create_army(
+            human, ProvinceId{recruitment_province_id}, 1
+        ));
+    } catch (const std::overflow_error&) {
+        second_allocation_rejected = true;
+    }
+    if (final_army.value() != "army_" + std::to_string(
+            std::numeric_limits<std::uint64_t>::max() - 2
+        ) ||
+        !second_allocation_rejected ||
+        army_exhausted.state.armies().size() != armies_before_exhaustion + 1) {
+        std::cerr << "Army allocator wrapped or partially mutated at exhaustion\n";
         return false;
     }
     return true;

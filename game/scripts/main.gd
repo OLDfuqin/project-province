@@ -1,8 +1,7 @@
 extends Control
 
-const PLAYER_COUNTRY_ID := "auroria"
+var player_country_id := "auroria"
 const QUICK_SAVE_PATH := "user://quick_save.json"
-const DEFAULT_ROAD_BUILD_COST := 600
 const GameText := preload("res://scripts/ui/game_text_formatter.gd")
 const StrategyPresenter := preload("res://scripts/ui/strategy_panel_presenter.gd")
 
@@ -267,16 +266,17 @@ func _refresh_management_window(
     province_management_window.display_province(
         province,
         bridge.get_army_summaries(),
-        PLAYER_COUNTRY_ID,
+        player_country_id,
         preferred_army_id,
-        _player_treasury()
+        _player_treasury(),
+        _authoritative_recruitment_quote(managed_province_id)
     )
     province_management_window.set_technology(_player_technology())
     province_management_window.set_pending_orders(_player_pending_orders())
     var selected_army_id := preferred_army_id
     if selected_army_id.is_empty():
         for army: Dictionary in bridge.get_army_summaries():
-            if army.get("owner_id", "") == PLAYER_COUNTRY_ID and \
+            if army.get("owner_id", "") == player_country_id and \
                     army.get("province_id", "") == managed_province_id:
                 selected_army_id = String(army.get("id", ""))
                 break
@@ -292,13 +292,42 @@ func _refresh_management_window(
 
 func _player_treasury() -> int:
     for country: Dictionary in bridge.get_country_summaries():
-        if country.get("id", "") == PLAYER_COUNTRY_ID:
+        if country.get("id", "") == player_country_id:
             return int(country.get("treasury", 0))
     return 0
 
 
 func _player_pending_orders() -> Array:
-    return bridge.get_pending_orders(PLAYER_COUNTRY_ID)
+    return bridge.get_pending_orders(player_country_id)
+
+
+func _authoritative_recruitment_quote(province_id: String) -> Dictionary:
+    var province: Dictionary = province_by_id.get(province_id, {})
+    var high := maxi(0, int(province.get("recruitable_population", 0)))
+    var low := 0
+    var best: Dictionary = {}
+    while low < high:
+        var candidate := low + int((high - low + 1) / 2)
+        var quote: Dictionary = bridge.get_recruitment_order_quote(
+            player_country_id, province_id, candidate
+        )
+        if quote.get("accepted", false):
+            low = candidate
+            best = quote
+        else:
+            high = candidate - 1
+    if low <= 0:
+        return {
+            "accepted": false,
+            "maximum_manpower": 0,
+            "cost": 0,
+        }
+    if best.is_empty() or int(best.get("manpower", 0)) != low:
+        best = bridge.get_recruitment_order_quote(
+            player_country_id, province_id, low
+        )
+    best["maximum_manpower"] = low
+    return best
 
 
 func _localized_failure(result: Dictionary, fallback := "未知错误") -> String:
@@ -387,10 +416,18 @@ func _on_management_recruit_requested(province_id: String, manpower: int) -> voi
     if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or \
             province_id != managed_province_id:
         return
-    var result: Dictionary = bridge.recruit_army(
-        PLAYER_COUNTRY_ID,
+    var quote: Dictionary = bridge.get_recruitment_order_quote(
+        player_country_id,
         province_id,
         manpower
+    )
+    if not quote.get("accepted", false):
+        var quote_error := "招募失败：%s" % _localized_failure(quote)
+        event_log.text = quote_error
+        province_management_window.set_status(quote_error)
+        return
+    var result: Dictionary = bridge.recruit_army(
+        player_country_id, province_id, manpower
     )
     if not result.get("accepted", false):
         var error_message := "招募失败：%s" % _localized_failure(result)
@@ -677,43 +714,7 @@ func _on_road_construction_entry_pressed() -> void:
         ""
     )
     workspace_content.visible = false
-    road_construction_window.open_window(_estimated_road_build_cost())
-
-
-func _estimated_road_build_cost() -> int:
-    var first: Dictionary = province_by_id.get(road_start_id, {})
-    var second: Dictionary = province_by_id.get(road_end_id, {})
-    if first.is_empty() or second.is_empty():
-        return DEFAULT_ROAD_BUILD_COST
-    var base_cost: int = _road_endpoint_base_cost(first.get("terrain", "plains")) + \
-        _road_endpoint_base_cost(second.get("terrain", "plains"))
-    var roads_level: int = _player_roads_level()
-    var discount: int = {1: 10, 2: 20, 3: 30, 4: 50}.get(roads_level, 0)
-    return int(base_cost * (100 - discount) / 100)
-
-
-func _player_roads_level() -> int:
-    for technology: Dictionary in bridge.get_technology_summaries():
-        if technology.get("country_id", "") == PLAYER_COUNTRY_ID:
-            return int(technology.get("roads_level", 0))
-    return 0
-
-
-func _road_endpoint_base_cost(terrain: String) -> int:
-    match terrain:
-        "plains":
-            return 300
-        "mountains":
-            return 700
-        _:
-            return 500
-
-
-func _road_required_level(first_terrain: String, second_terrain: String) -> int:
-    var first_t: int = {"plains": 10, "forest": 9, "hills": 9, "mountains": 8}.get(first_terrain, 10)
-    var second_t: int = {"plains": 10, "forest": 9, "hills": 9, "mountains": 8}.get(second_terrain, 10)
-    var minimum_t: int = mini(first_t, second_t)
-    return 1 if minimum_t >= 10 else 2 if minimum_t >= 9 else 3
+    road_construction_window.open_window()
 
 
 func _on_road_start_selection_requested() -> void:
@@ -722,7 +723,6 @@ func _on_road_start_selection_requested() -> void:
     _clear_road_selection()
     map_input_mode = MapInputMode.ROAD_START
     road_construction_window.reset_selection(
-        _estimated_road_build_cost(),
         "请在地图上选择由你控制的道路起点"
     )
 
@@ -739,8 +739,7 @@ func _on_road_end_selection_requested() -> void:
     road_construction_window.set_start(
         province_by_id.get(road_start_id, {"name": road_start_id}).get(
             "name", road_start_id
-        ),
-        _estimated_road_build_cost()
+        )
     )
     road_construction_window.set_status("请在地图上选择相邻的道路终点")
 
@@ -751,7 +750,6 @@ func _on_road_reset_requested() -> void:
     _clear_road_selection()
     map_input_mode = MapInputMode.NORMAL
     road_construction_window.reset_selection(
-        _estimated_road_build_cost(),
         "道路选择已重置"
     )
 
@@ -764,7 +762,7 @@ func _select_road_endpoint(province_id: String) -> void:
     if province.is_empty():
         road_construction_window.set_status("请选择一个有效地区")
         return
-    if province.get("owner_id", "") != PLAYER_COUNTRY_ID:
+    if province.get("owner_id", "") != player_country_id:
         road_construction_window.set_status("道路端点必须由玩家实际控制")
         return
 
@@ -774,8 +772,7 @@ func _select_road_endpoint(province_id: String) -> void:
         map_input_mode = MapInputMode.NORMAL
         _refresh_road_selection()
         road_construction_window.set_start(
-            province.get("name", province_id),
-            _estimated_road_build_cost()
+            province.get("name", province_id)
         )
         return
 
@@ -797,12 +794,12 @@ func _select_road_endpoint(province_id: String) -> void:
     map_input_mode = MapInputMode.NORMAL
     _refresh_road_selection()
     var quote: Dictionary = bridge.get_road_order_quote(
-        PLAYER_COUNTRY_ID,
+        player_country_id,
         road_start_id,
         road_end_id
     )
     var can_build := bool(quote.get("accepted", false))
-    var estimated_cost := int(quote.get("cost", _estimated_road_build_cost()))
+    var estimated_cost := int(quote.get("cost", 0))
     var status: String = "路线合法，可以创建修路订单" if can_build else \
         "当前无法下单：%s" % GameText.order_failure_reason(
             String(quote.get("error", "未知原因"))
@@ -876,32 +873,23 @@ func _refresh_turn_controls() -> void:
     advance_turn_button.text = "进入下一回合（1个月）"
 
 
-func _monthly_maintenance_by_country() -> Dictionary:
-    var manpower_by_country: Dictionary = {}
-    for army: Dictionary in bridge.get_army_summaries():
-        var country_id := String(army.get("owner_id", ""))
-        manpower_by_country[country_id] = int(manpower_by_country.get(
-            country_id, 0
-        )) + int(army.get("manpower", 0))
-    var maintenance: Dictionary = {}
-    for country_id: String in manpower_by_country:
-        maintenance[country_id] = int(manpower_by_country[country_id] / 2)
-    return maintenance
-
-
 func _refresh_country_list() -> void:
     for child: Node in $RightPanel/Center/CountryList.get_children():
         child.free()
 
-    var maintenance := _monthly_maintenance_by_country()
     for country: Dictionary in bridge.get_country_summaries():
         var label := Label.new()
         var rgb: int = country["color_rgb"]
-        label.text = "%s · 国库 %d（%s）· 维护费 %d/月 · 地区 %d · 经济 %d · 财政收入 %d" % [
+        var maintenance_text := (
+            str(country.get("last_maintenance_charge", 0))
+            if country.get("has_last_maintenance_charge", false)
+            else "尚未结算"
+        )
+        label.text = "%s · 国库 %d（%s）· 最近维护费 %s · 地区 %d · 经济 %d · 财政收入 %d" % [
             country["name"],
             country["treasury"],
             "负债" if int(country["treasury"]) < 0 else "无负债",
-            maintenance.get(String(country["id"]), 0),
+            maintenance_text,
             country["province_count"],
             country.get("economy", 0),
             country.get("fiscal_income", 0),
@@ -929,7 +917,7 @@ func _refresh_country_details() -> void:
     var country_names: Dictionary = {}
     for country: Dictionary in countries:
         country_names[country["id"]] = country["name"]
-    var status: Dictionary = bridge.get_game_status(PLAYER_COUNTRY_ID)
+    var status: Dictionary = bridge.get_game_status(player_country_id)
     country_details.text = StrategyPresenter.country_details(
         countries,
         bridge.get_technology_summaries(),
@@ -951,14 +939,18 @@ func _refresh_war_overview() -> void:
 
 
 func _refresh_game_status() -> void:
-    var status: Dictionary = bridge.get_game_status(PLAYER_COUNTRY_ID)
+    var status: Dictionary = bridge.get_game_status(player_country_id)
     if not status.get("has_scenario", false):
         $RightPanel/Center/GameStatus.text = "当前没有已加载的场景"
         return
     if status.get("player_won", false):
-        $RightPanel/Center/GameStatus.text = "胜利：奥罗里亚已经控制世界"
+        $RightPanel/Center/GameStatus.text = "胜利：%s已经控制世界" % _country_name(
+            player_country_id
+        )
     elif status.get("player_eliminated", false):
-        $RightPanel/Center/GameStatus.text = "失败：奥罗里亚已经灭亡"
+        $RightPanel/Center/GameStatus.text = "失败：%s已经灭亡" % _country_name(
+            player_country_id
+        )
     elif status.get("winner_id", "") != "":
         $RightPanel/Center/GameStatus.text = "胜利国家：%s" % _country_name(
             status["winner_id"]
@@ -974,7 +966,7 @@ func _refresh_game_status() -> void:
 func _populate_war_targets() -> void:
     war_target.clear()
     for country: Dictionary in bridge.get_country_summaries():
-        if country["id"] == PLAYER_COUNTRY_ID:
+        if country["id"] == player_country_id:
             continue
         war_target.add_item(country["name"])
         war_target.set_item_metadata(war_target.item_count - 1, country["id"])
@@ -985,7 +977,7 @@ func _on_declare_war_pressed() -> void:
     if war_target.item_count == 0:
         return
     var defender_id: String = war_target.get_selected_metadata()
-    var result: Dictionary = bridge.declare_war(PLAYER_COUNTRY_ID, defender_id)
+    var result: Dictionary = bridge.declare_war(player_country_id, defender_id)
     if not result.get("accepted", false):
         event_log.text = "宣战失败：%s" % _localized_failure(result)
         return
@@ -1004,7 +996,7 @@ func _on_make_peace_pressed() -> void:
     var other_country_id: String = war_target.get_selected_metadata()
     var annex: bool = peace_policy.get_selected_metadata()
     var result: Dictionary = bridge.make_peace(
-        PLAYER_COUNTRY_ID,
+        player_country_id,
         other_country_id,
         annex
     )
@@ -1024,7 +1016,7 @@ func _on_make_peace_pressed() -> void:
 
 
 func _on_research_technology(track: String) -> void:
-    var result: Dictionary = bridge.research_technology(PLAYER_COUNTRY_ID, track)
+    var result: Dictionary = bridge.research_technology(player_country_id, track)
     if not result.get("accepted", false):
         event_log.text = "科技研究失败：%s" % _localized_failure(result)
         if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
@@ -1048,7 +1040,7 @@ func _on_research_technology(track: String) -> void:
 
 func _player_technology() -> Dictionary:
     for technology: Dictionary in bridge.get_technology_summaries():
-        if technology.get("country_id", "") == PLAYER_COUNTRY_ID:
+        if technology.get("country_id", "") == player_country_id:
             return technology
     return {}
 
@@ -1077,7 +1069,8 @@ func _on_quick_load_pressed() -> void:
     if not result.get("accepted", false):
         event_log.text = "读取失败：%s" % _localized_failure(result)
         return
-    _clear_movement_selection()
+    player_country_id = String(result.get("player_country_id", player_country_id))
+    _clear_local_managed_army_state()
     _clear_road_selection()
     _refresh_date()
     _refresh_country_list()
@@ -1087,6 +1080,7 @@ func _on_quick_load_pressed() -> void:
     _refresh_technology_status()
     _refresh_game_status()
     _refresh_pending_orders()
+    _populate_war_targets()
     event_log.text = "已从 quick_save.json 读取游戏"
     _record_event(event_log.text)
 
@@ -1151,7 +1145,7 @@ func _refresh_advance_plans() -> void:
                 bridge,
                 bridge.get_army_summaries(),
                 province_by_id,
-                PLAYER_COUNTRY_ID,
+                player_country_id,
                 1
             )
         )
@@ -1296,7 +1290,7 @@ func _on_build_road_pressed() -> void:
             road_construction_window.set_status("请先选择道路起点和终点")
         return
     var result: Dictionary = bridge.build_road(
-        PLAYER_COUNTRY_ID,
+        player_country_id,
         road_start_id,
         road_end_id
     )
@@ -1323,7 +1317,6 @@ func _on_build_road_pressed() -> void:
     map_input_mode = MapInputMode.NORMAL
     if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
         road_construction_window.reset_selection(
-            _estimated_road_build_cost(),
             "已下单，剩余1个月；道路将在下月项目阶段完成"
         )
 
@@ -1436,7 +1429,8 @@ func _refresh_road_selection() -> void:
         road_start_id.is_empty() or road_end_id.is_empty()
     )
     if road_start_id.is_empty():
-        $RightPanel/Center/RoadControls/RoadSelection.text = "修路：请选择起点（当前玩家：奥罗里亚）"
+        $RightPanel/Center/RoadControls/RoadSelection.text = \
+            "修路：请选择起点（当前玩家：%s）" % _country_name(player_country_id)
     elif road_end_id.is_empty():
         $RightPanel/Center/RoadControls/RoadSelection.text = "起点：%s · 请选择终点" % [
             province_by_id[road_start_id]["name"]
@@ -1454,57 +1448,51 @@ func _refresh_road_workspace_state() -> void:
     if road_start_id.is_empty():
         province_map.set_road_selection("", "")
         road_construction_window.reset_selection(
-            DEFAULT_ROAD_BUILD_COST,
             "国库负债：不能创建修路订单" if _player_treasury() < 0
             else "请选择道路起点"
         )
         return
 
     var start: Dictionary = province_by_id.get(road_start_id, {})
-    if start.is_empty() or start.get("owner_id", "") != PLAYER_COUNTRY_ID:
+    if start.is_empty() or start.get("owner_id", "") != player_country_id:
         _clear_road_selection()
         road_construction_window.reset_selection(
-            DEFAULT_ROAD_BUILD_COST,
             "原道路起点已失效或不再由玩家实际控制"
         )
         return
     if road_end_id.is_empty():
         road_construction_window.set_start(
-            String(start.get("name", road_start_id)),
-            _estimated_road_build_cost()
+            String(start.get("name", road_start_id))
         )
         if _player_treasury() < 0:
             road_construction_window.set_status("国库负债：不能创建修路订单")
         return
 
     var end: Dictionary = province_by_id.get(road_end_id, {})
-    if end.is_empty() or end.get("owner_id", "") != PLAYER_COUNTRY_ID:
+    if end.is_empty() or end.get("owner_id", "") != player_country_id:
         _clear_road_selection()
         road_construction_window.reset_selection(
-            DEFAULT_ROAD_BUILD_COST,
             "原道路终点已失效或不再由玩家实际控制"
         )
         return
     if not _are_provinces_adjacent(road_start_id, road_end_id):
         _clear_road_selection()
         road_construction_window.reset_selection(
-            DEFAULT_ROAD_BUILD_COST,
             "原道路端点已不再相邻"
         )
         return
     if _road_connection_exists(road_start_id, road_end_id):
         _clear_road_selection()
         road_construction_window.reset_selection(
-            DEFAULT_ROAD_BUILD_COST,
             "这两个地区之间已经存在公路，原路线已清除"
         )
         return
 
     var quote: Dictionary = bridge.get_road_order_quote(
-        PLAYER_COUNTRY_ID, road_start_id, road_end_id
+        player_country_id, road_start_id, road_end_id
     )
     var accepted := bool(quote.get("accepted", false))
-    var cost := int(quote.get("cost", _estimated_road_build_cost()))
+    var cost := int(quote.get("cost", 0))
     var status := "路线合法，可以创建修路订单"
     if not accepted:
         status = "当前无法下单：%s" % GameText.order_failure_reason(

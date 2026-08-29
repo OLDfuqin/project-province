@@ -182,6 +182,58 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var preserved_army_id := ""
+    var preserved_origin_id := ""
+    var preserved_target_id := ""
+    if bridge.get_army_summaries().filter(
+        func(army: Dictionary) -> bool:
+            return army.get("owner_id", "") == "auroria"
+    ).is_empty():
+        var prepared_recruit: Dictionary = bridge.recruit_army(
+            "auroria", "capital_auroria", 100
+        )
+        var prepared_turn: Dictionary = bridge.advance_turn()
+        if not prepared_recruit.get("accepted", false) or \
+                not prepared_turn.get("accepted", false):
+            push_error("Could not recruit an army for quick-load fixture")
+            main_scene.free()
+            quit(1)
+            return
+    for army: Dictionary in bridge.get_army_summaries():
+        if army.get("owner_id", "") == "auroria":
+            preserved_army_id = String(army.get("id", ""))
+            preserved_origin_id = String(army.get("province_id", ""))
+            break
+    for province: Dictionary in bridge.get_province_summaries():
+        if province.get("id", "") != "" and \
+                province.get("id", "") != preserved_origin_id:
+            preserved_target_id = String(province.get("id", ""))
+            break
+    if preserved_army_id.is_empty() or preserved_target_id.is_empty() or \
+            not bridge.set_army_advance_target(
+                preserved_army_id, preserved_target_id
+            ).get("accepted", false):
+        push_error("Could not prepare quick-load advance-target fixture")
+        main_scene.free()
+        quit(1)
+        return
+    main_scene.moving_army_id = preserved_army_id
+    main_scene.get_node("RightPanel/Center/SaveControls/Save").pressed.emit()
+    bridge.clear_army_advance_target(preserved_army_id)
+    main_scene.get_node("RightPanel/Center/SaveControls/Load").pressed.emit()
+    await process_frame
+    var restored_target := ""
+    for army: Dictionary in bridge.get_army_summaries():
+        if army.get("id", "") == preserved_army_id:
+            restored_target = String(army.get("advance_target_id", ""))
+            break
+    if restored_target != preserved_target_id or \
+            not main_scene.moving_army_id.is_empty():
+        push_error("Quick-load mutated the loaded advance target or kept stale local selection")
+        main_scene.free()
+        quit(1)
+        return
+
     var removed_controls := [
         "RightPanel/Center/RegionDetails",
         "RightPanel/Center/TechnologyControls",
@@ -323,6 +375,45 @@ func _initialize() -> void:
     await process_frame
     if workspace_scroll.scroll_vertical <= 0:
         push_error("Workspace could not scroll to its lower content")
+        main_scene.free()
+        quit(1)
+        return
+
+    if bridge.set_ai_enabled(false, "caelus") != true:
+        push_error("Could not switch the saved player identity to Caelus")
+        main_scene.free()
+        quit(1)
+        return
+    for order: Dictionary in bridge.get_pending_orders("caelus"):
+        bridge.cancel_order(String(order.get("order_id", "")))
+    var caelus_order: Dictionary = bridge.recruit_army(
+        "caelus", "capital_caelus", 1
+    )
+    var quick_path := ProjectSettings.globalize_path("user://quick_save.json")
+    if not caelus_order.get("accepted", false) or \
+            not bridge.save_game(quick_path).get("accepted", false):
+        push_error("Could not save a Caelus UI authority fixture")
+        main_scene.free()
+        quit(1)
+        return
+    main_scene.get_node("RightPanel/Center/SaveControls/Load").pressed.emit()
+    await process_frame
+    var ui_player_identity := ""
+    for property: Dictionary in main_scene.get_property_list():
+        if property.get("name", "") == "player_country_id":
+            ui_player_identity = str(main_scene.get("player_country_id"))
+            break
+    var ui_pending_orders: Array = main_scene.call("_player_pending_orders")
+    var player_war_target := main_scene.get_node(
+        "RightPanel/Center/DiplomacyControls/WarTarget"
+    ) as OptionButton
+    var target_ids: Array[String] = []
+    for index: int in range(player_war_target.item_count):
+        target_ids.append(String(player_war_target.get_item_metadata(index)))
+    if ui_player_identity != "caelus" or ui_pending_orders.size() != 1 or \
+            ui_pending_orders[0].get("country_id", "") != "caelus" or \
+            target_ids.has("caelus") or not target_ids.has("auroria"):
+        push_error("Main UI did not consume the loaded Caelus player identity")
         main_scene.free()
         quit(1)
         return

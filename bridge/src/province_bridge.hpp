@@ -4,6 +4,7 @@
 #include "province/core/command_processor.hpp"
 
 #include <cstdint>
+#include <map>
 #include <optional>
 
 #include <godot_cpp/classes/node.hpp>
@@ -134,8 +135,17 @@ protected:
     static void _bind_methods();
 
 private:
+    [[nodiscard]] bool authorize_country_write(
+        godot::Dictionary& response,
+        const province::core::CountryId& country_id
+    ) const;
+    [[nodiscard]] bool authorize_army_write(
+        godot::Dictionary& response,
+        const province::core::ArmyId& army_id
+    ) const;
     std::optional<province::core::GameState> state_;
     province::core::CommandProcessor command_processor_;
+    std::map<province::core::CountryId, std::int64_t> last_maintenance_charges_;
     std::optional<province::core::CountryId> player_country_id_{
         province::core::CountryId{"auroria"}
     };

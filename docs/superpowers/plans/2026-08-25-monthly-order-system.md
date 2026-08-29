@@ -237,4 +237,3 @@
 - [ ] Run `scripts/build.cmd` and require the complete C++ suite to pass.
 - [ ] Import with Godot 4.6.3, run every `game/tests/*_test.gd`, start the main scene headlessly, and scan logs for `SCRIPT ERROR`, `push_error` and unexpected `ERROR:`.
 - [ ] Run `git diff --check`, inspect the complete diff, confirm the primary worktree's pre-existing user edits remain untouched, and commit with `docs: document monthly order gameplay`.
-

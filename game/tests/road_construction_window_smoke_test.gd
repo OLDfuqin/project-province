@@ -93,6 +93,19 @@ func _fail(main_scene: Node, message: String) -> void:
 
 
 func _initialize() -> void:
+    var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
+    for forbidden: String in [
+        "DEFAULT_ROAD_BUILD_COST",
+        "_estimated_road_build_cost",
+        "_road_endpoint_base_cost",
+        "_road_required_level",
+        'quote.get("cost", _',
+    ]:
+        if main_source.contains(forbidden):
+            push_error("Road UI retained a local authority fallback: %s" % forbidden)
+            quit(1)
+            return
+
     var packed_scene := load("res://scenes/main/main.tscn") as PackedScene
     if packed_scene == null:
         push_error("Main scene could not be loaded for road construction testing")
@@ -142,7 +155,8 @@ func _initialize() -> void:
     var reset := road_window.get_node("ActionButtons/Reset") as Button
     if main_scene.workspace_mode_name() != "road_construction" or \
             not road_window.visible or select_start.disabled or \
-            not select_end.disabled or not build_road.disabled:
+            not select_end.disabled or not build_road.disabled or \
+            not road_window.get_node("EstimatedCost").text.contains("等待权威报价"):
         _fail(main_scene, "Road construction window did not open in its initial state")
         return
 

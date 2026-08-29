@@ -110,6 +110,9 @@ OrderOperationResult OrderSystem::queue_army_action(
 ) const {
     Army* army = state.find_army(army_id);
     if (army == nullptr) return rejected("ordered army does not exist");
+    const Country* owner = state.find_country(army->owner_id);
+    if (owner == nullptr) return rejected("ordered army owner does not exist");
+    if (owner->hidden) return rejected("hidden neutral country cannot queue army actions");
     if (has_army_order(state, army_id)) {
         return rejected("army already has an action order");
     }
@@ -164,8 +167,10 @@ OrderOperationResult OrderSystem::queue_army_action(
         static_cast<std::int32_t>(cost_half),
         is_attack,
     };
-    army->movement_points -= order.reserved_movement_half;
-    state.orders_.emplace(id, std::move(order));
+    const auto [iterator, inserted] = state.orders_.emplace(id, std::move(order));
+    static_cast<void>(iterator);
+    if (!inserted) return rejected("generated duplicate order ID");
+    army->movement_points -= static_cast<std::int32_t>(cost_half);
     ++state.next_order_sequence_;
     return {true, {}, id};
 }
@@ -206,11 +211,13 @@ OrderOperationResult OrderSystem::queue_recruitment(
     }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
-    country->treasury -= cost;
-    state.orders_.emplace(
+    const auto [iterator, inserted] = state.orders_.emplace(
         id,
         RecruitmentOrder{id, country_id, province_id, manpower, cost, 1}
     );
+    static_cast<void>(iterator);
+    if (!inserted) return rejected("generated duplicate order ID");
+    country->treasury -= cost;
     ++state.next_order_sequence_;
     return {true, {}, id};
 }
@@ -263,11 +270,13 @@ OrderOperationResult OrderSystem::queue_road_construction(
     }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
-    country->treasury -= cost;
-    state.orders_.emplace(
+    const auto [iterator, inserted] = state.orders_.emplace(
         id,
         RoadConstructionOrder{id, country_id, province_a, province_b, cost, 1}
     );
+    static_cast<void>(iterator);
+    if (!inserted) return rejected("generated duplicate order ID");
+    country->treasury -= cost;
     ++state.next_order_sequence_;
     return {true, {}, id};
 }
@@ -301,8 +310,7 @@ OrderOperationResult OrderSystem::queue_research(
     }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
-    country->treasury -= cost;
-    state.orders_.emplace(
+    const auto [iterator, inserted] = state.orders_.emplace(
         id,
         ResearchOrder{
             id,
@@ -314,6 +322,9 @@ OrderOperationResult OrderSystem::queue_research(
             target_level + 1,
         }
     );
+    static_cast<void>(iterator);
+    if (!inserted) return rejected("generated duplicate order ID");
+    country->treasury -= cost;
     ++state.next_order_sequence_;
     return {true, {}, id};
 }
@@ -344,10 +355,12 @@ OrderOperationResult OrderSystem::queue_war_declaration(
     }
 
     const OrderId id{"order_" + std::to_string(state.next_order_sequence_)};
-    state.orders_.emplace(
+    const auto [iterator, inserted] = state.orders_.emplace(
         id,
         WarDeclarationOrder{id, aggressor_id, defender_id}
     );
+    static_cast<void>(iterator);
+    if (!inserted) return rejected("generated duplicate order ID");
     ++state.next_order_sequence_;
     return {true, {}, id};
 }

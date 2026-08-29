@@ -44,6 +44,9 @@ public:
     [[nodiscard]] const std::optional<CountryId>& human_country_id() const noexcept;
     [[nodiscard]] std::uint64_t next_event_sequence() const noexcept;
     void set_next_event_sequence(std::uint64_t sequence);
+    [[nodiscard]] static constexpr std::uint64_t exhausted_event_sequence() noexcept {
+        return province::core::exhausted_event_sequence;
+    }
 
 private:
     [[nodiscard]] CommandResult execute_advance_turn(
@@ -87,6 +90,7 @@ private:
         const CancelOrderCommand& command
     );
     [[nodiscard]] std::vector<GameEvent> queue_ai_orders(GameState& state);
+    [[nodiscard]] std::uint64_t allocate_event_sequence();
 
     std::uint64_t next_event_sequence_{1};
     EconomySystem economy_system_;

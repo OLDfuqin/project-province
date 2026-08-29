@@ -113,7 +113,12 @@ func _initialize() -> void:
         ],
         "auroria",
         "army_1",
-        10000
+        10000,
+        {
+            "accepted": true,
+            "maximum_manpower": 375,
+            "cost": 1500,
+        }
     )
     window.set_technology({
         "economy_level": 1,
@@ -278,7 +283,11 @@ func _initialize() -> void:
             observed["merge_primary"] != "army_1" or \
             observed["merge_ids"] != ["army_2"] or \
             merge_candidates.item_count != 1 or \
-            int(window.get_node("Recruitment/Amount").max_value) != 500 or \
+            int(window.get_node("Recruitment/Amount").max_value) != 375 or \
+            not window.get_node("Recruitment/Details").text.contains(
+                "权威报价"
+            ) or \
+            not window.get_node("Recruitment/Details").text.contains("1500") or \
             not province_summary.text.contains("120000") or \
             not province_summary.text.ends_with("1200") or \
             not technology_status.text.contains("道路 3") or \

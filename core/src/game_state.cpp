@@ -35,6 +35,24 @@ std::optional<std::uint64_t> parse_order_sequence(const OrderId& id) noexcept {
     return sequence;
 }
 
+std::optional<std::uint64_t> parse_army_sequence(const ArmyId& id) noexcept {
+    constexpr std::string_view prefix{"army_"};
+    const std::string& value = id.value();
+    if (!value.starts_with(prefix) || value.size() == prefix.size()) {
+        return std::nullopt;
+    }
+    const std::string_view digits{value.data() + prefix.size(), value.size() - prefix.size()};
+    if (digits.size() > 1 && digits.front() == '0') return std::nullopt;
+    std::uint64_t sequence{};
+    const auto [end, error] = std::from_chars(
+        digits.data(), digits.data() + digits.size(), sequence
+    );
+    if (error != std::errc{} || end != digits.data() + digits.size() || sequence == 0) {
+        return std::nullopt;
+    }
+    return sequence;
+}
+
 } // namespace
 
 GameState::GameState(GameClock clock) : clock_{std::move(clock)} {}
@@ -201,7 +219,10 @@ ArmyId GameState::create_army(
         throw std::invalid_argument{"army manpower must be positive"};
     }
 
-    ArmyId id{"army_" + std::to_string(next_army_sequence_++)};
+    if (!can_allocate_army_id(next_army_sequence_)) {
+        throw std::overflow_error{"army ID sequence is exhausted"};
+    }
+    ArmyId id{"army_" + std::to_string(next_army_sequence_)};
     const std::int64_t formation_number = next_formation_number(owner_id);
     const auto [iterator, inserted] = armies_.emplace(
         id,
@@ -220,6 +241,7 @@ ArmyId GameState::create_army(
     if (!inserted) {
         throw std::logic_error{"generated duplicate army ID"};
     }
+    ++next_army_sequence_;
     return iterator->first;
 }
 
@@ -419,7 +441,14 @@ std::vector<std::string> GameState::validate() const {
         }
     }
     std::map<CountryId, std::set<std::int64_t>> formation_numbers;
+    std::uint64_t greatest_army_sequence = 0;
     for (const auto& [army_id, army] : armies_) {
+        const std::optional<std::uint64_t> sequence = parse_army_sequence(army_id);
+        if (!sequence.has_value()) {
+            issues.push_back("army ID is not a canonical stable army sequence");
+        } else {
+            greatest_army_sequence = std::max(greatest_army_sequence, *sequence);
+        }
         if (!countries_.contains(army.owner_id)) {
             issues.push_back("army '" + army_id.value() + "' has an unknown owner");
         }
@@ -449,6 +478,11 @@ std::vector<std::string> GameState::validate() const {
             army.advance_strategy != "stop_before_enemy") {
             issues.push_back("army '" + army_id.value() + "' has an unknown advance strategy");
         }
+    }
+    if (next_army_sequence_ == 0 ||
+        next_army_sequence_ == std::numeric_limits<std::uint64_t>::max() ||
+        next_army_sequence_ <= greatest_army_sequence) {
+        issues.push_back("next army sequence must exceed every army ID and not be exhausted");
     }
     for (const auto& [country_id, country] : countries_) {
         static_cast<void>(country);
@@ -502,6 +536,9 @@ std::vector<std::string> GameState::validate() const {
                     issues.push_back("army action order references an unknown army or country");
                 } else if (army->owner_id != typed_order.country_id) {
                     issues.push_back("army action order country does not own its army");
+                } else if (const Country* owner = find_country(typed_order.country_id);
+                           owner != nullptr && owner->hidden) {
+                    issues.push_back("hidden country has an army action order");
                 }
                 if (!ordered_armies.insert(typed_order.army_id).second) {
                     issues.push_back("army has more than one action order");

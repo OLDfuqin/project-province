@@ -11,6 +11,7 @@
 #include "province/core/version.hpp"
 
 #include <filesystem>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -267,6 +268,7 @@ bool ProvinceBridge::load_scenario(
             province::core::GameClock{initial_year, initial_month}
         ));
         command_processor_ = province::core::CommandProcessor{};
+        last_maintenance_charges_.clear();
         player_country_id_ = province::core::CountryId{"auroria"};
         command_processor_.enable_ai(*state_, *player_country_id_);
         last_error_ = godot::String{};
@@ -280,6 +282,35 @@ bool ProvinceBridge::load_scenario(
 
 bool ProvinceBridge::has_scenario() const noexcept {
     return state_.has_value();
+}
+
+bool ProvinceBridge::authorize_country_write(
+    godot::Dictionary& response,
+    const province::core::CountryId& country_id
+) const {
+    if (!player_country_id_.has_value() || country_id != *player_country_id_) {
+        set_stable_rejection(response, "write is not authorized for the current player");
+        return false;
+    }
+    return true;
+}
+
+bool ProvinceBridge::authorize_army_write(
+    godot::Dictionary& response,
+    const province::core::ArmyId& army_id
+) const {
+    if (!player_country_id_.has_value()) {
+        set_stable_rejection(response, "write is not authorized for the current player");
+        return false;
+    }
+    const province::core::Army* army = state_.has_value()
+        ? state_->find_army(army_id)
+        : nullptr;
+    if (army != nullptr && army->owner_id != *player_country_id_) {
+        set_stable_rejection(response, "write is not authorized for the current player");
+        return false;
+    }
+    return true;
 }
 
 godot::String ProvinceBridge::get_last_error() const {
@@ -321,6 +352,13 @@ godot::Array ProvinceBridge::get_country_summaries() const {
         summary["province_count"] = province_count;
         summary["economy"] = economy;
         summary["fiscal_income"] = fiscal_income;
+        const auto maintenance = last_maintenance_charges_.find(country_id);
+        summary["has_last_maintenance_charge"] =
+            maintenance != last_maintenance_charges_.end();
+        summary["last_maintenance_charge"] = maintenance !=
+                last_maintenance_charges_.end()
+            ? maintenance->second
+            : 0;
         summaries.push_back(summary);
     }
     return summaries;
@@ -500,11 +538,15 @@ godot::Dictionary ProvinceBridge::get_recruitment_order_quote(
         return response;
     }
     try {
+        const province::core::CountryId requested_country{
+            country_id.utf8().get_data()
+        };
+        if (!authorize_country_write(response, requested_country)) return response;
         province::core::GameState preview = *state_;
         const province::core::OrderOperationResult result =
             province::core::OrderSystem{}.queue_recruitment(
                 preview,
-                province::core::CountryId{country_id.utf8().get_data()},
+                requested_country,
                 province::core::ProvinceId{province_id.utf8().get_data()},
                 manpower
             );
@@ -532,11 +574,15 @@ godot::Dictionary ProvinceBridge::get_road_order_quote(
         return response;
     }
     try {
+        const province::core::CountryId requested_country{
+            country_id.utf8().get_data()
+        };
+        if (!authorize_country_write(response, requested_country)) return response;
         province::core::GameState preview = *state_;
         const province::core::OrderOperationResult result =
             province::core::OrderSystem{}.queue_road_construction(
                 preview,
-                province::core::CountryId{country_id.utf8().get_data()},
+                requested_country,
                 province::core::ProvinceId{province_a.utf8().get_data()},
                 province::core::ProvinceId{province_b.utf8().get_data()}
             );
@@ -560,230 +606,256 @@ godot::Dictionary ProvinceBridge::advance_turn(const std::int32_t months) {
         return response;
     }
 
-    const province::core::CommandResult result = command_processor_.execute(
-        *state_,
-        province::core::AdvanceTurnCommand{months}
-    );
-    response["accepted"] = result.accepted;
-    response["error"] = godot::String::utf8(result.error.c_str());
-    response["year"] = state_->clock().year();
-    response["month"] = state_->clock().month();
+    try {
+        province::core::GameState working_state = *state_;
+        province::core::CommandProcessor working_processor = command_processor_;
+        const province::core::CommandResult result = working_processor.execute(
+            working_state, province::core::AdvanceTurnCommand{months}
+        );
+        response["accepted"] = result.accepted;
+        const bool transactional_failure = !result.accepted &&
+            (result.error == "command failed transactionally" ||
+             result.error == "command produced invalid state");
+        response["error"] = transactional_failure
+            ? godot::String{"turn could not be advanced"}
+            : godot::String::utf8(result.error.c_str());
+        response["year"] = working_state.clock().year();
+        response["month"] = working_state.clock().month();
 
-    godot::Array fiscal_incomes;
-    godot::Array maintenance_charges;
-    godot::Array population_changes;
-    godot::Array movement_grants;
-    godot::Array turn_actions;
-    for (const province::core::GameEvent& event : result.events) {
-        if (event.type == province::core::GameEventType::fiscal_income_resolved) {
-            const auto& fiscal =
-                std::get<province::core::FiscalIncomeResolvedEvent>(event.payload);
-            for (const province::core::CountryFiscalIncome& income : fiscal.fiscal_incomes) {
-                godot::Dictionary summary;
-                summary["country_id"] = godot::String::utf8(
-                    income.country_id.value().c_str()
-                );
-                summary["amount"] = income.amount;
-                fiscal_incomes.push_back(summary);
+        godot::Array fiscal_incomes;
+        godot::Array maintenance_charges;
+        godot::Array population_changes;
+        godot::Array movement_grants;
+        godot::Array turn_actions;
+        std::map<province::core::CountryId, std::int64_t> resolved_maintenance;
+        for (const province::core::GameEvent& event : result.events) {
+            if (event.sequence > static_cast<std::uint64_t>(
+                    std::numeric_limits<std::int64_t>::max()
+                )) {
+                throw std::overflow_error{"event sequence is outside the Godot signed range"};
             }
-            response["fiscal_income_event_sequence"] =
-                static_cast<std::int64_t>(event.sequence);
-            continue;
-        }
-        if (event.type == province::core::GameEventType::population_resolved) {
-            const auto& population =
-                std::get<province::core::PopulationResolvedEvent>(event.payload);
-            for (const province::core::ProvincePopulationChange& change : population.changes) {
-                godot::Dictionary summary;
-                summary["province_id"] = godot::String::utf8(
-                    change.province_id.value().c_str()
-                );
-                summary["previous_population"] = change.previous_population;
-                summary["current_population"] = change.current_population;
-                summary["growth"] = change.growth;
-                summary["previous_recruitable_population"] =
-                    change.previous_recruitable_population;
-                summary["current_recruitable_population"] =
-                    change.current_recruitable_population;
-                summary["recruitable_growth"] = change.recruitable_growth;
-                population_changes.push_back(summary);
+            if (event.type == province::core::GameEventType::fiscal_income_resolved) {
+                const auto& fiscal =
+                    std::get<province::core::FiscalIncomeResolvedEvent>(event.payload);
+                for (const province::core::CountryFiscalIncome& income : fiscal.fiscal_incomes) {
+                    godot::Dictionary summary;
+                    summary["country_id"] = godot::String::utf8(
+                        income.country_id.value().c_str()
+                    );
+                    summary["amount"] = income.amount;
+                    fiscal_incomes.push_back(summary);
+                }
+                response["fiscal_income_event_sequence"] =
+                    static_cast<std::int64_t>(event.sequence);
+                continue;
             }
-            response["population_event_sequence"] =
-                static_cast<std::int64_t>(event.sequence);
-            continue;
-        }
-        if (event.type == province::core::GameEventType::turn_advanced) {
-            const auto& turn = std::get<province::core::TurnAdvancedEvent>(event.payload);
-            response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
-            response["event_type"] = "turn_advanced";
-            response["elapsed_months"] = turn.elapsed_months;
-            response["previous_year"] = turn.previous_year;
-            response["previous_month"] = turn.previous_month;
-            response["year"] = turn.current_year;
-            response["month"] = turn.current_month;
-            continue;
-        }
+            if (event.type == province::core::GameEventType::population_resolved) {
+                const auto& population =
+                    std::get<province::core::PopulationResolvedEvent>(event.payload);
+                for (const province::core::ProvincePopulationChange& change : population.changes) {
+                    godot::Dictionary summary;
+                    summary["province_id"] = godot::String::utf8(
+                        change.province_id.value().c_str()
+                    );
+                    summary["previous_population"] = change.previous_population;
+                    summary["current_population"] = change.current_population;
+                    summary["growth"] = change.growth;
+                    summary["previous_recruitable_population"] =
+                        change.previous_recruitable_population;
+                    summary["current_recruitable_population"] =
+                        change.current_recruitable_population;
+                    summary["recruitable_growth"] = change.recruitable_growth;
+                    population_changes.push_back(summary);
+                }
+                response["population_event_sequence"] =
+                    static_cast<std::int64_t>(event.sequence);
+                continue;
+            }
+            if (event.type == province::core::GameEventType::turn_advanced) {
+                const auto& turn = std::get<province::core::TurnAdvancedEvent>(event.payload);
+                response["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+                response["event_type"] = "turn_advanced";
+                response["elapsed_months"] = turn.elapsed_months;
+                response["previous_year"] = turn.previous_year;
+                response["previous_month"] = turn.previous_month;
+                response["year"] = turn.current_year;
+                response["month"] = turn.current_month;
+                continue;
+            }
 
-        godot::Dictionary action;
-        action["event_sequence"] = static_cast<std::int64_t>(event.sequence);
-        if (event.type == province::core::GameEventType::maintenance_resolved) {
-            const auto& maintenance =
-                std::get<province::core::MaintenanceResolvedEvent>(event.payload);
-            godot::Array charges;
-            for (const province::core::CountryMaintenanceCharge& charge :
-                    maintenance.charges) {
-                godot::Dictionary summary;
-                summary["country_id"] = godot::String::utf8(
-                    charge.country_id.value().c_str()
+            godot::Dictionary action;
+            action["event_sequence"] = static_cast<std::int64_t>(event.sequence);
+            if (event.type == province::core::GameEventType::maintenance_resolved) {
+                const auto& maintenance =
+                    std::get<province::core::MaintenanceResolvedEvent>(event.payload);
+                godot::Array charges;
+                for (const province::core::CountryMaintenanceCharge& charge :
+                        maintenance.charges) {
+                    godot::Dictionary summary;
+                    summary["country_id"] = godot::String::utf8(
+                        charge.country_id.value().c_str()
+                    );
+                    summary["amount"] = charge.amount;
+                    charges.push_back(summary);
+                    maintenance_charges.push_back(summary);
+                    resolved_maintenance[charge.country_id] = charge.amount;
+                }
+                action["type"] = "maintenance_resolved";
+                action["elapsed_months"] = maintenance.elapsed_months;
+                action["charges"] = charges;
+            } else if (event.type == province::core::GameEventType::movement_points_granted) {
+                const auto& movement =
+                    std::get<province::core::MovementPointsGrantedEvent>(event.payload);
+                godot::Array grants;
+                for (const province::core::ArmyMovementGrant& grant : movement.grants) {
+                    godot::Dictionary summary;
+                    summary["army_id"] = godot::String::utf8(grant.army_id.value().c_str());
+                    summary["amount"] = movement_points_to_display(grant.amount);
+                    summary["current_points"] = movement_points_to_display(grant.current_points);
+                    grants.push_back(summary);
+                    movement_grants.push_back(summary);
+                }
+                action["type"] = "movement_points_granted";
+                action["elapsed_months"] = movement.elapsed_months;
+                action["grants"] = grants;
+            } else if (event.type == province::core::GameEventType::army_recruited) {
+                const auto& recruited =
+                    std::get<province::core::ArmyRecruitedEvent>(event.payload);
+                action["type"] = "army_recruited";
+                action["order_id"] = godot::String::utf8(recruited.order_id.value().c_str());
+                action["army_id"] = godot::String::utf8(recruited.army_id.value().c_str());
+                action["country_id"] = godot::String::utf8(
+                    recruited.country_id.value().c_str()
                 );
-                summary["amount"] = charge.amount;
-                charges.push_back(summary);
-                maintenance_charges.push_back(summary);
+                action["province_id"] = godot::String::utf8(
+                    recruited.province_id.value().c_str()
+                );
+                action["manpower"] = recruited.manpower;
+                action["cost"] = recruited.cost;
+            } else if (event.type == province::core::GameEventType::army_renamed) {
+                const auto& renamed = std::get<province::core::ArmyRenamedEvent>(event.payload);
+                action["type"] = "army_renamed";
+                action["army_id"] = godot::String::utf8(renamed.army_id.value().c_str());
+                action["country_id"] = godot::String::utf8(renamed.country_id.value().c_str());
+                action["previous_formation_number"] = renamed.previous_formation_number;
+                action["formation_number"] = renamed.current_formation_number;
+            } else if (event.type == province::core::GameEventType::armies_merged) {
+                const auto& merged = std::get<province::core::ArmiesMergedEvent>(event.payload);
+                action["type"] = "armies_merged";
+                action["country_id"] = godot::String::utf8(merged.country_id.value().c_str());
+                action["province_id"] = godot::String::utf8(merged.province_id.value().c_str());
+                action["primary_army_id"] = godot::String::utf8(
+                    merged.primary_army_id.value().c_str()
+                );
+                godot::Array merged_ids;
+                for (const province::core::ArmyId& id : merged.merged_army_ids) {
+                    merged_ids.push_back(godot::String::utf8(id.value().c_str()));
+                }
+                action["merged_army_ids"] = merged_ids;
+                action["previous_manpower"] = merged.previous_manpower;
+                action["current_manpower"] = merged.current_manpower;
+                action["movement_points"] = movement_points_to_display(
+                    merged.current_movement_points
+                );
+                action["formation_number"] = merged.formation_number;
+                action["display_name"] = godot::String::utf8(merged.display_name.c_str());
+                action["automatic"] = merged.automatic;
+            } else if (event.type == province::core::GameEventType::army_moved) {
+                const auto& moved = std::get<province::core::ArmyMovedEvent>(event.payload);
+                action["type"] = "army_moved";
+                action["order_id"] = godot::String::utf8(moved.order_id.value().c_str());
+                action["army_id"] = godot::String::utf8(moved.army_id.value().c_str());
+                action["origin"] = godot::String::utf8(moved.origin.value().c_str());
+                action["destination"] = godot::String::utf8(moved.destination.value().c_str());
+                action["movement_cost"] = movement_points_to_display(moved.movement_cost_half);
+                action["remaining_points"] = movement_points_to_display(
+                    moved.remaining_movement_half
+                );
+                action["converted_from_attack"] = moved.converted_from_attack;
+            } else if (event.type == province::core::GameEventType::battle_resolved) {
+                const auto& resolved =
+                    std::get<province::core::BattleResolvedEvent>(event.payload);
+                action["type"] = "battle_resolved";
+                godot::Array order_ids;
+                for (const province::core::OrderId& id : resolved.order_ids) {
+                    order_ids.push_back(godot::String::utf8(id.value().c_str()));
+                }
+                action["order_ids"] = order_ids;
+                append_battle_metadata(action, resolved.battle);
+            } else if (event.type == province::core::GameEventType::road_built) {
+                const auto& road = std::get<province::core::RoadBuiltEvent>(event.payload);
+                action["type"] = "road_built";
+                action["order_id"] = godot::String::utf8(road.order_id.value().c_str());
+                action["country_id"] = godot::String::utf8(road.country_id.value().c_str());
+                action["province_a"] = godot::String::utf8(road.province_a.value().c_str());
+                action["province_b"] = godot::String::utf8(road.province_b.value().c_str());
+                action["level"] = road.level == province::core::RoadLevel::paved
+                    ? "paved" : "none";
+                action["cost"] = road.cost;
+            } else if (event.type == province::core::GameEventType::war_declared) {
+                const auto& war = std::get<province::core::WarDeclaredEvent>(event.payload);
+                action["type"] = "war_declared";
+                action["order_id"] = war.order_id.has_value()
+                    ? godot::String::utf8(war.order_id->value().c_str())
+                    : godot::String{};
+                action["country_id"] = godot::String::utf8(war.aggressor_id.value().c_str());
+                action["target_id"] = godot::String::utf8(war.defender_id.value().c_str());
+            } else if (event.type == province::core::GameEventType::peace_made) {
+                const auto& peace =
+                    std::get<province::core::PeaceSettlementResult>(event.payload);
+                action["type"] = "peace_made";
+                action["country_a"] = godot::String::utf8(peace.country_a.value().c_str());
+                action["country_b"] = godot::String::utf8(peace.country_b.value().c_str());
+                action["province_count"] = static_cast<std::int64_t>(peace.provinces.size());
+                action["army_count"] = static_cast<std::int64_t>(peace.armies.size());
+            } else if (event.type == province::core::GameEventType::technology_researched) {
+                const auto& researched =
+                    std::get<province::core::TechnologyResearchedEvent>(event.payload);
+                const province::core::TechnologyResearchResult& research = researched.result;
+                action["type"] = "technology_researched";
+                action["order_id"] = godot::String::utf8(researched.order_id.value().c_str());
+                action["country_id"] = godot::String::utf8(
+                    research.country_id.value().c_str()
+                );
+                action["track"] = technology_track_name(research.track);
+                action["previous_level"] = research.previous_level;
+                action["current_level"] = research.current_level;
+                action["cost"] = research.cost;
+            } else if (event.type == province::core::GameEventType::order_created) {
+                const auto& created = std::get<province::core::OrderCreatedEvent>(event.payload);
+                action["type"] = "order_created";
+                action["order_id"] = godot::String::utf8(created.order_id.value().c_str());
+            } else if (event.type == province::core::GameEventType::order_cancelled) {
+                const auto& cancelled =
+                    std::get<province::core::OrderCancelledEvent>(event.payload);
+                action["type"] = "order_cancelled";
+                action["status"] = "cancelled";
+                append_order_cancellation_fields(action, cancelled);
+            } else {
+                continue;
             }
-            action["type"] = "maintenance_resolved";
-            action["elapsed_months"] = maintenance.elapsed_months;
-            action["charges"] = charges;
-        } else if (event.type == province::core::GameEventType::movement_points_granted) {
-            const auto& movement =
-                std::get<province::core::MovementPointsGrantedEvent>(event.payload);
-            godot::Array grants;
-            for (const province::core::ArmyMovementGrant& grant : movement.grants) {
-                godot::Dictionary summary;
-                summary["army_id"] = godot::String::utf8(grant.army_id.value().c_str());
-                summary["amount"] = movement_points_to_display(grant.amount);
-                summary["current_points"] = movement_points_to_display(grant.current_points);
-                grants.push_back(summary);
-                movement_grants.push_back(summary);
-            }
-            action["type"] = "movement_points_granted";
-            action["elapsed_months"] = movement.elapsed_months;
-            action["grants"] = grants;
-        } else if (event.type == province::core::GameEventType::army_recruited) {
-            const auto& recruited =
-                std::get<province::core::ArmyRecruitedEvent>(event.payload);
-            action["type"] = "army_recruited";
-            action["order_id"] = godot::String::utf8(recruited.order_id.value().c_str());
-            action["army_id"] = godot::String::utf8(recruited.army_id.value().c_str());
-            action["country_id"] = godot::String::utf8(
-                recruited.country_id.value().c_str()
-            );
-            action["province_id"] = godot::String::utf8(
-                recruited.province_id.value().c_str()
-            );
-            action["manpower"] = recruited.manpower;
-            action["cost"] = recruited.cost;
-        } else if (event.type == province::core::GameEventType::army_renamed) {
-            const auto& renamed = std::get<province::core::ArmyRenamedEvent>(event.payload);
-            action["type"] = "army_renamed";
-            action["army_id"] = godot::String::utf8(renamed.army_id.value().c_str());
-            action["country_id"] = godot::String::utf8(renamed.country_id.value().c_str());
-            action["previous_formation_number"] = renamed.previous_formation_number;
-            action["formation_number"] = renamed.current_formation_number;
-        } else if (event.type == province::core::GameEventType::armies_merged) {
-            const auto& merged = std::get<province::core::ArmiesMergedEvent>(event.payload);
-            action["type"] = "armies_merged";
-            action["country_id"] = godot::String::utf8(merged.country_id.value().c_str());
-            action["province_id"] = godot::String::utf8(merged.province_id.value().c_str());
-            action["primary_army_id"] = godot::String::utf8(
-                merged.primary_army_id.value().c_str()
-            );
-            godot::Array merged_ids;
-            for (const province::core::ArmyId& id : merged.merged_army_ids) {
-                merged_ids.push_back(godot::String::utf8(id.value().c_str()));
-            }
-            action["merged_army_ids"] = merged_ids;
-            action["previous_manpower"] = merged.previous_manpower;
-            action["current_manpower"] = merged.current_manpower;
-            action["movement_points"] = movement_points_to_display(
-                merged.current_movement_points
-            );
-            action["formation_number"] = merged.formation_number;
-            action["display_name"] = godot::String::utf8(merged.display_name.c_str());
-            action["automatic"] = merged.automatic;
-        } else if (event.type == province::core::GameEventType::army_moved) {
-            const auto& moved = std::get<province::core::ArmyMovedEvent>(event.payload);
-            action["type"] = "army_moved";
-            action["order_id"] = godot::String::utf8(moved.order_id.value().c_str());
-            action["army_id"] = godot::String::utf8(moved.army_id.value().c_str());
-            action["origin"] = godot::String::utf8(moved.origin.value().c_str());
-            action["destination"] = godot::String::utf8(moved.destination.value().c_str());
-            action["movement_cost"] = movement_points_to_display(moved.movement_cost_half);
-            action["remaining_points"] = movement_points_to_display(
-                moved.remaining_movement_half
-            );
-            action["converted_from_attack"] = moved.converted_from_attack;
-        } else if (event.type == province::core::GameEventType::battle_resolved) {
-            const auto& resolved =
-                std::get<province::core::BattleResolvedEvent>(event.payload);
-            action["type"] = "battle_resolved";
-            godot::Array order_ids;
-            for (const province::core::OrderId& id : resolved.order_ids) {
-                order_ids.push_back(godot::String::utf8(id.value().c_str()));
-            }
-            action["order_ids"] = order_ids;
-            append_battle_metadata(action, resolved.battle);
-        } else if (event.type == province::core::GameEventType::road_built) {
-            const auto& road = std::get<province::core::RoadBuiltEvent>(event.payload);
-            action["type"] = "road_built";
-            action["order_id"] = godot::String::utf8(road.order_id.value().c_str());
-            action["country_id"] = godot::String::utf8(road.country_id.value().c_str());
-            action["province_a"] = godot::String::utf8(road.province_a.value().c_str());
-            action["province_b"] = godot::String::utf8(road.province_b.value().c_str());
-            action["level"] = road.level == province::core::RoadLevel::paved
-                ? "paved" : "none";
-            action["cost"] = road.cost;
-        } else if (event.type == province::core::GameEventType::war_declared) {
-            const auto& war = std::get<province::core::WarDeclaredEvent>(event.payload);
-            action["type"] = "war_declared";
-            action["order_id"] = war.order_id.has_value()
-                ? godot::String::utf8(war.order_id->value().c_str())
-                : godot::String{};
-            action["country_id"] = godot::String::utf8(war.aggressor_id.value().c_str());
-            action["target_id"] = godot::String::utf8(war.defender_id.value().c_str());
-        } else if (event.type == province::core::GameEventType::peace_made) {
-            const auto& peace =
-                std::get<province::core::PeaceSettlementResult>(event.payload);
-            action["type"] = "peace_made";
-            action["country_a"] = godot::String::utf8(peace.country_a.value().c_str());
-            action["country_b"] = godot::String::utf8(peace.country_b.value().c_str());
-            action["province_count"] = static_cast<std::int64_t>(peace.provinces.size());
-            action["army_count"] = static_cast<std::int64_t>(peace.armies.size());
-        } else if (event.type == province::core::GameEventType::technology_researched) {
-            const auto& researched =
-                std::get<province::core::TechnologyResearchedEvent>(event.payload);
-            const province::core::TechnologyResearchResult& research = researched.result;
-            action["type"] = "technology_researched";
-            action["order_id"] = godot::String::utf8(researched.order_id.value().c_str());
-            action["country_id"] = godot::String::utf8(
-                research.country_id.value().c_str()
-            );
-            action["track"] = technology_track_name(research.track);
-            action["previous_level"] = research.previous_level;
-            action["current_level"] = research.current_level;
-            action["cost"] = research.cost;
-        } else if (event.type == province::core::GameEventType::order_created) {
-            const auto& created = std::get<province::core::OrderCreatedEvent>(event.payload);
-            action["type"] = "order_created";
-            action["order_id"] = godot::String::utf8(created.order_id.value().c_str());
-        } else if (event.type == province::core::GameEventType::order_cancelled) {
-            const auto& cancelled =
-                std::get<province::core::OrderCancelledEvent>(event.payload);
-            action["type"] = "order_cancelled";
-            action["status"] = "cancelled";
-            append_order_cancellation_fields(action, cancelled);
-        } else {
-            continue;
+            action["event_type"] = action["type"];
+            turn_actions.push_back(action);
         }
-        action["event_type"] = action["type"];
-        turn_actions.push_back(action);
+        response["fiscal_incomes"] = fiscal_incomes;
+        response["maintenance_charges"] = maintenance_charges;
+        response["population_changes"] = population_changes;
+        response["movement_grants"] = movement_grants;
+        response["turn_actions"] = turn_actions;
+        response["ai_actions"] = turn_actions;
+        if (result.accepted) {
+            *state_ = std::move(working_state);
+            command_processor_ = std::move(working_processor);
+            last_maintenance_charges_ = std::move(resolved_maintenance);
+        }
+        return response;
+    } catch (...) {
+        response.clear();
+        set_stable_rejection(response, "turn could not be advanced");
+        response["year"] = state_->clock().year();
+        response["month"] = state_->clock().month();
+        return response;
     }
-    response["fiscal_incomes"] = fiscal_incomes;
-    response["maintenance_charges"] = maintenance_charges;
-    response["population_changes"] = population_changes;
-    response["movement_grants"] = movement_grants;
-    response["turn_actions"] = turn_actions;
-    response["ai_actions"] = turn_actions;
-    return response;
 }
 
 bool ProvinceBridge::set_ai_enabled(
@@ -883,6 +955,10 @@ godot::Dictionary ProvinceBridge::research_technology(
         return response;
     }
     try {
+        const province::core::CountryId requested_country{
+            country_id.utf8().get_data()
+        };
+        if (!authorize_country_write(response, requested_country)) return response;
         const std::string track_name = track.utf8().get_data();
         province::core::TechnologyTrack technology_track;
         if (track_name == "economy") {
@@ -899,7 +975,7 @@ godot::Dictionary ProvinceBridge::research_technology(
         const province::core::CommandResult result = command_processor_.execute(
             *state_,
             province::core::ResearchTechnologyCommand{
-                province::core::CountryId{country_id.utf8().get_data()},
+                requested_country,
                 technology_track,
             }
         );
@@ -964,6 +1040,7 @@ godot::Dictionary ProvinceBridge::load_game(const godot::String& path) {
         const province::core::CountryId restored_player = loaded.player_country_id;
         state_ = std::move(loaded.state);
         command_processor_ = std::move(restored_processor);
+        last_maintenance_charges_.clear();
         player_country_id_ = restored_player;
         last_error_ = godot::String{};
         response["accepted"] = true;
@@ -971,6 +1048,9 @@ godot::Dictionary ProvinceBridge::load_game(const godot::String& path) {
         response["path"] = path;
         response["year"] = state_->clock().year();
         response["month"] = state_->clock().month();
+        response["player_country_id"] = godot::String::utf8(
+            restored_player.value().c_str()
+        );
     } catch (const std::exception&) {
         response["accepted"] = false;
         // SaveGameSerializer is part of the core library while this boundary is
@@ -1119,10 +1199,14 @@ godot::Dictionary ProvinceBridge::build_road(
     }
 
     try {
+        const province::core::CountryId requested_country{
+            country_id.utf8().get_data()
+        };
+        if (!authorize_country_write(response, requested_country)) return response;
         const province::core::CommandResult result = command_processor_.execute(
             *state_,
             province::core::BuildRoadCommand{
-                province::core::CountryId{country_id.utf8().get_data()},
+                requested_country,
                 province::core::ProvinceId{province_a.utf8().get_data()},
                 province::core::ProvinceId{province_b.utf8().get_data()},
             }
@@ -1166,10 +1250,14 @@ godot::Dictionary ProvinceBridge::recruit_army(
         return response;
     }
     try {
+        const province::core::CountryId requested_country{
+            country_id.utf8().get_data()
+        };
+        if (!authorize_country_write(response, requested_country)) return response;
         const province::core::CommandResult result = command_processor_.execute(
             *state_,
             province::core::RecruitArmyCommand{
-                province::core::CountryId{country_id.utf8().get_data()},
+                requested_country,
                 province::core::ProvinceId{province_id.utf8().get_data()},
                 manpower,
             }
@@ -1243,6 +1331,7 @@ godot::Dictionary ProvinceBridge::rename_army(
     }
     try {
         const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        if (!authorize_army_write(response, core_army_id)) return response;
         const province::core::CommandResult result = command_processor_.execute(
             *state_,
             province::core::RenameArmyCommand{core_army_id, formation_number}
@@ -1279,16 +1368,22 @@ godot::Dictionary ProvinceBridge::merge_armies(
         return response;
     }
     try {
+        const province::core::ArmyId primary_id{
+            primary_army_id.utf8().get_data()
+        };
+        if (!authorize_army_write(response, primary_id)) return response;
         std::vector<province::core::ArmyId> core_merged_ids;
         core_merged_ids.reserve(merged_army_ids.size());
         for (std::int64_t index = 0; index < merged_army_ids.size(); ++index) {
             const godot::String merged_id = merged_army_ids[index];
-            core_merged_ids.emplace_back(merged_id.utf8().get_data());
+            province::core::ArmyId core_merged_id{merged_id.utf8().get_data()};
+            if (!authorize_army_write(response, core_merged_id)) return response;
+            core_merged_ids.push_back(std::move(core_merged_id));
         }
         const province::core::CommandResult result = command_processor_.execute(
             *state_,
             province::core::MergeArmiesCommand{
-                province::core::ArmyId{primary_army_id.utf8().get_data()},
+                primary_id,
                 std::move(core_merged_ids),
             }
         );
@@ -1329,10 +1424,12 @@ godot::Dictionary ProvinceBridge::move_army(
         return response;
     }
     try {
+        const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        if (!authorize_army_write(response, core_army_id)) return response;
         const province::core::CommandResult result = command_processor_.execute(
             *state_,
             province::core::MoveArmyCommand{
-                province::core::ArmyId{army_id.utf8().get_data()},
+                core_army_id,
                 province::core::ProvinceId{destination.utf8().get_data()},
             }
         );
@@ -1373,6 +1470,7 @@ godot::Dictionary ProvinceBridge::auto_advance_army_to(
     }
     try {
         const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        if (!authorize_army_write(response, core_army_id)) return response;
         const bool has_target = !target.is_empty();
         std::optional<province::core::ProvinceId> target_id;
         if (has_target) {
@@ -1625,9 +1723,9 @@ godot::Dictionary ProvinceBridge::set_army_advance_target(
         return response;
     }
     try {
-        province::core::Army* army = state_->find_army(
-            province::core::ArmyId{army_id.utf8().get_data()}
-        );
+        const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        if (!authorize_army_write(response, core_army_id)) return response;
+        province::core::Army* army = state_->find_army(core_army_id);
         if (army == nullptr) {
             response["accepted"] = false;
             response["error"] = "army not found";
@@ -1661,9 +1759,9 @@ godot::Dictionary ProvinceBridge::clear_army_advance_target(
         return response;
     }
     try {
-        province::core::Army* army = state_->find_army(
-            province::core::ArmyId{army_id.utf8().get_data()}
-        );
+        const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        if (!authorize_army_write(response, core_army_id)) return response;
+        province::core::Army* army = state_->find_army(core_army_id);
         if (army == nullptr) {
             response["accepted"] = false;
             response["error"] = "army not found";
@@ -1690,9 +1788,9 @@ godot::Dictionary ProvinceBridge::set_army_advance_enabled(
         return response;
     }
     try {
-        province::core::Army* army = state_->find_army(
-            province::core::ArmyId{army_id.utf8().get_data()}
-        );
+        const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        if (!authorize_army_write(response, core_army_id)) return response;
+        province::core::Army* army = state_->find_army(core_army_id);
         if (army == nullptr) {
             response["accepted"] = false;
             response["error"] = "army not found";
@@ -1724,6 +1822,8 @@ godot::Dictionary ProvinceBridge::set_army_advance_strategy(
         return response;
     }
     try {
+        const province::core::ArmyId core_army_id{army_id.utf8().get_data()};
+        if (!authorize_army_write(response, core_army_id)) return response;
         const std::string strategy_value{strategy.utf8().get_data()};
         if (strategy_value != "max" && strategy_value != "one_step" &&
             strategy_value != "stop_before_enemy") {
@@ -1732,9 +1832,7 @@ godot::Dictionary ProvinceBridge::set_army_advance_strategy(
                 "advance strategy must be 'max', 'one_step' or 'stop_before_enemy'";
             return response;
         }
-        province::core::Army* army = state_->find_army(
-            province::core::ArmyId{army_id.utf8().get_data()}
-        );
+        province::core::Army* army = state_->find_army(core_army_id);
         if (army == nullptr) {
             response["accepted"] = false;
             response["error"] = "army not found";
@@ -1766,10 +1864,14 @@ godot::Dictionary ProvinceBridge::declare_war(
         return response;
     }
     try {
+        const province::core::CountryId aggressor{
+            aggressor_id.utf8().get_data()
+        };
+        if (!authorize_country_write(response, aggressor)) return response;
         const province::core::CommandResult result = command_processor_.execute(
             *state_,
             province::core::DeclareWarCommand{
-                province::core::CountryId{aggressor_id.utf8().get_data()},
+                aggressor,
                 province::core::CountryId{defender_id.utf8().get_data()},
             }
         );
@@ -1819,13 +1921,17 @@ godot::Dictionary ProvinceBridge::make_peace(
         return response;
     }
     try {
+        const province::core::CountryId first_country{
+            country_a.utf8().get_data()
+        };
+        if (!authorize_country_write(response, first_country)) return response;
         const province::core::PeaceSettlementPolicy policy = annex_occupied_provinces
             ? province::core::PeaceSettlementPolicy::annex_occupied_provinces
             : province::core::PeaceSettlementPolicy::restore_legal_owners;
         const province::core::CommandResult result = command_processor_.execute(
             *state_,
             province::core::MakePeaceCommand{
-                province::core::CountryId{country_a.utf8().get_data()},
+                first_country,
                 province::core::CountryId{country_b.utf8().get_data()},
                 policy,
             }

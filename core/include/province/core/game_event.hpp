@@ -12,12 +12,16 @@
 #include "province/core/technology_system.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
 namespace province::core {
+
+inline constexpr std::uint64_t exhausted_event_sequence =
+    static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max() - 1);
 
 enum class GameEventType : std::uint8_t {
     fiscal_income_resolved,

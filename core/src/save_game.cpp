@@ -1,5 +1,6 @@
 #include "province/core/save_game.hpp"
 #include "province/core/army_system.hpp"
+#include "province/core/game_event.hpp"
 #include "province/core/movement_system.hpp"
 #include "province/core/road_system.hpp"
 #include "province/core/technology_system.hpp"
@@ -300,6 +301,12 @@ void SaveGameSerializer::save(
     if (!issues.empty()) {
         throw SaveGameError{join_issues(issues)};
     }
+    if (next_event_sequence == 0 ||
+        next_event_sequence > exhausted_event_sequence) {
+        throw SaveGameError{
+            "next event sequence must remain within the signed bridge range"
+        };
+    }
     if (state.map_layout_id() != "generated_grid_v1") {
         throw SaveGameError{"only generated_grid_v1 states can be saved"};
     }
@@ -452,7 +459,7 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
         );
         if (version != schema_version) {
             throw SaveGameError{
-                "old 32-province save is incompatible; expected schema " +
+                "save schema is incompatible; expected schema " +
                 std::to_string(schema_version)
             };
         }
@@ -686,9 +693,12 @@ LoadedGame SaveGameSerializer::load(const std::filesystem::path& path) {
         const std::uint64_t next_event_sequence = integral_value<std::uint64_t>(
             document.at("next_event_sequence"), "next_event_sequence"
         );
-        if (next_event_sequence == 0 || state.next_army_sequence_ == 0 ||
-            state.next_order_sequence_ == 0) {
-            throw SaveGameError{"saved sequence counters must be positive"};
+        if (next_event_sequence == 0 ||
+            next_event_sequence > exhausted_event_sequence ||
+            state.next_army_sequence_ == 0 || state.next_order_sequence_ == 0) {
+            throw SaveGameError{
+                "saved sequence counters must be positive, safe and not exhausted"
+            };
         }
         LoadedGame loaded{
             std::move(state),
