@@ -84,9 +84,10 @@ MonthlyPopulationReport PopulationSystem::resolve_month(GameState& state) const 
                 }
                 guard->manpower += growth;
             } else if (growth > 0) {
-                [[maybe_unused]] const ArmyId recreated = state.create_army(
-                    province->owner_id, province_id, growth
-                );
+                [[maybe_unused]] const ArmyId recreated =
+                    state.create_neutral_guard(
+                        province->owner_id, province_id, growth
+                    );
             }
             report.changes.push_back(ProvincePopulationChange{
                 province_id,

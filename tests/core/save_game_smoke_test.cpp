@@ -18,17 +18,29 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <initializer_list>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace {
 
 using Json = nlohmann::json;
 using namespace province::core;
+
+BattleSystem::RandomRoll fixed_rolls(std::initializer_list<std::int32_t> values) {
+    auto data = std::make_shared<std::vector<std::int32_t>>(values);
+    auto index = std::make_shared<std::size_t>(0);
+    return [data, index]() {
+        if (*index >= data->size()) throw std::logic_error{"fixed roll exhausted"};
+        return data->at((*index)++);
+    };
+}
 
 bool rejected(const Json& document, const std::string& suffix) {
     const auto path = std::filesystem::temp_directory_path() /
@@ -438,6 +450,42 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
             break;
         }
     }
+    Json reserved_guard_id_owned_by_normal_country = document;
+    const std::string reserved_action_army_id =
+        reserved_guard_id_owned_by_normal_country["orders"][action_index]
+            ["army_id"].get<std::string>();
+    for (Json& army : reserved_guard_id_owned_by_normal_country["armies"]) {
+        if (army.at("id") != reserved_action_army_id) continue;
+        const std::string forged_id = "neutral_guard_" +
+            army.at("province_id").get<std::string>();
+        army["id"] = forged_id;
+        reserved_guard_id_owned_by_normal_country["orders"][action_index]
+            ["army_id"] = forged_id;
+        break;
+    }
+    Json reserved_guard_id_in_wrong_province = document;
+    std::size_t first_neutral_army = reserved_guard_id_in_wrong_province["armies"].size();
+    std::size_t second_neutral_army = reserved_guard_id_in_wrong_province["armies"].size();
+    for (std::size_t index = 0;
+         index < reserved_guard_id_in_wrong_province["armies"].size();
+         ++index) {
+        if (reserved_guard_id_in_wrong_province["armies"][index].at("owner_id") !=
+            "neutral") continue;
+        if (first_neutral_army == reserved_guard_id_in_wrong_province["armies"].size()) {
+            first_neutral_army = index;
+        } else {
+            second_neutral_army = index;
+            break;
+        }
+    }
+    if (first_neutral_army == reserved_guard_id_in_wrong_province["armies"].size() ||
+        second_neutral_army == reserved_guard_id_in_wrong_province["armies"].size()) {
+        return false;
+    }
+    reserved_guard_id_in_wrong_province["armies"][first_neutral_army]["id"] =
+        "neutral_guard_" +
+        reserved_guard_id_in_wrong_province["armies"][second_neutral_army]
+            .at("province_id").get<std::string>();
     Json broken_path = document;
     broken_path["orders"][action_index]["path"][1] = "capital_caelus";
     broken_path["orders"][action_index]["destination"] = "capital_caelus";
@@ -569,6 +617,9 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&unknown_army, "unknown-army"},
         {&wrong_action_owner, "wrong-action-owner"},
         {&hidden_neutral_action, "hidden-neutral-action"},
+        {&reserved_guard_id_owned_by_normal_country,
+         "reserved-guard-id-owned-by-normal-country"},
+        {&reserved_guard_id_in_wrong_province, "reserved-guard-id-in-wrong-province"},
         {&broken_path, "broken-path"},
         {&forged_movement, "forged-movement"},
         {&forged_recruitment_cost, "forged-recruitment-cost"},
@@ -672,6 +723,17 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     }
 
     Json last_safe_army = document;
+    std::string missing_neutral_guard_province;
+    for (auto iterator = last_safe_army["armies"].begin();
+         iterator != last_safe_army["armies"].end();
+         ++iterator) {
+        if (iterator->at("owner_id") != "neutral") continue;
+        missing_neutral_guard_province =
+            iterator->at("province_id").get<std::string>();
+        last_safe_army["armies"].erase(iterator);
+        break;
+    }
+    if (missing_neutral_guard_province.empty()) return false;
     last_safe_army["next_army_sequence"] =
         std::numeric_limits<std::uint64_t>::max() - 2;
     const auto army_exhausted_path = std::filesystem::temp_directory_path() /
@@ -748,6 +810,11 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
     const ArmyId expected_final_army{
         "army_" + std::to_string(std::numeric_limits<std::uint64_t>::max() - 2)
     };
+    const ArmyId expected_rebuilt_guard{
+        "neutral_guard_" + missing_neutral_guard_province
+    };
+    const Army* rebuilt_guard =
+        army_exhausted.state.find_army(expected_rebuilt_guard);
     if (!final_turn.accepted ||
         final_recruitment_event == final_turn.events.end() ||
         std::get<ArmyRecruitedEvent>(final_recruitment_event->payload).order_id !=
@@ -756,9 +823,129 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
             expected_final_army ||
         army_exhausted.state.clock().month() != month_before_final_recruitment + 1 ||
         army_exhausted.state.find_army(expected_final_army) == nullptr ||
-        army_exhausted.state.armies().size() != armies_before_exhaustion + 1 ||
+        rebuilt_guard == nullptr || rebuilt_guard->owner_id != CountryId{"neutral"} ||
+        rebuilt_guard->province_id != ProvinceId{missing_neutral_guard_province} ||
+        army_exhausted.state.armies().size() != armies_before_exhaustion + 2 ||
         !army_exhausted.state.validate().empty()) {
-        std::cerr << "Final recruitment rolled back or wrapped the army allocator\n";
+        std::cerr << "Neutral rebuild consumed the final ordinary recruitment ID slot\n";
+        return false;
+    }
+    const auto rebuilt_guard_path = std::filesystem::temp_directory_path() /
+        "province-schema7-rebuilt-neutral-guard.json";
+    SaveGameSerializer::save(
+        rebuilt_guard_path, army_exhausted.state, 100, human, std::nullopt
+    );
+    LoadedGame rebuilt_guard_round_trip = SaveGameSerializer::load(rebuilt_guard_path);
+    std::filesystem::remove(rebuilt_guard_path);
+    if (rebuilt_guard_round_trip.state.find_army(expected_rebuilt_guard) == nullptr ||
+        rebuilt_guard_round_trip.state.find_army(expected_final_army) == nullptr ||
+        !rebuilt_guard_round_trip.state.validate().empty()) {
+        std::cerr << "Deterministic neutral guard did not round trip with final army ID\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_neutral_guard_rebuild_survives_exhaustion_after_mutual_combat() {
+    const CountryId human{"auroria"};
+    const CountryId neutral{"neutral"};
+    const ProvinceId origin{"cell_4_4"};
+    const ProvinceId target{"cell_5_4"};
+    GameState state = ScenarioLoader::load(
+        "game/data", GameClock{1000, 1},
+        [](const std::uint32_t) { return std::uint32_t{0}; }
+    );
+    Province* neutral_province = state.find_province(target);
+    if (neutral_province == nullptr) return false;
+    neutral_province->population = 1;
+    neutral_province->population_growth_remainder = 9'980;
+    ArmyId original_guard{"missing"};
+    for (const auto& [army_id, army] : state.armies()) {
+        if (army.owner_id == neutral && army.province_id == target) {
+            original_guard = army_id;
+            break;
+        }
+    }
+    Army* guard = state.find_army(original_guard);
+    if (guard == nullptr) return false;
+    guard->manpower = 1;
+    const ArmyId attacker = state.create_army(human, origin, 1);
+    state.find_army(attacker)->movement_points = 12;
+    OrderSystem orders;
+    const OrderOperationResult attack = orders.queue_army_action(
+        state, attacker, {origin, target}, true
+    );
+    const OrderOperationResult recruitment = orders.queue_recruitment(
+        state, human, origin, 1
+    );
+    if (!attack.accepted || !recruitment.accepted ||
+        !recruitment.order_id.has_value()) return false;
+
+    const auto setup_path = std::filesystem::temp_directory_path() /
+        "province-schema7-neutral-combat-army-exhaustion.json";
+    SaveGameSerializer::save(setup_path, state, 1, human, std::nullopt);
+    std::ifstream stream{setup_path};
+    Json document = Json::parse(stream);
+    stream.close();
+    document["next_army_sequence"] =
+        std::numeric_limits<std::uint64_t>::max() - 2;
+    {
+        std::ofstream rewritten{setup_path};
+        rewritten << document.dump(2);
+    }
+    LoadedGame loaded = SaveGameSerializer::load(setup_path);
+    std::filesystem::remove(setup_path);
+
+    CommandProcessor processor{fixed_rolls({7, 7})};
+    const CommandResult combat_turn = processor.execute(
+        loaded.state, AdvanceTurnCommand{1}
+    );
+    const ArmyId final_ordinary_army{
+        "army_" + std::to_string(std::numeric_limits<std::uint64_t>::max() - 2)
+    };
+    if (!combat_turn.accepted || loaded.state.find_army(attacker) != nullptr ||
+        loaded.state.find_army(original_guard) != nullptr ||
+        loaded.state.find_province(target)->owner_id != neutral ||
+        loaded.state.find_army(final_ordinary_army) == nullptr ||
+        !loaded.state.orders().empty()) {
+        std::cerr << "Mutual neutral combat did not consume guard and final normal slot\n";
+        return false;
+    }
+
+    const CommandResult rebuild_turn = processor.execute(
+        loaded.state, AdvanceTurnCommand{1}
+    );
+    const ArmyId deterministic_guard{"neutral_guard_cell_5_4"};
+    const Army* rebuilt = loaded.state.find_army(deterministic_guard);
+    if (!rebuild_turn.accepted || rebuilt == nullptr || rebuilt->owner_id != neutral ||
+        rebuilt->province_id != target || rebuilt->manpower != 1 ||
+        loaded.state.find_army(final_ordinary_army) == nullptr ||
+        !loaded.state.validate().empty()) {
+        std::cerr << "Exhausted normal allocator blocked next-month neutral rebuild\n";
+        return false;
+    }
+
+    const auto round_trip_path = std::filesystem::temp_directory_path() /
+        "province-schema7-neutral-combat-rebuild-round-trip.json";
+    SaveGameSerializer::save(
+        round_trip_path,
+        loaded.state,
+        processor.next_event_sequence(),
+        human,
+        std::nullopt
+    );
+    LoadedGame round_trip = SaveGameSerializer::load(round_trip_path);
+    std::filesystem::remove(round_trip_path);
+    bool retained_legacy_numeric_guard = false;
+    for (const auto& [army_id, army] : round_trip.state.armies()) {
+        if (army.owner_id == neutral && army_id.value().starts_with("army_")) {
+            retained_legacy_numeric_guard = true;
+            break;
+        }
+    }
+    if (round_trip.state.find_army(deterministic_guard) == nullptr ||
+        !retained_legacy_numeric_guard || !round_trip.state.validate().empty()) {
+        std::cerr << "Old numeric and deterministic neutral guards did not coexist on load\n";
         return false;
     }
     return true;
@@ -1011,6 +1198,7 @@ bool test_schema7_separates_player_identity_from_ai_configuration() {
 bool run_save_game_smoke_tests() {
     return test_schema7_round_trip_restores_every_order_without_recharging() &&
         test_schema7_rejects_old_versions_and_malformed_orders() &&
+        test_neutral_guard_rebuild_survives_exhaustion_after_mutual_combat() &&
         test_schema7_requires_exact_historical_movement_cost_combinations() &&
         test_schema7_round_trips_dynamic_invalidations_for_exact_refunds() &&
         test_schema7_round_trips_legal_defensive_debt() &&

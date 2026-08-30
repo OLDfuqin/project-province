@@ -66,8 +66,42 @@ bool run_neutral_population_tests() {
     neutral_state.remove_army(grown_guard->id);
     [[maybe_unused]] const auto second = system.resolve_month(neutral_state);
     const Army* recreated = guard_in(neutral_state, neutral_province);
-    if (recreated == nullptr || recreated->manpower != 90) {
-        std::cerr << "Missing neutral guard was not recreated\n";
+    if (recreated == nullptr || recreated->manpower != 90 ||
+        recreated->id != ArmyId{"neutral_guard_cell_5_5"}) {
+        std::cerr << "Missing neutral guard did not use its deterministic ID\n";
+        return false;
+    }
+    const std::size_t army_count_before_collision = neutral_state.army_count();
+    bool collision_rejected = false;
+    try {
+        static_cast<void>(neutral_state.create_neutral_guard(
+            CountryId{"neutral"}, neutral_province, 1
+        ));
+    } catch (const std::logic_error&) {
+        collision_rejected = true;
+    }
+    if (!collision_rejected ||
+        neutral_state.army_count() != army_count_before_collision ||
+        guard_in(neutral_state, neutral_province)->manpower != 90) {
+        std::cerr << "Neutral guard ID collision overwrote existing state\n";
+        return false;
+    }
+
+    GameState multiple_missing = state();
+    const ProvinceId first_missing{"cell_5_4"};
+    const ProvinceId second_missing{"cell_5_5"};
+    multiple_missing.remove_army(guard_in(multiple_missing, first_missing)->id);
+    multiple_missing.remove_army(guard_in(multiple_missing, second_missing)->id);
+    [[maybe_unused]] const auto multiple_growth =
+        system.resolve_month(multiple_missing);
+    const Army* first_recreated = guard_in(multiple_missing, first_missing);
+    const Army* second_recreated = guard_in(multiple_missing, second_missing);
+    if (first_recreated == nullptr || second_recreated == nullptr ||
+        first_recreated->id != ArmyId{"neutral_guard_cell_5_4"} ||
+        second_recreated->id != ArmyId{"neutral_guard_cell_5_5"} ||
+        first_recreated->id == second_recreated->id ||
+        !multiple_missing.validate().empty()) {
+        std::cerr << "Multiple missing neutral guards did not receive unique stable IDs\n";
         return false;
     }
 

@@ -15,6 +15,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace province::core {
@@ -67,6 +68,23 @@ public:
         const CountryId& owner_id,
         const ProvinceId& province_id,
         std::int64_t manpower
+    );
+    [[nodiscard]] ArmyId create_neutral_guard(
+        const CountryId& owner_id,
+        const ProvinceId& province_id,
+        std::int64_t manpower
+    );
+    static constexpr std::string_view neutral_guard_id_prefix{
+        "neutral_guard_"
+    };
+    [[nodiscard]] static bool is_neutral_guard_id(
+        const ArmyId& army_id
+    ) noexcept {
+        return army_id.value().starts_with(neutral_guard_id_prefix) &&
+            army_id.value().size() > neutral_guard_id_prefix.size();
+    }
+    [[nodiscard]] static ArmyId neutral_guard_id(
+        const ProvinceId& province_id
     );
     [[nodiscard]] const Army* find_army(const ArmyId& id) const noexcept;
     [[nodiscard]] Army* find_army(const ArmyId& id) noexcept;

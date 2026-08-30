@@ -245,6 +245,53 @@ ArmyId GameState::create_army(
     return iterator->first;
 }
 
+ArmyId GameState::neutral_guard_id(const ProvinceId& province_id) {
+    return ArmyId{
+        std::string{neutral_guard_id_prefix} + province_id.value()
+    };
+}
+
+ArmyId GameState::create_neutral_guard(
+    const CountryId& owner_id,
+    const ProvinceId& province_id,
+    const std::int64_t manpower
+) {
+    const Country* owner = find_country(owner_id);
+    const Province* province = find_province(province_id);
+    if (owner == nullptr || province == nullptr) {
+        throw std::invalid_argument{"neutral guard owner and province must exist"};
+    }
+    if (!owner->hidden || province->owner_id != owner_id) {
+        throw std::invalid_argument{
+            "neutral guard owner must be the hidden legal owner of its province"
+        };
+    }
+    if (manpower <= 0) {
+        throw std::invalid_argument{"neutral guard manpower must be positive"};
+    }
+
+    const ArmyId id = neutral_guard_id(province_id);
+    const std::int64_t formation_number = next_formation_number(owner_id);
+    const auto [iterator, inserted] = armies_.emplace(
+        id,
+        Army{
+            id,
+            owner_id,
+            province_id,
+            manpower,
+            0,
+            std::nullopt,
+            true,
+            "max",
+            formation_number,
+        }
+    );
+    if (!inserted) {
+        throw std::logic_error{"deterministic neutral guard ID collision"};
+    }
+    return iterator->first;
+}
+
 const Army* GameState::find_army(const ArmyId& id) const noexcept {
     const auto iterator = armies_.find(id);
     return iterator == armies_.end() ? nullptr : &iterator->second;
@@ -443,11 +490,28 @@ std::vector<std::string> GameState::validate() const {
     std::map<CountryId, std::set<std::int64_t>> formation_numbers;
     std::uint64_t greatest_army_sequence = 0;
     for (const auto& [army_id, army] : armies_) {
-        const std::optional<std::uint64_t> sequence = parse_army_sequence(army_id);
-        if (!sequence.has_value()) {
-            issues.push_back("army ID is not a canonical stable army sequence");
+        const bool deterministic_guard_id = is_neutral_guard_id(army_id);
+        if (deterministic_guard_id) {
+            const Country* guard_owner = find_country(army.owner_id);
+            const Province* guard_province = find_province(army.province_id);
+            if (guard_owner == nullptr || !guard_owner->hidden ||
+                guard_province == nullptr ||
+                guard_province->owner_id != army.owner_id ||
+                army_id != neutral_guard_id(army.province_id)) {
+                issues.push_back(
+                    "reserved neutral guard ID has mismatched owner or province"
+                );
+            }
         } else {
-            greatest_army_sequence = std::max(greatest_army_sequence, *sequence);
+            const std::optional<std::uint64_t> sequence =
+                parse_army_sequence(army_id);
+            if (!sequence.has_value()) {
+                issues.push_back("army ID is not a canonical stable army sequence");
+            } else {
+                greatest_army_sequence = std::max(
+                    greatest_army_sequence, *sequence
+                );
+            }
         }
         if (!countries_.contains(army.owner_id)) {
             issues.push_back("army '" + army_id.value() + "' has an unknown owner");
