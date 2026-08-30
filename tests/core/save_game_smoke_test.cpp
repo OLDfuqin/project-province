@@ -486,6 +486,29 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         "neutral_guard_" +
         reserved_guard_id_in_wrong_province["armies"][second_neutral_army]
             .at("province_id").get<std::string>();
+    Json old_and_deterministic_guard_same_province = document;
+    Json deterministic_duplicate =
+        old_and_deterministic_guard_same_province["armies"][first_neutral_army];
+    deterministic_duplicate["id"] = "neutral_guard_" +
+        deterministic_duplicate.at("province_id").get<std::string>();
+    deterministic_duplicate["formation_number"] = 1'000;
+    old_and_deterministic_guard_same_province["armies"].push_back(
+        std::move(deterministic_duplicate)
+    );
+    Json two_old_numeric_guards_same_province = document;
+    Json numeric_duplicate =
+        two_old_numeric_guards_same_province["armies"][first_neutral_army];
+    const std::uint64_t duplicate_army_sequence =
+        two_old_numeric_guards_same_province["next_army_sequence"]
+            .get<std::uint64_t>();
+    numeric_duplicate["id"] =
+        "army_" + std::to_string(duplicate_army_sequence);
+    numeric_duplicate["formation_number"] = 1'000;
+    two_old_numeric_guards_same_province["armies"].push_back(
+        std::move(numeric_duplicate)
+    );
+    two_old_numeric_guards_same_province["next_army_sequence"] =
+        duplicate_army_sequence + 1;
     Json broken_path = document;
     broken_path["orders"][action_index]["path"][1] = "capital_caelus";
     broken_path["orders"][action_index]["destination"] = "capital_caelus";
@@ -620,6 +643,10 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
         {&reserved_guard_id_owned_by_normal_country,
          "reserved-guard-id-owned-by-normal-country"},
         {&reserved_guard_id_in_wrong_province, "reserved-guard-id-in-wrong-province"},
+        {&old_and_deterministic_guard_same_province,
+         "old-and-deterministic-guard-same-province"},
+        {&two_old_numeric_guards_same_province,
+         "two-old-numeric-guards-same-province"},
         {&broken_path, "broken-path"},
         {&forged_movement, "forged-movement"},
         {&forged_recruitment_cost, "forged-recruitment-cost"},
@@ -646,6 +673,45 @@ bool test_schema7_rejects_old_versions_and_malformed_orders() {
             std::cerr << "Schema 7 accepted malformed save case: " << suffix << "\n";
             return false;
         }
+    }
+
+    Json mixed_guard_ids_in_different_provinces = document;
+    const std::string deterministic_province =
+        mixed_guard_ids_in_different_provinces["armies"][first_neutral_army]
+            .at("province_id").get<std::string>();
+    mixed_guard_ids_in_different_provinces["armies"][first_neutral_army]["id"] =
+        "neutral_guard_" + deterministic_province;
+    const auto mixed_guard_path = std::filesystem::temp_directory_path() /
+        "province-schema7-mixed-neutral-guard-ids.json";
+    {
+        std::ofstream mixed_guard_stream{mixed_guard_path};
+        mixed_guard_stream << mixed_guard_ids_in_different_provinces.dump(2);
+    }
+    LoadedGame mixed_guard_ids = SaveGameSerializer::load(mixed_guard_path);
+    SaveGameSerializer::save(
+        mixed_guard_path,
+        mixed_guard_ids.state,
+        mixed_guard_ids.next_event_sequence,
+        mixed_guard_ids.player_country_id,
+        mixed_guard_ids.ai_human_country_id
+    );
+    mixed_guard_ids = SaveGameSerializer::load(mixed_guard_path);
+    std::filesystem::remove(mixed_guard_path);
+    bool retained_old_numeric_guard = false;
+    for (const auto& [candidate_army_id, army] : mixed_guard_ids.state.armies()) {
+        if (army.owner_id == CountryId{"neutral"} &&
+            candidate_army_id.value().starts_with("army_")) {
+            retained_old_numeric_guard = true;
+            break;
+        }
+    }
+    if (mixed_guard_ids.state.find_army(
+            ArmyId{"neutral_guard_" + deterministic_province}
+        ) == nullptr ||
+        !retained_old_numeric_guard ||
+        !mixed_guard_ids.state.validate().empty()) {
+        std::cerr << "Different-province old and deterministic neutral guards did not round trip\n";
+        return false;
     }
 
     Json last_safe_sequence = document;

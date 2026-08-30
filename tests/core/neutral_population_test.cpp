@@ -87,6 +87,24 @@ bool run_neutral_population_tests() {
         return false;
     }
 
+    GameState mixed_id_duplicate = state();
+    static_cast<void>(mixed_id_duplicate.create_neutral_guard(
+        CountryId{"neutral"}, neutral_province, 1
+    ));
+    if (mixed_id_duplicate.validate().empty()) {
+        std::cerr << "Old and deterministic neutral guards shared one province\n";
+        return false;
+    }
+
+    GameState legacy_id_duplicate = state();
+    static_cast<void>(legacy_id_duplicate.create_army(
+        CountryId{"neutral"}, neutral_province, 1
+    ));
+    if (legacy_id_duplicate.validate().empty()) {
+        std::cerr << "Two legacy numeric neutral guards shared one province\n";
+        return false;
+    }
+
     GameState multiple_missing = state();
     const ProvinceId first_missing{"cell_5_4"};
     const ProvinceId second_missing{"cell_5_5"};

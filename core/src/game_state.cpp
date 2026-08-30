@@ -488,13 +488,14 @@ std::vector<std::string> GameState::validate() const {
         }
     }
     std::map<CountryId, std::set<std::int64_t>> formation_numbers;
+    std::set<std::pair<CountryId, ProvinceId>> hidden_army_locations;
     std::uint64_t greatest_army_sequence = 0;
     for (const auto& [army_id, army] : armies_) {
+        const Country* army_owner = find_country(army.owner_id);
         const bool deterministic_guard_id = is_neutral_guard_id(army_id);
         if (deterministic_guard_id) {
-            const Country* guard_owner = find_country(army.owner_id);
             const Province* guard_province = find_province(army.province_id);
-            if (guard_owner == nullptr || !guard_owner->hidden ||
+            if (army_owner == nullptr || !army_owner->hidden ||
                 guard_province == nullptr ||
                 guard_province->owner_id != army.owner_id ||
                 army_id != neutral_guard_id(army.province_id)) {
@@ -518,6 +519,15 @@ std::vector<std::string> GameState::validate() const {
         }
         if (!provinces_.contains(army.province_id)) {
             issues.push_back("army '" + army_id.value() + "' has an unknown province");
+        }
+        if (army_owner != nullptr && army_owner->hidden &&
+            !hidden_army_locations.emplace(
+                army.owner_id, army.province_id
+            ).second) {
+            issues.push_back(
+                "hidden country has more than one army in province '" +
+                army.province_id.value() + "'"
+            );
         }
         if (army.manpower <= 0) {
             issues.push_back("army '" + army_id.value() + "' has non-positive manpower");
