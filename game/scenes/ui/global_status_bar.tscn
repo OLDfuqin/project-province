@@ -1,0 +1,55 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/global_status_bar.gd" id="1_script"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+
+[node name="GlobalStatusBar" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 6
+
+[node name="Row" type="HBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="CountryName" type="Label" parent="Margin/Row"]
+layout_mode = 2
+text = "未知国家"
+theme_override_font_sizes/font_size = 18
+
+[node name="Treasury" type="Label" parent="Margin/Row"]
+layout_mode = 2
+text = "国库 0"
+
+[node name="Income" type="Label" parent="Margin/Row"]
+layout_mode = 2
+text = "月收入 0"
+
+[node name="Maintenance" type="Label" parent="Margin/Row"]
+layout_mode = 2
+text = "维护费 0"
+
+[node name="Recruitable" type="Label" parent="Margin/Row"]
+layout_mode = 2
+text = "可招募 0"
+
+[node name="Spacer" type="Control" parent="Margin/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Date" type="Label" parent="Margin/Row"]
+layout_mode = 2
+text = "0年1月"
+
+[node name="AdvanceTurn" type="Button" parent="Margin/Row"]
+layout_mode = 2
+text = "进入下一回合"
+tooltip_text = "结算当前月并进入下一回合"
