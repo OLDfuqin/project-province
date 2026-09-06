@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/metric_card.gd" id="1_metric"]
+
+[node name="MetricCard" type="PanelContainer"]
+custom_minimum_size = Vector2(180, 104)
+layout_mode = 2
+script = ExtResource("1_metric")
+
+[node name="Content" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+
+[node name="Value" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+
+[node name="Detail" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
