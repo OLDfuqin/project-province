@@ -4,67 +4,74 @@
 [ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
 
 [node name="PrimaryNavigation" type="PanelContainer"]
-custom_minimum_size = Vector2(0, 44)
+custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_script")
 
 [node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 4
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 4
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
 
-[node name="Row" type="HBoxContainer" parent="Margin"]
+[node name="Row" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 4
 
 [node name="Map" type="Button" parent="Margin/Row"]
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 toggle_mode = true
-text = "地图"
+text = "图"
 tooltip_text = "打开战略地图"
 metadata/destination = "map"
 
 [node name="Country" type="Button" parent="Margin/Row"]
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 toggle_mode = true
-text = "国家"
+text = "国"
 tooltip_text = "查看国家概况"
 metadata/destination = "country"
 
 [node name="Diplomacy" type="Button" parent="Margin/Row"]
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 toggle_mode = true
-text = "外交"
+text = "外"
 tooltip_text = "管理外交事务"
 metadata/destination = "diplomacy"
 
 [node name="Technology" type="Button" parent="Margin/Row"]
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 toggle_mode = true
-text = "科技"
+text = "科"
 tooltip_text = "查看科技发展"
 metadata/destination = "technology"
 
 [node name="Military" type="Button" parent="Margin/Row"]
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 toggle_mode = true
-text = "军事"
+text = "军"
 tooltip_text = "管理军事力量"
 metadata/destination = "military"
 
 [node name="Economy" type="Button" parent="Margin/Row"]
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 toggle_mode = true
-text = "经济"
+text = "经"
 tooltip_text = "查看经济状况"
 metadata/destination = "economy"
 
 [node name="Settings" type="Button" parent="Margin/Row"]
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 toggle_mode = true
-text = "设置"
+text = "设"
 tooltip_text = "调整游戏设置"
 metadata/destination = "settings"
