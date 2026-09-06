@@ -30,11 +30,11 @@ func _initialize() -> void:
     ) as Button
 
     province_map.province_double_clicked.emit("capital_auroria")
-    management.get_node("Recruitment/Open").pressed.emit()
-    management.get_node("Recruitment/Amount").value = 1000
-    management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
+    management.get_node("Tabs/Military/Recruitment/Open").pressed.emit()
+    management.get_node("Tabs/Military/Recruitment/Amount").value = 1000
+    management.get_node("Tabs/Military/Recruitment/Buttons/Confirm").pressed.emit()
     await process_frame
-    var selector := management.get_node("ArmySelector") as OptionButton
+    var selector := management.get_node("Tabs/Military/ArmySelector") as OptionButton
     if selector.item_count != 0:
         _fail(main_scene, "Recruitment created an army before monthly settlement")
         return
@@ -54,10 +54,10 @@ func _initialize() -> void:
     province_map.province_double_clicked.emit("capital_auroria")
 
     var select_advance := management.get_node(
-        "AdvanceActions/SelectAdvanceTarget"
+        "Tabs/Military/AdvanceActions/SelectAdvanceTarget"
     ) as Button
-    var advance_now := management.get_node("AdvanceActions/AdvanceNow") as Button
-    var advance_plans := management.get_node("AdvancePlans") as RichTextLabel
+    var advance_now := management.get_node("Tabs/Military/AdvanceActions/AdvanceNow") as Button
+    var advance_plans := management.get_node("Tabs/Military/AdvancePlans") as RichTextLabel
     select_advance.pressed.emit()
     if main_scene.map_input_mode_name() != "auto_advance_destination":
         _fail(main_scene, "Management page did not enter advance target selection")
@@ -66,7 +66,7 @@ func _initialize() -> void:
     province_map.province_selected.emit("cell_4_4")
     await process_frame
     var advance_target_name: String = main_scene.province_by_id["cell_4_4"]["name"]
-    if not management.get_node("AdvanceTarget").text.contains(advance_target_name) or \
+    if not management.get_node("Tabs/Military/AdvanceTarget").text.contains(advance_target_name) or \
             not advance_plans.text.contains(army_id):
         _fail(main_scene, "Non-adjacent advance target was not stored and displayed")
         return
@@ -100,7 +100,7 @@ func _initialize() -> void:
     await process_frame
     if _army(bridge, army_id).get("province_id", "") != origin_id or \
             bridge.get_pending_orders("auroria").size() != 1 or \
-            not management.get_node("Status").text.contains("订单已创建"):
+            not management.get_node("Tabs/Overview/Status").text.contains("订单已创建"):
         _fail(main_scene, "Automatic advance did not create a delayed army order")
         return
     advance_turn.pressed.emit()
@@ -117,7 +117,7 @@ func _initialize() -> void:
     await process_frame
     advance_plans.meta_clicked.emit("select:%s" % army_id)
     await process_frame
-    if management.get_node("ProvinceName").text != moved_name:
+    if management.get_node("Tabs/Overview/ProvinceName").text != moved_name:
         _fail(main_scene, "Selecting a remote plan did not switch managed province")
         return
 

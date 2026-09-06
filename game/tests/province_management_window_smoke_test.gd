@@ -54,24 +54,24 @@ func _initialize() -> void:
         return
 
     province_map.province_double_clicked.emit("capital_auroria")
-    var recruit := management.get_node("Recruitment/Open") as Button
-    var army_selector := management.get_node("ArmySelector") as OptionButton
-    var reachable := management.get_node("ReachableDestination") as OptionButton
-    var move_army := management.get_node("ArmyActions/MoveArmy") as Button
+    var recruit := management.get_node("Tabs/Military/Recruitment/Open") as Button
+    var army_selector := management.get_node("Tabs/Military/ArmySelector") as OptionButton
+    var reachable := management.get_node("Tabs/Military/ReachableDestination") as OptionButton
+    var move_army := management.get_node("Tabs/Military/ArmyActions/MoveArmy") as Button
     if main_scene.workspace_mode_name() != "province_management" or \
             not management.visible or \
-            management.get_node("ProvinceName").text != "奥罗里亚首都" or \
+            management.get_node("Tabs/Overview/ProvinceName").text != "奥罗里亚首都" or \
             recruit.disabled or army_selector.item_count != 0 or \
-            not management.get_node("Placeholders/EconomyInvestment").disabled or \
-            not management.get_node("Placeholders/CivilInvestment").disabled or \
-            not management.get_node("Placeholders/BuildingManagement").disabled:
+            not management.get_node("Tabs/Construction/EconomyInvestment/Description").text.contains("后续开放") or \
+            not management.get_node("Tabs/Construction/CivilInvestment/Description").text.contains("后续开放") or \
+            not management.get_node("Tabs/Construction/BuildingManagement/Description").text.contains("后续开放"):
         _fail(main_scene, "Province management window did not show the initial province state")
         return
 
-    var technology_status := management.get_node("Technology/Status") as Label
-    var technology_pending := management.get_node("Technology/Pending") as Label
+    var technology_status := management.get_node("Tabs/TechnologyLegacy/Technology/Status") as Label
+    var technology_pending := management.get_node("Tabs/TechnologyLegacy/Technology/Pending") as Label
     var economy_research := management.get_node(
-        "Technology/Buttons/Economy"
+        "Tabs/TechnologyLegacy/Technology/Buttons/Economy"
     ) as Button
     if not technology_status.text.contains("经济 0"):
         _fail(main_scene, "Management page did not display technology")
@@ -98,8 +98,8 @@ func _initialize() -> void:
         return
 
     recruit.pressed.emit()
-    management.get_node("Recruitment/Amount").value = 500
-    management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
+    management.get_node("Tabs/Military/Recruitment/Amount").value = 500
+    management.get_node("Tabs/Military/Recruitment/Buttons/Confirm").pressed.emit()
     await process_frame
     var recruitment_orders: Array = bridge.get_pending_orders("auroria")
     var recruitment_row := _pending_row(main_scene, "recruitment")
@@ -108,8 +108,8 @@ func _initialize() -> void:
             recruitment_orders[0].get("remaining_months", 0) != 1 or \
             recruitment_row == null or \
             not (recruitment_row.get_node("Description") as Label).text.contains("预付2000") or \
-            not management.get_node("Recruitment/Pending").text.contains("预留500人") or \
-            not management.get_node("Status").text.contains("订单已创建"):
+            not management.get_node("Tabs/Military/Recruitment/Pending").text.contains("预留500人") or \
+            not management.get_node("Tabs/Overview/Status").text.contains("订单已创建"):
         _fail(main_scene, "Recruitment did not stay pending for one month")
         return
 
@@ -138,7 +138,7 @@ func _initialize() -> void:
     var destination_id: String = target.get("province_id", "")
     reachable.get_popup().index_pressed.emit(1)
     if move_army.disabled or \
-            not management.get_node("DirectDestination").text.contains(
+            not management.get_node("Tabs/Military/DirectDestination").text.contains(
                 target.get("province_name", destination_id)
             ):
         _fail(main_scene, "Reachable destination selection did not prepare an order")
@@ -162,7 +162,7 @@ func _initialize() -> void:
             destination_id or \
             reachable.item_count != 1 or not reachable.disabled or \
             not move_army.disabled or \
-            not management.get_node("AdvanceActions/AdvanceNow").disabled:
+            not management.get_node("Tabs/Military/AdvanceActions/AdvanceNow").disabled:
         _fail(main_scene, "Opening a province without a player army retained stale army state")
         return
 
@@ -178,7 +178,7 @@ func _initialize() -> void:
     if _army(bridge, army_id).get("province_id", "") != origin_id or \
             movement_row == null or \
             not (movement_row.get_node("Description") as Label).text.contains("预留移动") or \
-            not management.get_node("Status").text.contains("订单已创建"):
+            not management.get_node("Tabs/Overview/Status").text.contains("订单已创建"):
         _fail(main_scene, "Army movement happened immediately instead of being queued")
         return
 

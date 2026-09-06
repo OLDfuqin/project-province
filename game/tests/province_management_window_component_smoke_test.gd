@@ -145,12 +145,30 @@ func _initialize() -> void:
     window.set_advance_target("rivergate", "河间")
     window.set_advance_plans("[url=pause:army_1]暂停[/url]")
 
-    var economy := window.get_node_or_null("Technology/Buttons/Economy") as Button
+    window.set_active_tab("military")
+    if window.active_tab() != "military" or \
+            not window.get_node("Tabs/Military").visible or \
+            window.get_node("Tabs/Overview").visible:
+        _fail(window, "Province management tabs are not mutually exclusive")
+        return
+    window.set_pending_orders([{
+        "order_id": "order_7",
+        "order_type": "recruitment",
+        "province_id": "capital_auroria",
+        "manpower": 100,
+        "remaining_months": 1,
+    }])
+    window.set_active_tab("orders")
+    if not window.get_node("Tabs/Orders/OrderSummary").text.contains("剩余1个月"):
+        _fail(window, "Province order tab lost its local order summary")
+        return
+
+    var economy := window.get_node_or_null("Tabs/TechnologyLegacy/Technology/Buttons/Economy") as Button
     var select_advance := window.get_node_or_null(
-        "AdvanceActions/SelectAdvanceTarget"
+        "Tabs/Military/AdvanceActions/SelectAdvanceTarget"
     ) as Button
-    var advance_plans := window.get_node_or_null("AdvancePlans") as RichTextLabel
-    var reachable := window.get_node_or_null("ReachableDestination") as OptionButton
+    var advance_plans := window.get_node_or_null("Tabs/Military/AdvancePlans") as RichTextLabel
+    var reachable := window.get_node_or_null("Tabs/Military/ReachableDestination") as OptionButton
     if economy == null or select_advance == null or advance_plans == null or \
             reachable == null:
         _fail(window, "Province management component controls are missing")
@@ -214,8 +232,8 @@ func _initialize() -> void:
         "is_attack": false,
     }])
     if reachable.selected != 0 or \
-            not window.get_node("DirectDestination").text.contains("尚未选择") or \
-            not window.get_node("ArmyActions/MoveArmy").disabled:
+            not window.get_node("Tabs/Military/DirectDestination").text.contains("尚未选择") or \
+            not window.get_node("Tabs/Military/ArmyActions/MoveArmy").disabled:
         _fail(window, "Removed reachable target did not clear visual/internal selection")
         return
     window.set_reachable_targets([
@@ -252,28 +270,28 @@ func _initialize() -> void:
         },
     ])
     if not economy.disabled or \
-            not window.get_node("Technology/Buttons/Military").disabled or \
-            not window.get_node("Technology/Buttons/Roads").disabled or \
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Military").disabled or \
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Roads").disabled or \
             not economy.tooltip_text.contains("已有研究订单"):
         _fail(window, "Existing research order did not lock all research tracks")
         return
     select_advance.pressed.emit()
     advance_plans.meta_clicked.emit("pause:army_1")
-    window.get_node("Recruitment/Open").pressed.emit()
-    window.get_node("Recruitment/Amount").value = 125
-    window.get_node("Recruitment/Buttons/Confirm").pressed.emit()
-    window.get_node("Rename/FormationNumber").value = 5
-    window.get_node("Rename/Confirm").pressed.emit()
-    var merge_candidates := window.get_node("Merge/Candidates") as ItemList
+    window.get_node("Tabs/Military/Recruitment/Open").pressed.emit()
+    window.get_node("Tabs/Military/Recruitment/Amount").value = 125
+    window.get_node("Tabs/Military/Recruitment/Buttons/Confirm").pressed.emit()
+    window.get_node("Tabs/Military/Rename/FormationNumber").value = 5
+    window.get_node("Tabs/Military/Rename/Confirm").pressed.emit()
+    var merge_candidates := window.get_node("Tabs/Military/Merge/Candidates") as ItemList
     merge_candidates.select(0, false)
     merge_candidates.multi_selected.emit(0, true)
-    window.get_node("Merge/Confirm").pressed.emit()
+    window.get_node("Tabs/Military/Merge/Confirm").pressed.emit()
 
-    var technology_status := window.get_node("Technology/Status") as Label
-    var technology_pending := window.get_node("Technology/Pending") as Label
-    var recruitment_pending := window.get_node("Recruitment/Pending") as Label
-    var advance_target := window.get_node("AdvanceTarget") as Label
-    var province_summary := window.get_node("ProvinceSummary") as Label
+    var technology_status := window.get_node("Tabs/TechnologyLegacy/Technology/Status") as Label
+    var technology_pending := window.get_node("Tabs/TechnologyLegacy/Technology/Pending") as Label
+    var recruitment_pending := window.get_node("Tabs/Military/Recruitment/Pending") as Label
+    var advance_target := window.get_node("Tabs/Military/AdvanceTarget") as Label
+    var province_summary := window.get_node("Tabs/Overview/ProvinceSummary") as Label
     if observed["research_track"] != "economy" or \
             observed["advance_army"] != "army_1" or \
             observed["reachable_destination"] != "enemy_border" or \
@@ -283,19 +301,19 @@ func _initialize() -> void:
             observed["merge_primary"] != "army_1" or \
             observed["merge_ids"] != ["army_2"] or \
             merge_candidates.item_count != 1 or \
-            int(window.get_node("Recruitment/Amount").max_value) != 375 or \
-            not window.get_node("Recruitment/Details").text.contains(
+            int(window.get_node("Tabs/Military/Recruitment/Amount").max_value) != 375 or \
+            not window.get_node("Tabs/Military/Recruitment/Details").text.contains(
                 "权威报价"
             ) or \
-            not window.get_node("Recruitment/Details").text.contains("1500") or \
+            not window.get_node("Tabs/Military/Recruitment/Details").text.contains("1500") or \
             not province_summary.text.contains("120000") or \
             not province_summary.text.ends_with("1200") or \
             not technology_status.text.contains("道路 3") or \
             not technology_pending.text.contains("经济 → 2") or \
             not technology_pending.text.contains("剩余3个月") or \
             not recruitment_pending.text.contains("预留500人") or \
-            not window.get_node("DirectDestination").text.contains("敌境") or \
-            not window.get_node("DirectDestination").text.contains("预留移动3") or \
+            not window.get_node("Tabs/Military/DirectDestination").text.contains("敌境") or \
+            not window.get_node("Tabs/Military/DirectDestination").text.contains("预留移动3") or \
             not advance_target.text.contains("河间"):
         _fail(window, "Province management component contract is incomplete")
         return
@@ -334,14 +352,14 @@ func _initialize() -> void:
         "military_cost": 0,
         "roads_cost": 4000,
     })
-    if not window.get_node("Technology/Buttons/Economy").disabled or \
-            not window.get_node("Technology/Buttons/Military").disabled or \
-            window.get_node("Technology/Buttons/Roads").disabled or \
-            not window.get_node("Technology/Buttons/Economy").tooltip_text.contains(
+    if not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Economy").disabled or \
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Military").disabled or \
+            window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Roads").disabled or \
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Economy").tooltip_text.contains(
                 "不足"
             ) or \
-            not window.get_node("Technology/Buttons/Military").text.contains("满级") or \
-            not window.get_node("Technology/Buttons/Roads").text.contains("4000"):
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Military").text.contains("满级") or \
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Roads").text.contains("4000"):
         _fail(window, "Research buttons ignored authoritative cost/max/treasury state")
         return
 
@@ -369,11 +387,11 @@ func _initialize() -> void:
         "roads_cost": 5000,
     })
     window.set_pending_orders([])
-    if not window.get_node("Recruitment/Open").disabled or \
-            not window.get_node("Technology/Buttons/Economy").disabled or \
-            not window.get_node("Technology/Buttons/Military").disabled or \
-            not window.get_node("Technology/Buttons/Roads").disabled or \
-            not window.get_node("Status").text.contains("负债"):
+    if not window.get_node("Tabs/Military/Recruitment/Open").disabled or \
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Economy").disabled or \
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Military").disabled or \
+            not window.get_node("Tabs/TechnologyLegacy/Technology/Buttons/Roads").disabled or \
+            not window.get_node("Tabs/Overview/Status").text.contains("负债"):
         _fail(window, "Debt did not disable new paid planning actions")
         return
 

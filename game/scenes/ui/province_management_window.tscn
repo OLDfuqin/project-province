@@ -9,36 +9,57 @@ size_flags_vertical = 3
 theme_override_constants/separation = 8
 script = ExtResource("1_management")
 
-[node name="ProvinceName" type="Label" parent="."]
+[node name="Tabs" type="TabContainer" parent="."]
+custom_minimum_size = Vector2(0, 720)
+layout_mode = 2
+size_flags_vertical = 3
+current_tab = 0
+
+[node name="Overview" type="VBoxContainer" parent="Tabs"]
+layout_mode = 2
+theme_override_constants/separation = 8
+tab_title = "概览"
+
+[node name="ProvinceName" type="Label" parent="Tabs/Overview"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 horizontal_alignment = 1
 
-[node name="ProvinceSummary" type="Label" parent="."]
+[node name="ProvinceSummary" type="Label" parent="Tabs/Overview"]
 layout_mode = 2
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="Recruitment" type="VBoxContainer" parent="."]
+[node name="Status" type="Label" parent="Tabs/Overview"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Military" type="VBoxContainer" parent="Tabs"]
+layout_mode = 2
+theme_override_constants/separation = 8
+tab_title = "军事"
+
+[node name="Recruitment" type="VBoxContainer" parent="Tabs/Military"]
 layout_mode = 2
 
-[node name="Open" type="Button" parent="Recruitment"]
+[node name="Open" type="Button" parent="Tabs/Military/Recruitment"]
 layout_mode = 2
 text = "创建征兵订单"
 
-[node name="Pending" type="Label" parent="Recruitment"]
+[node name="Pending" type="Label" parent="Tabs/Military/Recruitment"]
 layout_mode = 2
 text = "本地区暂无征兵订单"
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="Details" type="Label" parent="Recruitment"]
+[node name="Details" type="Label" parent="Tabs/Military/Recruitment"]
 visible = false
 layout_mode = 2
 text = "可招募士兵：0 | 国库：0 | 最大：0"
 horizontal_alignment = 1
 
-[node name="Amount" type="SpinBox" parent="Recruitment"]
+[node name="Amount" type="SpinBox" parent="Tabs/Military/Recruitment"]
 visible = false
 layout_mode = 2
 min_value = 1.0
@@ -47,74 +68,39 @@ step = 1.0
 value = 1.0
 allow_greater = true
 
-[node name="Buttons" type="HBoxContainer" parent="Recruitment"]
+[node name="Buttons" type="HBoxContainer" parent="Tabs/Military/Recruitment"]
 visible = false
 layout_mode = 2
 alignment = 1
 
-[node name="Confirm" type="Button" parent="Recruitment/Buttons"]
+[node name="Confirm" type="Button" parent="Tabs/Military/Recruitment/Buttons"]
 layout_mode = 2
 text = "确认招募"
 
-[node name="Cancel" type="Button" parent="Recruitment/Buttons"]
+[node name="Cancel" type="Button" parent="Tabs/Military/Recruitment/Buttons"]
 layout_mode = 2
 text = "取消"
 
-[node name="Technology" type="VBoxContainer" parent="."]
-layout_mode = 2
-theme_override_constants/separation = 4
-
-[node name="Title" type="Label" parent="Technology"]
-layout_mode = 2
-text = "国家科技"
-
-[node name="Status" type="Label" parent="Technology"]
-layout_mode = 2
-text = "经济 0 | 军事 0 | 道路 0"
-horizontal_alignment = 1
-
-[node name="Pending" type="Label" parent="Technology"]
-layout_mode = 2
-text = "暂无研究订单"
-horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="Buttons" type="HBoxContainer" parent="Technology"]
-layout_mode = 2
-alignment = 1
-
-[node name="Economy" type="Button" parent="Technology/Buttons"]
-layout_mode = 2
-text = "研究经济"
-
-[node name="Military" type="Button" parent="Technology/Buttons"]
-layout_mode = 2
-text = "研究军事"
-
-[node name="Roads" type="Button" parent="Technology/Buttons"]
-layout_mode = 2
-text = "研究道路"
-
-[node name="ArmyTitle" type="Label" parent="."]
+[node name="ArmyTitle" type="Label" parent="Tabs/Military"]
 layout_mode = 2
 text = "地区驻军"
 
-[node name="ArmySelector" type="OptionButton" parent="."]
+[node name="ArmySelector" type="OptionButton" parent="Tabs/Military"]
 layout_mode = 2
 
-[node name="ArmyDetails" type="Label" parent="."]
+[node name="ArmyDetails" type="Label" parent="Tabs/Military"]
 layout_mode = 2
 horizontal_alignment = 1
 
-[node name="Rename" type="HBoxContainer" parent="."]
+[node name="Rename" type="HBoxContainer" parent="Tabs/Military"]
 layout_mode = 2
 alignment = 1
 
-[node name="Label" type="Label" parent="Rename"]
+[node name="Label" type="Label" parent="Tabs/Military/Rename"]
 layout_mode = 2
 text = "新军队编号"
 
-[node name="FormationNumber" type="SpinBox" parent="Rename"]
+[node name="FormationNumber" type="SpinBox" parent="Tabs/Military/Rename"]
 layout_mode = 2
 min_value = 1.0
 max_value = 1e+09
@@ -122,110 +108,210 @@ step = 1.0
 value = 1.0
 allow_greater = true
 
-[node name="Confirm" type="Button" parent="Rename"]
+[node name="Confirm" type="Button" parent="Tabs/Military/Rename"]
 layout_mode = 2
 disabled = true
 text = "更名"
 
-[node name="Merge" type="VBoxContainer" parent="."]
+[node name="Merge" type="VBoxContainer" parent="Tabs/Military"]
 layout_mode = 2
 
-[node name="Title" type="Label" parent="Merge"]
+[node name="Title" type="Label" parent="Tabs/Military/Merge"]
 layout_mode = 2
 text = "合并同地区军队（可多选）"
 
-[node name="Candidates" type="ItemList" parent="Merge"]
+[node name="Candidates" type="ItemList" parent="Tabs/Military/Merge"]
 custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
 select_mode = 1
 
-[node name="Preview" type="Label" parent="Merge"]
+[node name="Preview" type="Label" parent="Tabs/Military/Merge"]
 layout_mode = 2
 text = "请选择需要并入主军的军队"
 horizontal_alignment = 1
 
-[node name="Confirm" type="Button" parent="Merge"]
+[node name="Confirm" type="Button" parent="Tabs/Military/Merge"]
 layout_mode = 2
 disabled = true
 text = "确认合并"
 
-[node name="DirectDestination" type="Label" parent="."]
+[node name="DirectDestination" type="Label" parent="Tabs/Military"]
 layout_mode = 2
 text = "订单目的地：尚未选择"
 horizontal_alignment = 1
 
-[node name="ReachableDestination" type="OptionButton" parent="."]
+[node name="ReachableDestination" type="OptionButton" parent="Tabs/Military"]
 layout_mode = 2
 disabled = true
 
-[node name="ArmyActions" type="HBoxContainer" parent="."]
+[node name="ArmyActions" type="HBoxContainer" parent="Tabs/Military"]
 layout_mode = 2
 alignment = 1
 
-[node name="SelectDestination" type="Button" parent="ArmyActions"]
+[node name="SelectDestination" type="Button" parent="Tabs/Military/ArmyActions"]
 layout_mode = 2
 disabled = true
 text = "在地图选择可达目的地"
 
-[node name="MoveArmy" type="Button" parent="ArmyActions"]
+[node name="MoveArmy" type="Button" parent="Tabs/Military/ArmyActions"]
 layout_mode = 2
 disabled = true
 text = "创建调动订单"
 
-[node name="AdvanceTarget" type="Label" parent="."]
+[node name="AdvanceTarget" type="Label" parent="Tabs/Military"]
 layout_mode = 2
 text = "推进目标：尚未选择"
 horizontal_alignment = 1
 
-[node name="AdvanceActions" type="HBoxContainer" parent="."]
+[node name="AdvanceActions" type="HBoxContainer" parent="Tabs/Military"]
 layout_mode = 2
 alignment = 1
 
-[node name="SelectAdvanceTarget" type="Button" parent="AdvanceActions"]
+[node name="SelectAdvanceTarget" type="Button" parent="Tabs/Military/AdvanceActions"]
 layout_mode = 2
 disabled = true
 text = "在地图选择推进目标"
 
-[node name="AdvanceNow" type="Button" parent="AdvanceActions"]
+[node name="AdvanceNow" type="Button" parent="Tabs/Military/AdvanceActions"]
 layout_mode = 2
 disabled = true
 text = "按计划下单（1个月）"
 
-[node name="ClearMovement" type="Button" parent="AdvanceActions"]
+[node name="ClearMovement" type="Button" parent="Tabs/Military/AdvanceActions"]
 layout_mode = 2
 disabled = true
 text = "清除选择"
 
-[node name="AdvancePlansTitle" type="Label" parent="."]
+[node name="AdvancePlansTitle" type="Label" parent="Tabs/Military"]
 layout_mode = 2
 text = "国家推进计划"
 
-[node name="AdvancePlans" type="RichTextLabel" parent="."]
+[node name="AdvancePlans" type="RichTextLabel" parent="Tabs/Military"]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 bbcode_enabled = true
 text = "暂无推进计划"
 
-[node name="Status" type="Label" parent="."]
+[node name="Construction" type="VBoxContainer" parent="Tabs"]
 layout_mode = 2
+theme_override_constants/separation = 8
+tab_title = "建设"
+
+[node name="Title" type="Label" parent="Tabs/Construction"]
+layout_mode = 2
+text = "地区建设"
+theme_override_font_sizes/font_size = 20
+
+[node name="EconomyInvestment" type="PanelContainer" parent="Tabs/Construction"]
+layout_mode = 2
+
+[node name="Description" type="Label" parent="Tabs/Construction/EconomyInvestment"]
+layout_mode = 2
+text = "经济投资：后续开放"
 horizontal_alignment = 1
+
+[node name="CivilInvestment" type="PanelContainer" parent="Tabs/Construction"]
+layout_mode = 2
+
+[node name="Description" type="Label" parent="Tabs/Construction/CivilInvestment"]
+layout_mode = 2
+text = "民生投资：后续开放"
+horizontal_alignment = 1
+
+[node name="BuildingManagement" type="PanelContainer" parent="Tabs/Construction"]
+layout_mode = 2
+
+[node name="Description" type="Label" parent="Tabs/Construction/BuildingManagement"]
+layout_mode = 2
+text = "建筑管理：后续开放"
+horizontal_alignment = 1
+
+[node name="Orders" type="VBoxContainer" parent="Tabs"]
+layout_mode = 2
+theme_override_constants/separation = 8
+tab_title = "订单"
+
+[node name="Title" type="Label" parent="Tabs/Orders"]
+layout_mode = 2
+text = "本地区订单"
+theme_override_font_sizes/font_size = 20
+
+[node name="OrderSummary" type="Label" parent="Tabs/Orders"]
+layout_mode = 2
+text = "本地区暂无待处理订单"
 autowrap_mode = 2
 
-[node name="Placeholders" type="VBoxContainer" parent="."]
+[node name="TechnologyLegacy" type="VBoxContainer" parent="Tabs"]
+layout_mode = 2
+theme_override_constants/separation = 4
+tab_title = "科技"
+
+[node name="Technology" type="VBoxContainer" parent="Tabs/TechnologyLegacy"]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="EconomyInvestment" type="Button" parent="Placeholders"]
+[node name="Title" type="Label" parent="Tabs/TechnologyLegacy/Technology"]
 layout_mode = 2
-disabled = true
-text = "经济投资（后续开放）"
+text = "国家科技"
 
-[node name="CivilInvestment" type="Button" parent="Placeholders"]
+[node name="Status" type="Label" parent="Tabs/TechnologyLegacy/Technology"]
 layout_mode = 2
-disabled = true
-text = "民生投资（后续开放）"
+text = "经济 0 | 军事 0 | 道路 0"
+horizontal_alignment = 1
 
-[node name="BuildingManagement" type="Button" parent="Placeholders"]
+[node name="Pending" type="Label" parent="Tabs/TechnologyLegacy/Technology"]
 layout_mode = 2
-disabled = true
-text = "建筑管理（后续开放）"
+text = "暂无研究订单"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="Tabs/TechnologyLegacy/Technology"]
+layout_mode = 2
+alignment = 1
+
+[node name="Economy" type="Button" parent="Tabs/TechnologyLegacy/Technology/Buttons"]
+layout_mode = 2
+text = "研究经济"
+
+[node name="Military" type="Button" parent="Tabs/TechnologyLegacy/Technology/Buttons"]
+layout_mode = 2
+text = "研究军事"
+
+[node name="Roads" type="Button" parent="Tabs/TechnologyLegacy/Technology/Buttons"]
+layout_mode = 2
+text = "研究道路"
+
+[node name="Technology" type="VBoxContainer" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="Buttons" type="HBoxContainer" parent="Technology"]
+layout_mode = 2
+
+[node name="Economy" type="Button" parent="Technology/Buttons"]
+layout_mode = 2
+
+[node name="Recruitment" type="VBoxContainer" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="Open" type="Button" parent="Recruitment"]
+layout_mode = 2
+
+[node name="ArmyActions" type="HBoxContainer" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="MoveArmy" type="Button" parent="ArmyActions"]
+layout_mode = 2
+
+[node name="AdvanceActions" type="HBoxContainer" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="AdvanceNow" type="Button" parent="AdvanceActions"]
+layout_mode = 2
+
+[node name="AdvancePlans" type="RichTextLabel" parent="."]
+visible = false
+layout_mode = 2
