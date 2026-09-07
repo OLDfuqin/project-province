@@ -19,7 +19,7 @@ func open_page(page_id: String) -> void:
 		return
 	for child: Node in %Pages.get_children():
 		var page := child as Control
-		if page != null:
+		if page != null and page.has_meta("page_id"):
 			page.visible = String(page.get_meta("page_id", "")) == page_id
 	_page = page_id
 	visible = true

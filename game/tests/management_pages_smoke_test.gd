@@ -16,10 +16,13 @@ func _initialize() -> void:
 	var host := host_scene.instantiate()
 	root.add_child(host)
 	await process_frame
+	var observed := {"back_requested": false}
+	host.back_requested.connect(func() -> void: observed["back_requested"] = true)
 
 	host.open_page("country")
 	if host.current_page() != "country" or not host.get_node("Pages/Country").visible or \
-			host.get_node("Pages/Military").visible or host.get_node("Pages/Economy").visible:
+			host.get_node("Pages/Military").visible or host.get_node("Pages/Economy").visible or \
+			not host.get_node("Pages/Header").visible or not host.get_node("Pages/Header/Back").visible:
 		_fail(host, "Country page did not open exclusively")
 		return
 	host.open_page("not_a_page")
@@ -75,9 +78,9 @@ func _initialize() -> void:
 		if not host.get_node(scroll_path) is ScrollContainer:
 			_fail(host, "Management page content is not scrollable: %s" % scroll_path)
 			return
-	host.close_page()
-	if host.current_page() != "closed" or host.visible:
-		_fail(host, "Management page host did not close")
+	host.get_node("Pages/Header/Back").pressed.emit()
+	if not observed["back_requested"] or host.current_page() != "closed" or host.visible:
+		_fail(host, "Management page host did not close and request navigation back")
 		return
 	print("Management pages smoke test passed")
 	host.free()
