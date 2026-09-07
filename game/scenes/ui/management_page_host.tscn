@@ -1,10 +1,13 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/management_page_host.gd" id="1_host"]
 [ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://scenes/ui/country_overview_page.tscn" id="3_country"]
 [ext_resource type="PackedScene" path="res://scenes/ui/military_overview_page.tscn" id="4_military"]
 [ext_resource type="PackedScene" path="res://scenes/ui/economic_overview_page.tscn" id="5_economy"]
+[ext_resource type="PackedScene" path="res://scenes/ui/diplomacy_page.tscn" id="6_diplomacy"]
+[ext_resource type="PackedScene" path="res://scenes/ui/technology_page.tscn" id="7_technology"]
+[ext_resource type="PackedScene" path="res://scenes/ui/settings_page.tscn" id="8_settings"]
 
 [node name="ManagementPageHost" type="PanelContainer"]
 visible = false
@@ -40,6 +43,16 @@ layout_mode = 2
 size_flags_vertical = 3
 metadata/page_id = "country"
 
+[node name="Diplomacy" parent="Pages" instance=ExtResource("6_diplomacy")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "diplomacy"
+
+[node name="Technology" parent="Pages" instance=ExtResource("7_technology")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "technology"
+
 [node name="Military" parent="Pages" instance=ExtResource("4_military")]
 layout_mode = 2
 size_flags_vertical = 3
@@ -49,3 +62,8 @@ metadata/page_id = "military"
 layout_mode = 2
 size_flags_vertical = 3
 metadata/page_id = "economy"
+
+[node name="Settings" parent="Pages" instance=ExtResource("8_settings")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "settings"

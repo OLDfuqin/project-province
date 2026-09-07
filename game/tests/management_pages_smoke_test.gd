@@ -34,6 +34,10 @@ func _initialize() -> void:
 		"name": "奥罗里亚", "treasury": 10300,
 		"economy_level": 2, "military_level": 1, "roads_level": 3,
 	}
+	var countries := [
+		{"id": "auroria", "name": "奥罗里亚", "treasury": 10300},
+		{"id": "solmere", "name": "索尔梅尔", "treasury": 8200},
+	]
 	var totals := {
 		"population": 860000, "recruitable_population": 42000,
 		"controlled_provinces": 6,
@@ -78,6 +82,88 @@ func _initialize() -> void:
 		if not host.get_node(scroll_path) is ScrollContainer:
 			_fail(host, "Management page content is not scrollable: %s" % scroll_path)
 			return
+
+	var diplomacy := host.get_node_or_null("Pages/Diplomacy")
+	if diplomacy == null:
+		_fail(host, "Diplomacy page is missing")
+		return
+	var diplomacy_observed := {"declared_target": "", "peace_target": "", "peace_annex": false}
+	diplomacy.declare_war_requested.connect(func(country_id: String) -> void:
+		diplomacy_observed["declared_target"] = country_id
+	)
+	diplomacy.make_peace_requested.connect(func(country_id: String, annex_occupied: bool) -> void:
+		diplomacy_observed["peace_target"] = country_id
+		diplomacy_observed["peace_annex"] = annex_occupied
+	)
+	diplomacy.set_snapshot("auroria", countries, [])
+	diplomacy.select_country("solmere")
+	var diplomacy_rows := diplomacy.get_node("Content/Countries/Rows") as VBoxContainer
+	if diplomacy_rows == null or diplomacy_rows.get_child_count() == 0 or \
+			diplomacy_rows.get_child(0).text.contains("solmere"):
+		_fail(host, "Diplomacy page exposed a stable country ID")
+		return
+	diplomacy.get_node("Content/Actions/DeclareWar").pressed.emit()
+	if diplomacy_observed["declared_target"] != "solmere":
+		_fail(host, "Diplomacy page did not emit the selected stable country ID")
+		return
+	diplomacy.set_snapshot("auroria", countries, [{"country_a": "auroria", "country_b": "solmere"}])
+	diplomacy.select_country("solmere")
+	diplomacy.get_node("Content/Actions/AnnexOccupied").button_pressed = true
+	diplomacy.get_node("Content/Actions/MakePeace").pressed.emit()
+	if diplomacy_observed["peace_target"] != "solmere" or not diplomacy_observed["peace_annex"]:
+		_fail(host, "Diplomacy page did not emit the selected peace intent")
+		return
+
+	var technology := host.get_node_or_null("Pages/Technology")
+	if technology == null:
+		_fail(host, "Technology page is missing")
+		return
+	var technology_observed := {"requested_track": ""}
+	technology.research_requested.connect(func(track: String) -> void:
+		technology_observed["requested_track"] = track
+	)
+	technology.set_snapshot({
+		"economy_level": 0, "economy_cost": 5000, "economy_max": false,
+		"military_level": 0, "military_cost": 5000, "military_max": false,
+		"roads_level": 0, "roads_cost": 5000, "roads_max": false,
+	}, [], 10000)
+	var economy_research := technology.get_node("Content/Tracks/Economy/Research") as Button
+	if economy_research == null or economy_research.disabled or economy_research.text != "研究（5000）":
+		_fail(host, "Technology page ignored its authoritative affordability snapshot")
+		return
+	economy_research.pressed.emit()
+	if technology_observed["requested_track"] != "economy":
+		_fail(host, "Technology page did not emit the selected research track")
+		return
+	technology.set_snapshot({
+		"economy_level": 3, "economy_cost": 99999, "economy_max": true,
+		"military_level": 0, "military_cost": 5000, "military_max": false,
+		"roads_level": 0, "roads_cost": 5000, "roads_max": false,
+	}, [{"type": "research"}], 10000)
+	if not economy_research.disabled or economy_research.text != "已达最高等级":
+		_fail(host, "Technology page did not honor the authoritative maximum state")
+		return
+	if not (technology.get_node("Content/Tracks/Military/Research") as Button).disabled:
+		_fail(host, "Technology page allowed a second research while a pending order exists")
+		return
+
+	var settings := host.get_node_or_null("Pages/Settings")
+	if settings == null:
+		_fail(host, "Settings page is missing")
+		return
+	var settings_observed := {"save_requested": false, "load_requested": false}
+	settings.quick_save_requested.connect(func() -> void: settings_observed["save_requested"] = true)
+	settings.quick_load_requested.connect(func() -> void: settings_observed["load_requested"] = true)
+	settings.set_build_info("v0.1.0", 3)
+	var build_info := settings.get_node("Content/BuildInfo") as Label
+	if build_info == null or not build_info.text.contains("v0.1.0") or not build_info.text.contains("3"):
+		_fail(host, "Settings page did not render supplied build information")
+		return
+	settings.get_node("Content/Actions/QuickSave").pressed.emit()
+	settings.get_node("Content/Actions/QuickLoad").pressed.emit()
+	if not settings_observed["save_requested"] or not settings_observed["load_requested"]:
+		_fail(host, "Settings page did not emit save and load intents")
+		return
 	host.get_node("Pages/Header/Back").pressed.emit()
 	if not observed["back_requested"] or host.current_page() != "closed" or host.visible:
 		_fail(host, "Management page host did not close and request navigation back")
