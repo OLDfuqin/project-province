@@ -5,6 +5,8 @@ extends Control
 signal cancel_order_requested(order_id: String)
 
 var _drawer := "closed"
+var _province_by_id: Dictionary = {}
+var _country_by_id: Dictionary = {}
 
 
 func _ready() -> void:
@@ -18,12 +20,17 @@ func show_orders(orders: Array) -> void:
     for index: int in orders.size():
         var order: Dictionary = orders[index]
         $Panel/Body/Orders/Rows.add_child(_create_order_row(index, order))
-    $Panel/Body/Orders/Empty.visible = orders.is_empty()
+    $Panel/Body/Orders/Rows/Empty.visible = orders.is_empty()
+
+
+func set_order_lookups(province_by_id: Dictionary, country_by_id: Dictionary) -> void:
+    _province_by_id = province_by_id.duplicate(true)
+    _country_by_id = country_by_id.duplicate(true)
 
 
 func show_notifications(messages: Array[String]) -> void:
     _set_drawer("notifications")
-    %NotificationText.text = "\n".join(messages)
+    %NotificationText.text = "当前没有通知" if messages.is_empty() else "\n".join(messages)
 
 
 func show_turn_report(report_text: String) -> void:
@@ -55,6 +62,8 @@ func _set_drawer(drawer: String) -> void:
 func _clear_order_rows() -> void:
     var rows := $Panel/Body/Orders/Rows
     for row: Node in rows.get_children():
+        if row.name == "Empty":
+            continue
         rows.remove_child(row)
         row.queue_free()
 
@@ -69,7 +78,9 @@ func _create_order_row(index: int, order: Dictionary) -> HBoxContainer:
     description.name = "Description"
     description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    description.text = GameTextFormatter.pending_order_text(order, _order_provinces(order))
+    description.text = GameTextFormatter.pending_order_text(
+        order, _order_provinces(order), _country_by_id
+    )
     row.add_child(description)
 
     var cancel := Button.new()
@@ -83,15 +94,19 @@ func _create_order_row(index: int, order: Dictionary) -> HBoxContainer:
 
 
 func _order_provinces(order: Dictionary) -> Dictionary:
-    var provinces := {}
-    var fallback_name := String(order.get("province_name", "未知地区"))
-    provinces["?"] = {"name": fallback_name}
-    for key: String in ["province_id", "destination", "province_a", "province_b"]:
-        var province_id := String(order.get(key, ""))
-        if province_id != "":
-            provinces[province_id] = {"name": fallback_name}
+    var provinces := _province_by_id.duplicate(true)
+    var fallback_name := String(order.get("province_name", ""))
+    if fallback_name.is_empty():
+        return provinces
+    var province_id := String(order.get("province_id", ""))
+    if not province_id.is_empty() and not provinces.has(province_id):
+        provinces[province_id] = {"name": fallback_name}
+    elif province_id.is_empty() and not provinces.has("?"):
+        provinces["?"] = {"name": fallback_name}
     return provinces
 
 
 func _on_cancel_pressed(cancel: Button) -> void:
-    cancel_order_requested.emit(String(cancel.get_meta("order_id", "")))
+    var order_id := String(cancel.get_meta("order_id", ""))
+    if not order_id.is_empty():
+        cancel_order_requested.emit(order_id)

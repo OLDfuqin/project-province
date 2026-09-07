@@ -27,6 +27,7 @@ grow_vertical = 0
 
 [node name="Body" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
+size_flags_vertical = 3
 theme_override_constants/separation = 10
 
 [node name="Header" type="HBoxContainer" parent="Panel/Body"]
@@ -45,33 +46,38 @@ custom_minimum_size = Vector2(36, 32)
 layout_mode = 2
 text = "关闭"
 
-[node name="Orders" type="VBoxContainer" parent="Panel/Body"]
+[node name="Orders" type="ScrollContainer" parent="Panel/Body"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Empty" type="Label" parent="Panel/Body/Orders"]
-layout_mode = 2
-text = "当前没有待执行订单"
+size_flags_vertical = 3
 
 [node name="Rows" type="VBoxContainer" parent="Panel/Body/Orders"]
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 8
 
-[node name="Notifications" type="VBoxContainer" parent="Panel/Body"]
+[node name="Empty" type="Label" parent="Panel/Body/Orders/Rows"]
+layout_mode = 2
+text = "当前没有待执行订单"
+
+[node name="Notifications" type="ScrollContainer" parent="Panel/Body"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_vertical = 3
 
 [node name="NotificationText" type="Label" parent="Panel/Body/Notifications"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
 autowrap_mode = 2
 
-[node name="TurnReportSection" type="VBoxContainer" parent="Panel/Body"]
+[node name="TurnReportSection" type="ScrollContainer" parent="Panel/Body"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_vertical = 3
 
 [node name="TurnReportText" type="Label" parent="Panel/Body/TurnReportSection"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
 autowrap_mode = 2

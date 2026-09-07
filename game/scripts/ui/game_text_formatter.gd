@@ -75,7 +75,8 @@ static func battle_action_report(action: Dictionary, province_by_id: Dictionary)
 
 static func pending_order_text(
     order: Dictionary,
-    province_by_id: Dictionary
+    province_by_id: Dictionary,
+    country_by_id: Dictionary = {}
 ) -> String:
     var remaining := int(order.get("remaining_months", 1))
     var status := "待执行" if order.get("status", "pending") == "pending" else \
@@ -115,7 +116,8 @@ static func pending_order_text(
             ]
         "war_declaration":
             return "宣战 · 目标%s · 剩余%d个月 · %s" % [
-                order.get("defender_id", "?"), remaining, status,
+                country_name(country_by_id, String(order.get("defender_id", ""))),
+                remaining, status,
             ]
         _:
             return "未知订单 · 剩余%d个月 · %s" % [remaining, status]
@@ -460,3 +462,10 @@ static func province_name(province_by_id: Dictionary, province_id: String) -> St
         province_id,
         {"name": province_id}
     ).get("name", province_id)
+
+
+static func country_name(country_by_id: Dictionary, country_id: String) -> String:
+    var country: Variant = country_by_id.get(country_id, {})
+    if country is Dictionary and not String(country.get("name", "")).is_empty():
+        return String(country["name"])
+    return "未知国家"
