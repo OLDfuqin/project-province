@@ -292,6 +292,7 @@ func _initialize() -> void:
     var recruitment_pending := window.get_node("Tabs/Military/Recruitment/Pending") as Label
     var advance_target := window.get_node("Tabs/Military/AdvanceTarget") as Label
     var province_summary := window.get_node("Tabs/Overview/ProvinceSummary") as Label
+    var army_details := window.get_node("Tabs/Military/ArmyDetails") as Label
     if observed["research_track"] != "economy" or \
             observed["advance_army"] != "army_1" or \
             observed["reachable_destination"] != "enemy_border" or \
@@ -312,6 +313,7 @@ func _initialize() -> void:
             not technology_pending.text.contains("经济 → 2") or \
             not technology_pending.text.contains("剩余3个月") or \
             not recruitment_pending.text.contains("预留500人") or \
+            army_details.text.contains("army_1") or \
             not window.get_node("Tabs/Military/DirectDestination").text.contains("敌境") or \
             not window.get_node("Tabs/Military/DirectDestination").text.contains("预留移动3") or \
             not advance_target.text.contains("河间"):

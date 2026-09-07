@@ -345,11 +345,11 @@ func _initialize() -> void:
             return
 
     var management_controls := [
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Technology/Buttons/Economy",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Recruitment/Open",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/ArmyActions/MoveArmy",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/AdvanceActions/AdvanceNow",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/AdvancePlans",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Tabs/TechnologyLegacy/Technology/Buttons/Economy",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Tabs/Military/Recruitment/Open",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Tabs/Military/ArmyActions/MoveArmy",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Tabs/Military/AdvanceActions/AdvanceNow",
+        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Tabs/Military/AdvancePlans",
     ]
     for control_path: String in management_controls:
         if main_scene.get_node_or_null(control_path) == null:

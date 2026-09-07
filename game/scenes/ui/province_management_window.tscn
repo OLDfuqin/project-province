@@ -280,38 +280,3 @@ text = "研究军事"
 [node name="Roads" type="Button" parent="Tabs/TechnologyLegacy/Technology/Buttons"]
 layout_mode = 2
 text = "研究道路"
-
-[node name="Technology" type="VBoxContainer" parent="."]
-visible = false
-layout_mode = 2
-
-[node name="Buttons" type="HBoxContainer" parent="Technology"]
-layout_mode = 2
-
-[node name="Economy" type="Button" parent="Technology/Buttons"]
-layout_mode = 2
-
-[node name="Recruitment" type="VBoxContainer" parent="."]
-visible = false
-layout_mode = 2
-
-[node name="Open" type="Button" parent="Recruitment"]
-layout_mode = 2
-
-[node name="ArmyActions" type="HBoxContainer" parent="."]
-visible = false
-layout_mode = 2
-
-[node name="MoveArmy" type="Button" parent="ArmyActions"]
-layout_mode = 2
-
-[node name="AdvanceActions" type="HBoxContainer" parent="."]
-visible = false
-layout_mode = 2
-
-[node name="AdvanceNow" type="Button" parent="AdvanceActions"]
-layout_mode = 2
-
-[node name="AdvancePlans" type="RichTextLabel" parent="."]
-visible = false
-layout_mode = 2

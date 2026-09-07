@@ -322,9 +322,8 @@ func _populate_armies(
 
 func _refresh_army_details() -> void:
     var army: Dictionary = _army_by_id.get(_selected_army_id, {})
-    $Tabs/Military/ArmyDetails.text = "%s | 内部ID：%s | 兵力：%d | 移动点：%s/%s（每月+%s）" % [
+    $Tabs/Military/ArmyDetails.text = "%s | 兵力：%d | 移动点：%s/%s（每月+%s）" % [
         army.get("display_name", _selected_army_id),
-        _selected_army_id,
         army.get("manpower", 0),
         GameText.movement_points(army.get("movement_points", 0)),
         GameText.movement_points(army.get("max_movement_points", 6)),
