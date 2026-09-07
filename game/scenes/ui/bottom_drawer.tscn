@@ -1,0 +1,77 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/bottom_drawer.gd" id="1_drawer"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+
+[node name="BottomDrawer" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 0
+theme = ExtResource("2_theme")
+script = ExtResource("1_drawer")
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -240.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="Body" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="Panel/Body"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Panel/Body/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "战略信息"
+
+[node name="Close" type="Button" parent="Panel/Body/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 32)
+layout_mode = 2
+text = "关闭"
+
+[node name="Orders" type="VBoxContainer" parent="Panel/Body"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Empty" type="Label" parent="Panel/Body/Orders"]
+layout_mode = 2
+text = "当前没有待执行订单"
+
+[node name="Rows" type="VBoxContainer" parent="Panel/Body/Orders"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Notifications" type="VBoxContainer" parent="Panel/Body"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="NotificationText" type="Label" parent="Panel/Body/Notifications"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="TurnReportSection" type="VBoxContainer" parent="Panel/Body"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="TurnReportText" type="Label" parent="Panel/Body/TurnReportSection"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 2
