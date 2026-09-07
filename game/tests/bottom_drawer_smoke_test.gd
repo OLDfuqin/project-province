@@ -26,6 +26,34 @@ func _initialize() -> void:
         quit(1)
         return
 
+    drawer.show_orders([{
+        "order_id": "move_raw", "type": "army_action",
+        "destination": "province_raw_move", "remaining_months": 1,
+    }, {
+        "order_id": "recruit_raw", "type": "recruitment",
+        "province_id": "province_raw_recruit", "remaining_months": 1,
+    }, {
+        "order_id": "road_raw", "type": "road_construction",
+        "province_a": "province_raw_a", "province_b": "province_raw_b",
+        "remaining_months": 1,
+    }])
+    for index: int in 3:
+        var raw_text: String = drawer.get_node(
+            "Panel/Body/Orders/Rows/Order%d/Description" % index
+        ).text
+        if raw_text.find("未知地区") == -1:
+            push_error("Missing province lookup did not use the safe unknown label")
+            quit(1)
+            return
+        for raw_id: String in [
+            "province_raw_move", "province_raw_recruit",
+            "province_raw_a", "province_raw_b",
+        ]:
+            if raw_text.find(raw_id) != -1:
+                push_error("Missing province lookup leaked raw ID: %s" % raw_id)
+                quit(1)
+                return
+
     drawer.set_order_lookups(
         {
             "north": {"name": "北境"},

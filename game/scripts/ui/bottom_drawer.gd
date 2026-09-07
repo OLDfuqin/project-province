@@ -96,13 +96,19 @@ func _create_order_row(index: int, order: Dictionary) -> HBoxContainer:
 func _order_provinces(order: Dictionary) -> Dictionary:
     var provinces := _province_by_id.duplicate(true)
     var fallback_name := String(order.get("province_name", ""))
-    if fallback_name.is_empty():
-        return provinces
-    var province_id := String(order.get("province_id", ""))
-    if not province_id.is_empty() and not provinces.has(province_id):
-        provinces[province_id] = {"name": fallback_name}
-    elif province_id.is_empty() and not provinces.has("?"):
+    var referenced_ids: Array[String] = []
+    for key: String in ["province_id", "destination", "province_a", "province_b"]:
+        var province_id := String(order.get(key, ""))
+        if province_id.is_empty():
+            continue
+        referenced_ids.append(province_id)
+        var province: Variant = provinces.get(province_id, {})
+        if not province is Dictionary or String(province.get("name", "")).is_empty():
+            provinces[province_id] = {"name": "未知地区"}
+    if referenced_ids.is_empty() and not fallback_name.is_empty():
         provinces["?"] = {"name": fallback_name}
+    elif not provinces.has("?"):
+        provinces["?"] = {"name": "未知地区"}
     return provinces
 
 
