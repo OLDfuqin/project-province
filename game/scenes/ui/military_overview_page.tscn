@@ -1,0 +1,55 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/military_overview_page.gd" id="1_page"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+
+[node name="MilitaryOverviewPage" type="PanelContainer"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_page")
+
+[node name="Content" type="VBoxContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="Heading" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "军事概况"
+
+[node name="ArmiesTitle" type="Label" parent="Content"]
+layout_mode = 2
+text = "军队"
+
+[node name="Armies" type="ScrollContainer" parent="Content"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Rows" type="VBoxContainer" parent="Content/Armies"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="EmptyArmies" type="Label" parent="Content/Armies/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "当前没有军队"
+
+[node name="OrdersTitle" type="Label" parent="Content"]
+layout_mode = 2
+text = "当前订单"
+
+[node name="Orders" type="ScrollContainer" parent="Content"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Rows" type="VBoxContainer" parent="Content/Orders"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="EmptyOrders" type="Label" parent="Content/Orders/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "当前没有订单"
