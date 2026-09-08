@@ -95,19 +95,36 @@ func _initialize() -> void:
 		diplomacy_observed["peace_target"] = country_id
 		diplomacy_observed["peace_annex"] = annex_occupied
 	)
+	if not (diplomacy.get_node("Content/Actions/DeclareWar") as Button).disabled or \
+			not (diplomacy.get_node("Content/Actions/MakePeace") as Button).disabled:
+		_fail(host, "Diplomacy actions were enabled without a selected target")
+		return
 	diplomacy.set_snapshot("auroria", countries, [])
-	diplomacy.select_country("solmere")
 	var diplomacy_rows := diplomacy.get_node("Content/Countries/Rows") as VBoxContainer
 	if diplomacy_rows == null or diplomacy_rows.get_child_count() == 0 or \
-			diplomacy_rows.get_child(0).text.contains("solmere"):
+		diplomacy_rows.get_child(0).text.contains("solmere"):
 		_fail(host, "Diplomacy page exposed a stable country ID")
+		return
+	var peaceful_country_button := diplomacy_rows.get_node("Country0") as Button
+	if peaceful_country_button == null:
+		_fail(host, "Diplomacy page did not create the expected country button")
+		return
+	peaceful_country_button.pressed.emit()
+	if (diplomacy.get_node("Content/Actions/DeclareWar") as Button).disabled or \
+			not (diplomacy.get_node("Content/Actions/MakePeace") as Button).disabled:
+		_fail(host, "Diplomacy actions did not reflect a selected peaceful target")
 		return
 	diplomacy.get_node("Content/Actions/DeclareWar").pressed.emit()
 	if diplomacy_observed["declared_target"] != "solmere":
 		_fail(host, "Diplomacy page did not emit the selected stable country ID")
 		return
 	diplomacy.set_snapshot("auroria", countries, [{"country_a": "auroria", "country_b": "solmere"}])
-	diplomacy.select_country("solmere")
+	diplomacy_rows = diplomacy.get_node("Content/Countries/Rows") as VBoxContainer
+	var war_country_button := diplomacy_rows.get_node("Country0") as Button
+	if war_country_button == null:
+		_fail(host, "Diplomacy page did not recreate the expected country button")
+		return
+	war_country_button.pressed.emit()
 	diplomacy.get_node("Content/Actions/AnnexOccupied").button_pressed = true
 	diplomacy.get_node("Content/Actions/MakePeace").pressed.emit()
 	if diplomacy_observed["peace_target"] != "solmere" or not diplomacy_observed["peace_annex"]:
@@ -118,6 +135,10 @@ func _initialize() -> void:
 	if technology == null:
 		_fail(host, "Technology page is missing")
 		return
+	for track: String in ["Economy", "Military", "Roads"]:
+		if not (technology.get_node("Content/Tracks/%s/Research" % track) as Button).disabled:
+			_fail(host, "Technology page enabled %s research before receiving a snapshot" % track)
+			return
 	var technology_observed := {"requested_track": ""}
 	technology.research_requested.connect(func(track: String) -> void:
 		technology_observed["requested_track"] = track
