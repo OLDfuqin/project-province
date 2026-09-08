@@ -5,7 +5,6 @@ const GameText := preload("res://scripts/ui/game_text_formatter.gd")
 signal recruit_requested(province_id: String, manpower: int)
 signal rename_requested(army_id: String, formation_number: int)
 signal merge_requested(primary_army_id: String, merged_army_ids: Array)
-signal technology_research_requested(track: String)
 signal army_selected(army_id: String)
 signal destination_selection_requested(army_id: String)
 signal reachable_destination_selected(army_id: String, destination_id: String)
@@ -25,16 +24,13 @@ var _player_treasury := 0
 var _reserved_recruitment := 0
 var _recruitment_quote: Dictionary = {}
 var _can_manage := false
-var _has_pending_research := false
 var _army_with_order: Dictionary = {}
-var _technology: Dictionary = {}
 
 const TAB_INDEX := {
     "overview": 0,
     "military": 1,
     "construction": 2,
     "orders": 3,
-    "technology_legacy": 4,
 }
 
 
@@ -45,15 +41,6 @@ func _ready() -> void:
     $Tabs/Military/Rename/Confirm.pressed.connect(_on_rename_pressed)
     $Tabs/Military/Merge/Candidates.multi_selected.connect(_on_merge_selection_changed)
     $Tabs/Military/Merge/Confirm.pressed.connect(_on_merge_pressed)
-    $Tabs/TechnologyLegacy/Technology/Buttons/Economy.pressed.connect(
-        func() -> void: technology_research_requested.emit("economy")
-    )
-    $Tabs/TechnologyLegacy/Technology/Buttons/Military.pressed.connect(
-        func() -> void: technology_research_requested.emit("military")
-    )
-    $Tabs/TechnologyLegacy/Technology/Buttons/Roads.pressed.connect(
-        func() -> void: technology_research_requested.emit("roads")
-    )
     $Tabs/Military/ArmySelector.item_selected.connect(_on_army_selected)
     $Tabs/Military/ReachableDestination.item_selected.connect(
         _on_reachable_destination_selected
@@ -106,10 +93,8 @@ func display_province(
     _player_treasury = int(player_treasury)
     _recruitment_quote = recruitment_quote.duplicate(true)
     _reserved_recruitment = 0
-    _has_pending_research = false
     _army_with_order.clear()
     $Tabs/Military/Recruitment/Pending.text = "本地区暂无征兵订单"
-    $Tabs/TechnologyLegacy/Technology/Pending.text = "暂无研究订单"
     $Tabs/Orders/OrderSummary.text = "本地区暂无待处理订单"
     _refresh_paid_action_state()
     _close_recruitment()
@@ -149,21 +134,9 @@ func set_destination(
     $Tabs/Overview/Status.text = "目的地已选择，可确认调动"
 
 
-func set_technology(technology: Dictionary) -> void:
-    _technology = technology.duplicate(true)
-    $Tabs/TechnologyLegacy/Technology/Status.text = "经济 %d | 军事 %d | 道路 %d" % [
-        technology.get("economy_level", 0),
-        technology.get("military_level", 0),
-        technology.get("roads_level", 0),
-    ]
-    _refresh_paid_action_state()
-
-
 func set_pending_orders(orders: Array) -> void:
     _reserved_recruitment = 0
-    _has_pending_research = false
     _army_with_order.clear()
-    var research_text := "暂无研究订单"
     var order_summary_lines: Array[String] = []
     for order: Dictionary in orders:
         match String(order.get("type", order.get("order_type", ""))):
@@ -173,21 +146,12 @@ func set_pending_orders(orders: Array) -> void:
                     order_summary_lines.append("征兵订单：预留%d人 · 剩余%d个月" % [
                         order.get("manpower", 0), order.get("remaining_months", 0),
                     ])
-            "research":
-                _has_pending_research = true
-                research_text = "%s → %d · 剩余%d个月 · 已预付%d" % [
-                    GameText.technology_track_name(String(order.get("track", ""))),
-                    order.get("target_level", 0),
-                    order.get("remaining_months", 0),
-                    order.get("paid_cost", order.get("cost", 0)),
-                ]
             "army_action":
                 _army_with_order[String(order.get("army_id", ""))] = true
     $Tabs/Military/Recruitment/Pending.text = (
         "本地区征兵订单：预留%d人" % _reserved_recruitment
         if _reserved_recruitment > 0 else "本地区暂无征兵订单"
     )
-    $Tabs/TechnologyLegacy/Technology/Pending.text = research_text
     $Tabs/Orders/OrderSummary.text = (
         "本地区暂无待处理订单" if order_summary_lines.is_empty()
         else "\n".join(order_summary_lines)
@@ -265,7 +229,6 @@ func clear() -> void:
     _advance_target_id = ""
     _army_by_id.clear()
     _army_with_order.clear()
-    _technology.clear()
     _close_recruitment()
     _clear_destination()
     set_advance_target("", "")
@@ -349,34 +312,6 @@ func _refresh_paid_action_state() -> void:
     $Tabs/Military/Recruitment/Open.disabled = (
         not _can_manage or _player_treasury < 0 or _maximum_recruitment() <= 0
     )
-    _refresh_research_button("economy", $Tabs/TechnologyLegacy/Technology/Buttons/Economy)
-    _refresh_research_button("military", $Tabs/TechnologyLegacy/Technology/Buttons/Military)
-    _refresh_research_button("roads", $Tabs/TechnologyLegacy/Technology/Buttons/Roads)
-
-
-func _refresh_research_button(track: String, button: Button) -> void:
-    var track_name := GameText.technology_track_name(track)
-    var cost := int(_technology.get("%s_cost" % track, 0))
-    var reason := ""
-    if not _can_manage:
-        reason = "只能在己方地区规划研究"
-    elif _has_pending_research:
-        reason = "已有研究订单，完成或取消后才能新建"
-    elif cost <= 0:
-        reason = "%s科技已达到当前等级上限" % track_name
-    elif _player_treasury < 0:
-        reason = "国库负债时不能创建研究订单"
-    elif _player_treasury < cost:
-        reason = "国库不足：研究%s需要%d，当前%d" % [
-            track_name, cost, _player_treasury,
-        ]
-    button.disabled = not reason.is_empty()
-    button.text = (
-        "%s已满级" % track_name if cost <= 0
-        else "研究%s（%d）" % [track_name, cost]
-    )
-    button.tooltip_text = reason if not reason.is_empty() else \
-        "创建%s研究订单，预付%d" % [track_name, cost]
 
 
 func _on_recruit_open_pressed() -> void:

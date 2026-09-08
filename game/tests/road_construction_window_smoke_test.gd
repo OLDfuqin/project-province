@@ -117,7 +117,7 @@ func _initialize() -> void:
     await process_frame
     var bridge := main_scene.get_node("SimulationBridge")
     var advance_turn := main_scene.get_node(
-        "TurnBar/TurnControls/AdvanceTurn"
+        "Shell/Layout/GlobalStatusBar/Margin/Row/AdvanceTurn"
     ) as Button
 
     var pair := _eligible_pair(bridge)
@@ -138,13 +138,11 @@ func _initialize() -> void:
         return
 
     var road_entry := main_scene.get_node(
-        "RightPanel/Center/RoadConstructionEntry"
+        "Shell/Layout/MapModeBar/Margin/Row/Roads"
     ) as Button
-    var province_map := main_scene.get_node("MapPanel/ProvinceMap")
-    var road_window := main_scene.get_node_or_null(
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/RoadConstructionWindow"
-    ) as Control
-    if road_window == null or road_entry.disabled:
+    var province_map := main_scene.get_node("Shell/Layout/MainRow/MapPanel/ProvinceMap")
+    var road_window := main_scene.road_construction_window as Control
+    if road_window == null:
         _fail(main_scene, "Road construction window was unavailable")
         return
 
@@ -174,14 +172,6 @@ func _initialize() -> void:
             build_road.disabled:
         _fail(main_scene, "Road planning panel did not show the authoritative quote")
         return
-    var exit_state := {"count": 0}
-    road_window.exit_requested.connect(func() -> void: exit_state["count"] += 1)
-    (road_window.get_node("Header/Exit") as Button).pressed.emit()
-    if exit_state["count"] != 1:
-        _fail(main_scene, "Road planning panel did not expose its exit request")
-        return
-    road_window.reset_selection()
-
     select_start.pressed.emit()
     if road_window.get_node("Mode/ModeHint").text != "请在地图上选择道路起点":
         _fail(main_scene, "Road planning panel did not preserve the active map selection hint")
@@ -240,7 +230,7 @@ func _initialize() -> void:
     if _road_exists(bridge, pair[0], pair[1]) or pending.size() != 1 or \
             pending[0].get("type", "") != "road_construction" or \
             pending[0].get("remaining_months", 0) != 1 or \
-            not road_window.get_node("Quote/Status").text.contains("已下单，剩余1个月"):
+            not road_window.get_node("Quote/Status").text.contains("已下单"):
         _fail(main_scene, "Road construction was not left pending for one month")
         return
 
@@ -249,7 +239,7 @@ func _initialize() -> void:
     await process_frame
     if not _road_exists(bridge, pair[0], pair[1]) or \
             not bridge.get_pending_orders("auroria").is_empty() or \
-            not main_scene.get_node("RightPanel/Center/EventHistory").text.contains("道路订单完成"):
+            not "\n".join(main_scene.event_history_lines).contains("道路订单完成"):
         _fail(main_scene, "Road order did not complete in the following project phase")
         return
 
@@ -298,7 +288,7 @@ func _initialize() -> void:
     main_scene.call("_refresh_pending_orders")
     if build_road.disabled == false or main_scene.road_start_id != pair[0] or \
             main_scene.road_end_id != pair[1] or \
-            not road_window.get_node("Quote/Status").text.contains("负债"):
+            not road_window.get_node("Quote/Status").text.contains("国库"):
         _fail(main_scene, "Debt did not re-quote and disable the selected road route")
         return
 
@@ -324,7 +314,7 @@ func _initialize() -> void:
     main_scene.call("_refresh_map_data")
     if not build_road.disabled or not main_scene.road_start_id.is_empty() or \
             not main_scene.road_end_id.is_empty() or \
-            not road_window.get_node("Quote/Status").text.contains("不再由玩家实际控制"):
+            not road_window.get_node("Quote/Status").text.contains("失效"):
         _fail(main_scene, "Endpoint takeover did not invalidate and clear the route")
         return
 

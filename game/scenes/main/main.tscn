@@ -1,10 +1,14 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/province_map.gd" id="2_map"]
-[ext_resource type="PackedScene" path="res://scenes/ui/province_info_window.tscn" id="3_info"]
-[ext_resource type="PackedScene" path="res://scenes/ui/province_management_window.tscn" id="4_management"]
-[ext_resource type="PackedScene" path="res://scenes/ui/road_construction_window.tscn" id="5_road"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="3_theme"]
+[ext_resource type="PackedScene" path="res://scenes/ui/global_status_bar.tscn" id="4_status"]
+[ext_resource type="PackedScene" path="res://scenes/ui/primary_navigation.tscn" id="5_navigation"]
+[ext_resource type="PackedScene" path="res://scenes/ui/map_mode_bar.tscn" id="6_modes"]
+[ext_resource type="PackedScene" path="res://scenes/ui/context_inspector.tscn" id="7_inspector"]
+[ext_resource type="PackedScene" path="res://scenes/ui/bottom_drawer.tscn" id="8_drawer"]
+[ext_resource type="PackedScene" path="res://scenes/ui/management_page_host.tscn" id="9_pages"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -13,6 +17,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("3_theme")
 script = ExtResource("1_main")
 
 [node name="SimulationBridge" type="ProvinceBridge" parent="."]
@@ -24,270 +29,93 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.055, 0.075, 0.11, 1)
+mouse_filter = 2
+color = Color(0.043, 0.071, 0.125, 1)
 
-[node name="MapPanel" type="PanelContainer" parent="."]
+[node name="Shell" type="Control" parent="."]
 layout_mode = 1
-anchors_preset = 0
-anchor_left = 0.015
-anchor_top = 0.10
-anchor_right = 0.60
-anchor_bottom = 0.975
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="ProvinceMap" type="Control" parent="MapPanel"]
-custom_minimum_size = Vector2(640, 480)
+[node name="Layout" type="VBoxContainer" parent="Shell"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="GlobalStatusBar" parent="Shell/Layout" instance=ExtResource("4_status")]
+unique_name_in_owner = true
 layout_mode = 2
+
+[node name="MainRow" type="HBoxContainer" parent="Shell/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 0
+
+[node name="PrimaryNavigation" parent="Shell/Layout/MainRow" instance=ExtResource("5_navigation")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="MapPanel" type="PanelContainer" parent="Shell/Layout/MainRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="ProvinceMap" type="Control" parent="Shell/Layout/MainRow/MapPanel"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 480)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 mouse_filter = 1
 script = ExtResource("2_map")
 
-[node name="RightPanel" type="ScrollContainer" parent="."]
-layout_mode = 1
-anchors_preset = 0
-anchor_left = 0.64
-anchor_top = 0.10
-anchor_right = 0.985
-anchor_bottom = 0.52
-grow_horizontal = 2
-grow_vertical = 2
-horizontal_scroll_mode = 0
-vertical_scroll_mode = 1
-
-[node name="Center" type="VBoxContainer" parent="RightPanel"]
-custom_minimum_size = Vector2(340, 1420)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 16
-
-[node name="Title" type="Label" parent="RightPanel/Center"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 36
-text = "省域计划"
-horizontal_alignment = 1
-
-[node name="Status" type="Label" parent="RightPanel/Center"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
-theme_override_font_sizes/font_size = 18
-text = "正在连接模拟核心……"
-horizontal_alignment = 1
-
-[node name="GameStatus" type="Label" parent="RightPanel/Center"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.9, 0.82, 0.55, 1)
-text = "场景状态待初始化"
-horizontal_alignment = 1
-
-[node name="SaveControls" type="HBoxContainer" parent="RightPanel/Center"]
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 8
-
-[node name="Save" type="Button" parent="RightPanel/Center/SaveControls"]
-layout_mode = 2
-text = "快速保存"
-
-[node name="Load" type="Button" parent="RightPanel/Center/SaveControls"]
-layout_mode = 2
-text = "快速读取"
-
-[node name="RoadConstructionEntry" type="Button" parent="RightPanel/Center"]
-layout_mode = 2
-text = "修建道路"
-
-[node name="PendingOrders" type="PanelContainer" parent="RightPanel/Center"]
-layout_mode = 2
-
-[node name="Content" type="VBoxContainer" parent="RightPanel/Center/PendingOrders"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="Title" type="Label" parent="RightPanel/Center/PendingOrders/Content"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "玩家待执行订单"
-horizontal_alignment = 1
-
-[node name="PlanningStatus" type="Label" parent="RightPanel/Center/PendingOrders/Content"]
-layout_mode = 2
-text = "规划状态：可创建付费订单"
-horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="Empty" type="Label" parent="RightPanel/Center/PendingOrders/Content"]
-layout_mode = 2
-text = "暂无玩家待执行订单（AI订单不可见）"
-horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="OrderList" type="ScrollContainer" parent="RightPanel/Center/PendingOrders/Content"]
-custom_minimum_size = Vector2(0, 160)
-layout_mode = 2
-horizontal_scroll_mode = 0
-vertical_scroll_mode = 1
-
-[node name="Orders" type="VBoxContainer" parent="RightPanel/Center/PendingOrders/Content/OrderList"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
-
-[node name="CountryList" type="VBoxContainer" parent="RightPanel/Center"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="DiplomacyControls" type="HBoxContainer" parent="RightPanel/Center"]
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 8
-
-[node name="WarTarget" type="OptionButton" parent="RightPanel/Center/DiplomacyControls"]
-layout_mode = 2
-
-[node name="DeclareWar" type="Button" parent="RightPanel/Center/DiplomacyControls"]
-layout_mode = 2
-text = "宣战"
-
-[node name="PeacePolicy" type="OptionButton" parent="RightPanel/Center/DiplomacyControls"]
-layout_mode = 2
-
-[node name="MakePeace" type="Button" parent="RightPanel/Center/DiplomacyControls"]
-layout_mode = 2
-text = "议和"
-
-[node name="ProvinceSummary" type="Label" parent="RightPanel/Center"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.65, 0.75, 0.9, 1)
-theme_override_font_sizes/font_size = 16
-horizontal_alignment = 1
-
-[node name="CountryDetails" type="Label" parent="RightPanel/Center"]
-custom_minimum_size = Vector2(0, 180)
-layout_mode = 2
-text = "国家详情"
-autowrap_mode = 1
-
-[node name="WarOverview" type="Label" parent="RightPanel/Center"]
-custom_minimum_size = Vector2(0, 120)
-layout_mode = 2
-text = "当前无战争"
-autowrap_mode = 1
-
-[node name="RoadControls" type="VBoxContainer" parent="RightPanel/Center"]
-visible = false
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="RoadSelection" type="Label" parent="RightPanel/Center/RoadControls"]
-layout_mode = 2
-text = "修路：请选择起点（当前玩家：奥罗里亚）"
-horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="Buttons" type="HBoxContainer" parent="RightPanel/Center/RoadControls"]
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 8
-
-[node name="BuildRoad" type="Button" parent="RightPanel/Center/RoadControls/Buttons"]
-layout_mode = 2
-disabled = true
-text = "建设公路（500）"
-
-[node name="ClearRoad" type="Button" parent="RightPanel/Center/RoadControls/Buttons"]
-layout_mode = 2
-text = "清除选择"
-
-[node name="WorkspacePanel" type="PanelContainer" parent="."]
-layout_mode = 1
-anchors_preset = 0
-anchor_left = 0.64
-anchor_top = 0.55
-anchor_right = 0.985
-anchor_bottom = 0.975
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="Workspace" type="VBoxContainer" parent="WorkspacePanel"]
-custom_minimum_size = Vector2(340, 0)
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="TitleBar" type="HBoxContainer" parent="WorkspacePanel/Workspace"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Title" type="Label" parent="WorkspacePanel/Workspace/TitleBar"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 22
-text = "功能窗口"
-
-[node name="Close" type="Button" parent="WorkspacePanel/Workspace/TitleBar"]
-layout_mode = 2
-disabled = true
-text = "关闭"
-
-[node name="WindowViewport" type="ScrollContainer" parent="WorkspacePanel/Workspace"]
-clip_contents = true
-layout_mode = 2
-size_flags_vertical = 3
-horizontal_scroll_mode = 0
-vertical_scroll_mode = 1
-follow_focus = true
-
-[node name="WindowContent" type="VBoxContainer" parent="WorkspacePanel/Workspace/WindowViewport"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-
-[node name="Content" type="Label" parent="WorkspacePanel/Workspace/WindowViewport/WindowContent"]
-layout_mode = 2
-size_flags_vertical = 3
-text = "请选择地区或打开功能"
-horizontal_alignment = 1
-vertical_alignment = 1
-autowrap_mode = 2
-
-[node name="ProvinceInfoWindow" parent="WorkspacePanel/Workspace/WindowViewport/WindowContent" instance=ExtResource("3_info")]
-
-[node name="ProvinceManagementWindow" parent="WorkspacePanel/Workspace/WindowViewport/WindowContent" instance=ExtResource("4_management")]
-
-[node name="RoadConstructionWindow" parent="WorkspacePanel/Workspace/WindowViewport/WindowContent" instance=ExtResource("5_road")]
-
-[node name="TurnBar" type="PanelContainer" parent="."]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.015
-anchor_top = 0.015
-anchor_right = 0.985
-anchor_bottom = 0.080
-grow_horizontal = 2
-grow_vertical = 2
+[node name="MapHoverTooltip" type="Label" parent="Shell/Layout/MainRow/MapPanel"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 260.0
+offset_bottom = 40.0
 mouse_filter = 2
+text = ""
 
-[node name="TurnControls" type="HBoxContainer" parent="TurnBar"]
+[node name="ContextInspector" parent="Shell/Layout/MainRow" instance=ExtResource("7_inspector")]
+unique_name_in_owner = true
 layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 12
 
-[node name="DateLabel" type="Label" parent="TurnBar/TurnControls"]
+[node name="MapModeBar" parent="Shell/Layout" instance=ExtResource("6_modes")]
+unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
 
-[node name="AdvanceTurn" type="Button" parent="TurnBar/TurnControls"]
-layout_mode = 2
-text = "进入下一回合（1个月）"
+[node name="BottomDrawer" parent="Shell" instance=ExtResource("8_drawer")]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 64.0
+offset_right = -300.0
+offset_bottom = -44.0
+grow_horizontal = 2
+grow_vertical = 0
 
-[node name="EventLog" type="Label" parent="RightPanel/Center"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.82, 0.9, 1)
-text = "等待玩家操作"
-horizontal_alignment = 1
-autowrap_mode = 1
-
-[node name="EventHistory" type="RichTextLabel" parent="RightPanel/Center"]
-custom_minimum_size = Vector2(0, 120)
-layout_mode = 2
-bbcode_enabled = false
-autowrap_mode = 1
-scroll_following = true
-text = "事件历史已初始化"
+[node name="ManagementPageHost" parent="Shell" instance=ExtResource("9_pages")]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 64.0
+offset_top = 56.0
+offset_bottom = -44.0
+grow_horizontal = 2
+grow_vertical = 2
