@@ -37,6 +37,7 @@ var _map_mode := "political"
 var _reachable_highlights: Array[String] = []
 var _attackable_highlights: Array[String] = []
 var _road_target_highlights: Array[String] = []
+var _draw_observation: Dictionary = {}
 var _hovered_id := ""
 var _selected_id := ""
 var _road_start_id := ""
@@ -238,6 +239,10 @@ func presentation_state() -> Dictionary:
         "attackable": _attackable_highlights.duplicate(),
         "road_targets": _road_target_highlights.duplicate(),
     }
+
+
+func draw_observation() -> Dictionary:
+    return _draw_observation.duplicate(true)
 
 
 func _stable_highlight_ids(ids: Array) -> Array[String]:
@@ -551,6 +556,18 @@ func _stationed_manpower_by_province() -> Dictionary:
 
 
 func _draw() -> void:
+    var observed_fills: Dictionary = {}
+    var observed_outline_colors: Dictionary = {}
+    var observation := {
+        "map_mode": _map_mode,
+        "province_fills": observed_fills,
+        "province_outline_colors": observed_outline_colors,
+        "province_outlines": 0,
+        "road_lines": 0,
+        "city_icons": 0,
+        "terrain_icons": 0,
+        "army_icons": 0,
+    }
     draw_rect(Rect2(Vector2.ZERO, size), Color("182235"))
     draw_set_transform(_pan, 0.0, Vector2.ONE * _zoom)
     var icon_layouts := _all_icon_layouts()
@@ -574,6 +591,7 @@ func _draw() -> void:
         elif province_id == _hovered_id:
             color = color.lightened(0.14)
 
+        observed_fills[province_id] = color
         draw_colored_polygon(polygon, color)
         var outline := PackedVector2Array(polygon)
         outline.append(polygon[0])
@@ -600,19 +618,23 @@ func _draw() -> void:
         elif province_id == _hovered_id:
             outline_color = Color("e8eef7")
             outline_width = 3.0
+        observed_outline_colors[province_id] = outline_color
         draw_polyline(outline, outline_color, outline_width / _zoom, true)
+        observation["province_outlines"] = int(observation["province_outlines"]) + 1
 
         if not province.is_empty():
             var icon_layout: Dictionary = icon_layouts[province_id]
             var city_texture: Texture2D = CAPITAL_ICON \
                     if icon_layout["city_kind"] == "capital" else CITY_ICON
             draw_texture_rect(city_texture, icon_layout["city_rect"], false)
+            observation["city_icons"] = int(observation["city_icons"]) + 1
             if icon_layout.has("terrain_rect"):
                 draw_texture_rect(
                     _terrain_icon(icon_layout["terrain_kind"]),
                     icon_layout["terrain_rect"],
                     false
                 )
+                observation["terrain_icons"] = int(observation["terrain_icons"]) + 1
 
     for road: Dictionary in _roads:
         var province_a: String = road.get("province_a", "")
@@ -624,6 +646,7 @@ func _draw() -> void:
         draw_line(start, end, Color("f4d35e"), 7.0 / _zoom, true)
         draw_circle(start, 6.0 / _zoom, Color("fff3b0"))
         draw_circle(end, 6.0 / _zoom, Color("fff3b0"))
+        observation["road_lines"] = int(observation["road_lines"]) + 1
 
     for frontline: Dictionary in _frontlines:
         var province_a: String = frontline.get("province_a", "")
@@ -675,6 +698,7 @@ func _draw() -> void:
         var icon_layout: Dictionary = icon_layouts[province_id]
         for army_rect: Rect2 in icon_layout.get("army_rects", []):
             draw_texture_rect(ARMY_ICON, army_rect, false)
+            observation["army_icons"] = int(observation["army_icons"]) + 1
         var overflow_count := int(icon_layout.get("overflow_count", 0))
         if overflow_count > 0:
             var overflow_rect: Rect2 = icon_layout["overflow_rect"]
@@ -701,6 +725,7 @@ func _draw() -> void:
     )
     if _auto_advance_path.size() >= 2:
         _draw_advance_legend()
+    _draw_observation = observation
 
 
 func _gui_input(event: InputEvent) -> void:

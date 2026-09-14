@@ -20,6 +20,30 @@ func _accepted_road_targets(main_scene: Control, start_id: String) -> Array[Stri
     return accepted
 
 
+func _bridge_state(main_scene: Control) -> Dictionary:
+    return {
+        "provinces": main_scene.bridge.get_province_summaries().duplicate(true),
+        "roads": main_scene.bridge.get_road_summaries().duplicate(true),
+        "armies": main_scene.bridge.get_army_summaries().duplicate(true),
+        "pending_orders": main_scene.bridge.get_pending_orders(
+            main_scene.player_country_id
+        ).duplicate(true),
+    }
+
+
+func _observe_draw(map: Control) -> Dictionary:
+    map.queue_redraw()
+    await process_frame
+    await process_frame
+    return map.call("draw_observation")
+
+
+func _color_distance(first: Color, second: Color) -> float:
+    return Vector3(first.r, first.g, first.b).distance_to(
+        Vector3(second.r, second.g, second.b)
+    )
+
+
 func _initialize() -> void:
     var map := ProvinceMap.new()
     root.add_child(map)
@@ -109,6 +133,94 @@ func _initialize() -> void:
 
     map.free()
 
+    var render_viewport := SubViewport.new()
+    render_viewport.size = Vector2i(800, 500)
+    render_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+    root.add_child(render_viewport)
+    var render_map := ProvinceMap.new()
+    render_map.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    render_viewport.add_child(render_map)
+    await process_frame
+    if not render_map.load_grid_layout("res://data/grid_map_layout.json"):
+        _fail(render_viewport, render_map.geometry_error())
+        return
+    render_map.set_scenario_data(provinces, countries)
+    render_map.set_roads([])
+    render_map.set_armies([])
+    render_map.set_map_mode("political")
+    render_map.set_interaction_highlights([], [], [])
+    if not render_map.has_method("draw_observation"):
+        _fail(render_viewport, "ProvinceMap lacks a stable actual-draw observation seam")
+        return
+    var no_layers := await _observe_draw(render_map)
+    render_map.set_roads([{"province_a": "cell_1_1", "province_b": "cell_1_2"}])
+    var with_road := await _observe_draw(render_map)
+    if no_layers.get("road_lines", -1) != 0 or with_road.get("road_lines", 0) != 1:
+        _fail(render_viewport, "Actual renderer did not draw the road layer")
+        return
+    render_map.set_armies([{
+        "id": "render_army", "owner_id": "auroria", "province_id": "cell_2_1",
+        "manpower": 500,
+    }])
+    var with_icons := await _observe_draw(render_map)
+    if with_road.get("army_icons", -1) != 0 or with_icons.get("army_icons", 0) != 1:
+        _fail(render_viewport, "Actual renderer did not draw the army icon layer")
+        return
+    var mode_colors: Dictionary = {}
+    for mode: String in ["political", "terrain", "economy", "military", "roads"]:
+        render_map.set_map_mode(mode)
+        render_map.set_interaction_highlights([], [], [])
+        var rendered := await _observe_draw(render_map)
+        mode_colors[mode] = rendered.get("province_fills", {}).get(
+            "cell_1_1", Color.TRANSPARENT
+        )
+        if rendered.get("province_outlines", 0) != render_map.geometry_count():
+            _fail(render_viewport, "Province boundary layer disappeared in %s mode" % mode)
+            return
+        if rendered.get("road_lines", 0) != 1:
+            _fail(render_viewport, "Road layer disappeared in %s mode" % mode)
+            return
+        if rendered.get("city_icons", 0) != provinces.size() or \
+                rendered.get("terrain_icons", 0) != provinces.size() or \
+                rendered.get("army_icons", 0) != 1:
+            _fail(render_viewport, "Icon layer disappeared in %s mode" % mode)
+            return
+    for mode: String in ["terrain", "economy", "military", "roads"]:
+        if _color_distance(mode_colors["political"], mode_colors[mode]) < 0.08:
+            _fail(render_viewport, "Actual province fill did not change in %s mode" % mode)
+            return
+
+    render_map.set_map_mode("political")
+    render_map.set_interaction_highlights([], [], [])
+    var without_highlight := await _observe_draw(render_map)
+    render_map.set_interaction_highlights(["cell_1_1"], [], [])
+    var reachable_render := await _observe_draw(render_map)
+    render_map.set_interaction_highlights([], ["cell_1_1"], [])
+    var attackable_render := await _observe_draw(render_map)
+    render_map.set_interaction_highlights([], [], ["cell_1_1"])
+    var road_target_render := await _observe_draw(render_map)
+    var base_render_color: Color = without_highlight["province_fills"]["cell_1_1"]
+    if _color_distance(
+            base_render_color, reachable_render["province_fills"]["cell_1_1"]
+    ) < 0.015 or _color_distance(
+            base_render_color, attackable_render["province_fills"]["cell_1_1"]
+    ) < 0.015:
+        _fail(render_viewport, "Actual renderer ignored movement or attack highlights: base=%s reachable=%s attackable=%s" % [
+            base_render_color, reachable_render["province_fills"]["cell_1_1"],
+            attackable_render["province_fills"]["cell_1_1"],
+        ])
+        return
+    if reachable_render.get("province_outline_colors", {}).get(
+            "cell_1_1", Color.TRANSPARENT
+    ) != Color("4c8dff") or attackable_render.get("province_outline_colors", {}).get(
+            "cell_1_1", Color.TRANSPARENT
+    ) != Color("d85b5b") or road_target_render.get("province_outline_colors", {}).get(
+            "cell_1_1", Color.TRANSPARENT
+    ) != Color("4fb69f"):
+        _fail(render_viewport, "Actual renderer ignored a reachable, attackable, or road outline")
+        return
+    render_viewport.free()
+
     var viewport := SubViewport.new()
     viewport.size = Vector2i(1280, 720)
     root.add_child(viewport)
@@ -120,6 +232,19 @@ func _initialize() -> void:
     var province_map := main_scene.get_node("Shell/Layout/MainRow/MapPanel/ProvinceMap")
     var mode_bar := main_scene.get_node("Shell/Layout/MapModeBar")
     var tooltip: Control = main_scene.map_hover_tooltip
+    var bridge_before := _bridge_state(main_scene)
+    var scenario_ids: Array = main_scene.province_by_id.keys()
+    for mode: String in ["political", "terrain", "economy", "military", "roads"]:
+        province_map.set_map_mode(mode)
+    province_map.set_interaction_highlights(
+        scenario_ids.slice(0, 2), scenario_ids.slice(2, 4), scenario_ids.slice(4, 6)
+    )
+    var bridge_after := _bridge_state(main_scene)
+    if bridge_after != bridge_before:
+        _fail(main_scene, "Map presentation mutated authoritative bridge summaries or orders")
+        return
+    province_map.set_map_mode("political")
+    province_map.set_interaction_highlights([], [], [])
     mode_bar.get_node("Margin/Row/Terrain").pressed.emit()
     if main_scene.active_map_mode_name() != "terrain" or province_map.map_mode() != "terrain":
         _fail(main_scene, "Map mode bar did not update the province presentation mode")
@@ -220,11 +345,30 @@ func _initialize() -> void:
     if tooltip.get_script() != load("res://scripts/ui/map_hover_tooltip.gd"):
         _fail(main_scene, "Main did not mount the map hover tooltip component")
         return
-    province_map.province_hover_changed.emit("capital_auroria", Vector2(1279, 719))
+    var hover_events: Array = []
+    province_map.province_hover_changed.connect(
+        func(province_id: String, screen_position: Vector2) -> void:
+            hover_events.append({"id": province_id, "position": screen_position})
+    )
+    province_map.call("_clear_hover")
+    var capital_center: Vector2 = province_map.call(
+        "_polygon_center", province_map._polygons["capital_auroria"]
+    )
+    var hover_local_position: Vector2 = province_map._pan + \
+            capital_center * province_map._zoom
+    var expected_screen_position: Vector2 = \
+            province_map.get_global_transform_with_canvas() * hover_local_position
+    var motion := InputEventMouseMotion.new()
+    motion.position = hover_local_position
+    motion.relative = Vector2(3, 2)
+    province_map.call("_gui_input", motion)
     await process_frame
     var tooltip_rect: Rect2 = tooltip.get_global_rect()
     var summary := tooltip.get_node_or_null("Margin/Content/Summary") as Label
-    if not tooltip.visible or \
+    if hover_events.size() != 1 or hover_events[0].get("id", "") != "capital_auroria" or \
+            not (hover_events[0].get("position", Vector2.ZERO) as Vector2).is_equal_approx(
+                expected_screen_position
+            ) or not tooltip.visible or \
             summary == null or not summary.text.contains("人口") or \
             not summary.text.contains("驻军 100") or \
             tooltip_rect.position.x < 0 or tooltip_rect.position.y < 0 or \
@@ -235,9 +379,34 @@ func _initialize() -> void:
             tooltip_rect, viewport.size, tooltip.get_script(),
         ])
         return
-    province_map.province_hover_changed.emit("", Vector2.ZERO)
-    if tooltip.visible:
-        _fail(main_scene, "Hover tooltip did not hide after leaving a province")
+    var repeated_motion := InputEventMouseMotion.new()
+    repeated_motion.position = hover_local_position + Vector2(3, 2)
+    province_map.call("_gui_input", repeated_motion)
+    if hover_events.size() != 1:
+        _fail(main_scene, "Stable province hover emitted repeatedly inside one province")
+        return
+    var edge_center: Vector2 = province_map.call(
+        "_polygon_center", province_map._polygons["cell_9_1"]
+    )
+    var edge_local_position: Vector2 = province_map._pan + edge_center * province_map._zoom
+    var edge_screen_position: Vector2 = \
+            province_map.get_global_transform_with_canvas() * edge_local_position
+    var edge_motion := InputEventMouseMotion.new()
+    edge_motion.position = edge_local_position
+    province_map.call("_gui_input", edge_motion)
+    await process_frame
+    tooltip_rect = tooltip.get_global_rect()
+    if hover_events.size() != 2 or hover_events.back().get("id", "") != "cell_9_1" or \
+            not (hover_events.back().get("position", Vector2.ZERO) as Vector2).is_equal_approx(
+                edge_screen_position
+            ) or tooltip_rect.position.x < 0 or tooltip_rect.position.y < 0 or \
+            tooltip_rect.end.x > viewport.size.x + 0.5 or \
+            tooltip_rect.end.y > viewport.size.y + 0.5:
+        _fail(main_scene, "Real edge hover did not preserve ID/position or viewport clamping")
+        return
+    province_map.mouse_exited.emit()
+    if tooltip.visible or hover_events.size() != 3 or hover_events.back().get("id", "") != "":
+        _fail(main_scene, "Real map hover exit did not hide the tooltip")
         return
 
     print("Map presentation smoke test passed")
