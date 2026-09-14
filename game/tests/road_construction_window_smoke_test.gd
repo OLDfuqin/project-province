@@ -227,11 +227,20 @@ func _initialize() -> void:
     await process_frame
 
     var pending: Array = bridge.get_pending_orders("auroria")
+    var treasury := main_scene.get_node(
+        "Shell/Layout/GlobalStatusBar/Margin/Row/Treasury"
+    ) as Label
+    var road_treasury := 0
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == "auroria":
+            road_treasury = int(country.get("treasury", 0))
+            break
     if _road_exists(bridge, pair[0], pair[1]) or pending.size() != 1 or \
             pending[0].get("type", "") != "road_construction" or \
             pending[0].get("remaining_months", 0) != 1 or \
+            treasury.text != "国库 %d" % road_treasury or \
             not road_window.get_node("Quote/Status").text.contains("已下单"):
-        _fail(main_scene, "Road construction was not left pending for one month")
+        _fail(main_scene, "Road construction did not refresh its pending order and treasury")
         return
 
     advance_turn.pressed.emit()

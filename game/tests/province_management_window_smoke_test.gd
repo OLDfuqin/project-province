@@ -49,7 +49,16 @@ func _initialize() -> void:
     research.pressed.emit()
     await process_frame
     var research_orders: Array = bridge.get_pending_orders("auroria")
-    if research_orders.size() != 1 or String(research_orders[0].get("type", "")) != "research":
+    var treasury := main_scene.get_node(
+        "Shell/Layout/GlobalStatusBar/Margin/Row/Treasury"
+    ) as Label
+    var research_treasury := 0
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == "auroria":
+            research_treasury = int(country.get("treasury", 0))
+            break
+    if research_orders.size() != 1 or String(research_orders[0].get("type", "")) != "research" or \
+            treasury.text != "国库 %d" % research_treasury:
         _fail(main_scene, "Technology page did not submit the research intent through main")
         return
     main_scene.get_node("Shell/Layout/MapModeBar/Margin/Row/PendingOrders").pressed.emit()
@@ -59,9 +68,24 @@ func _initialize() -> void:
     ) as Button
     research_cancel.pressed.emit()
     await process_frame
+    var cancelled_treasury := 0
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == "auroria":
+            cancelled_treasury = int(country.get("treasury", 0))
+            break
     if not bridge.get_pending_orders("auroria").is_empty() or \
-            not main_scene._latest_event_message.contains("退款5000"):
-        _fail(main_scene, "Research cancellation was not routed through the bottom drawer")
+            not main_scene._latest_event_message.contains("退款5000") or \
+            not main_scene.get_node("Shell/BottomDrawer/Panel/Body/Orders/Rows/Empty").visible or \
+            treasury.text != "国库 %d" % cancelled_treasury:
+        _fail(main_scene, "Research cancellation did not clear the drawer or refresh its treasury")
+        return
+    main_scene.call("_on_cancel_order_pressed", "missing_order")
+    await process_frame
+    if main_scene.active_drawer_name() != "notifications" or \
+            not main_scene.get_node(
+                "Shell/BottomDrawer/Panel/Body/Notifications/NotificationText"
+            ).text.contains("取消订单失败"):
+        _fail(main_scene, "Rejected order cancellation did not show a visible notification")
         return
     main_scene.get_node("Shell/BottomDrawer/Panel/Body/Header/Close").pressed.emit()
     main_scene.get_node("Shell/Layout/MainRow/PrimaryNavigation/Margin/Row/Map").pressed.emit()
@@ -72,9 +96,15 @@ func _initialize() -> void:
     management.get_node("Tabs/Military/Recruitment/Amount").value = 500
     management.get_node("Tabs/Military/Recruitment/Buttons/Confirm").pressed.emit()
     await process_frame
+    var recruitment_treasury := 0
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == "auroria":
+            recruitment_treasury = int(country.get("treasury", 0))
+            break
     if bridge.get_pending_orders("auroria").size() != 1 or \
+            treasury.text != "国库 %d" % recruitment_treasury or \
             not management.get_node("Tabs/Military/Recruitment/Pending").text.contains("预留500人"):
-        _fail(main_scene, "Recruitment did not remain a pending authoritative order")
+        _fail(main_scene, "Recruitment did not refresh the pending order and authoritative treasury")
         return
     advance_turn.pressed.emit()
     await process_frame

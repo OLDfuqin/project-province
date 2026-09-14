@@ -48,6 +48,7 @@ var event_history_lines: Array[String] = []
 var _notifications: Array[String] = []
 var _latest_event_message := ""
 var _active_map_mode := "political"
+var _game_status_message_key := ""
 var province_info_window: Control
 var province_management_window: Control
 var road_construction_window: Control
@@ -186,6 +187,32 @@ func _refresh_strategic_ui() -> void:
     global_status_bar.set_advance_enabled(true)
     _refresh_active_context()
     _refresh_active_management_page()
+    _refresh_game_status_feedback()
+
+
+func _game_status_message(status: Dictionary) -> String:
+    if not status.get("has_scenario", false):
+        return "当前没有已加载的场景"
+    if status.get("player_won", false):
+        return "胜利：%s已经控制世界" % _country_name(player_country_id)
+    if status.get("player_eliminated", false):
+        return "失败：%s已经灭亡" % _country_name(player_country_id)
+    var winner_id := String(status.get("winner_id", ""))
+    if not winner_id.is_empty():
+        return "胜利国家：%s" % _country_name(winner_id)
+    var surviving_countries := 0
+    for country: Dictionary in status.get("countries", []):
+        if not country.get("eliminated", false):
+            surviving_countries += 1
+    return "存续国家：%d" % surviving_countries
+
+
+func _refresh_game_status_feedback() -> void:
+    var message := _game_status_message(bridge.get_game_status(player_country_id))
+    if message == _game_status_message_key:
+        return
+    _game_status_message_key = message
+    _record_event(message)
 
 
 func _refresh_active_context() -> void:
@@ -254,6 +281,8 @@ func _on_map_mode_requested(mode: String) -> void:
     _active_map_mode = mode
     map_mode_bar.set_active_mode(mode)
     if mode == "roads":
+        if active_page_name() != "closed":
+            _return_to_map()
         _open_road_construction()
     elif workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
         _close_workspace()
@@ -263,6 +292,8 @@ func _on_drawer_requested(drawer: String) -> void:
     if bottom_drawer.current_drawer() == drawer:
         bottom_drawer.close()
         return
+    if active_page_name() != "closed":
+        _return_to_map()
     match drawer:
         "orders":
             bottom_drawer.set_order_lookups(
@@ -458,6 +489,7 @@ func _scenario_load_failure_text(reason: String) -> String:
 
 
 func _refresh_pending_orders() -> void:
+    global_status_bar.set_snapshot(_player_country_summary(), bridge.get_current_date())
     map_mode_bar.set_counts(_player_pending_orders().size(), _notifications.size())
     if workspace_mode == WorkspaceMode.PROVINCE_MANAGEMENT:
         province_management_window.set_pending_orders(_player_pending_orders())
@@ -467,7 +499,7 @@ func _refresh_pending_orders() -> void:
     if bottom_drawer.current_drawer() == "orders":
         bottom_drawer.set_order_lookups(_province_name_lookup(), _country_name_lookup())
         bottom_drawer.show_orders(_player_pending_orders())
-    if active_page_name() in ["technology", "military"]:
+    if active_page_name() != "closed":
         _refresh_active_management_page()
 
 
@@ -476,8 +508,10 @@ func _on_cancel_order_pressed(order_id: String) -> void:
         return
     var result: Dictionary = bridge.cancel_order(order_id)
     if not result.get("accepted", false):
-        _set_event_message("取消订单失败：%s" % _localized_failure(result))
-        _show_context_status(_latest_event_message)
+        var message := "取消订单失败：%s" % _localized_failure(result)
+        _record_event(message)
+        _show_context_status(message)
+        bottom_drawer.show_notifications(_notifications)
         return
     var message := "订单已取消"
     var refunded_cost := int(result.get("refunded_cost", 0))
@@ -490,7 +524,7 @@ func _on_cancel_order_pressed(order_id: String) -> void:
         message += "，无退款"
     _record_event(message)
     _refresh_map_data()
-    _refresh_strategic_ui()
+    _refresh_pending_orders()
 
 
 func _on_management_recruit_requested(province_id: String, manpower: int) -> void:
@@ -894,13 +928,19 @@ func _on_make_peace_pressed(other_country_id: String, annex: bool) -> void:
     var cancelled_orders: Array = result.get("cancelled_orders", [])
     if not cancelled_orders.is_empty():
         var refunded_cost := 0
+        var refunded_movement_half := 0
         for cancellation: Dictionary in cancelled_orders:
             refunded_cost += int(cancellation.get("refunded_cost", 0))
-        message += "；取消%d个行动订单，退款%d" % [cancelled_orders.size(), refunded_cost]
+            refunded_movement_half += int(cancellation.get("refunded_movement_half", 0))
+        message += "；取消%d个行动订单，退款%d，退还移动%s" % [
+            cancelled_orders.size(), refunded_cost,
+            GameText.movement_points(float(refunded_movement_half) / 2.0),
+        ]
     _record_event(message)
     _clear_movement_selection()
     _refresh_map_data()
     _refresh_strategic_ui()
+    _refresh_pending_orders()
 
 
 func _on_research_technology(track: String) -> void:
@@ -938,6 +978,7 @@ func _on_quick_load_pressed() -> void:
         _record_event("读取失败：%s" % _localized_failure(result))
         return
     player_country_id = String(result.get("player_country_id", player_country_id))
+    _game_status_message_key = ""
     _clear_local_managed_army_state()
     _clear_road_selection()
     _close_workspace()
@@ -1134,6 +1175,24 @@ func _record_event(message: String) -> void:
     map_mode_bar.set_counts(_player_pending_orders().size(), _notifications.size())
     if bottom_drawer.current_drawer() == "notifications":
         bottom_drawer.show_notifications(_notifications)
+    elif bottom_drawer.current_drawer() == "turn_report":
+        bottom_drawer.show_turn_report("\n".join(event_history_lines))
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+    if not event.is_action_pressed("ui_cancel"):
+        return
+    if bottom_drawer.current_drawer() != "closed":
+        bottom_drawer.close()
+    elif workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+        _on_road_exit_requested()
+    elif map_input_mode != MapInputMode.NORMAL:
+        map_input_mode = MapInputMode.NORMAL
+        _refresh_management_action_state()
+        _show_context_status("已退出地图目标选择")
+    else:
+        _on_navigation_requested("settings")
+    get_viewport().set_input_as_handled()
 
 
 func _show_context_status(message: String) -> void:
