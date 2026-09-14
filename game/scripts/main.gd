@@ -10,6 +10,9 @@ const ProvinceManagementScene := preload("res://scenes/ui/province_management_wi
 const RoadConstructionScene := preload("res://scenes/ui/road_construction_window.tscn")
 const MapHoverTooltipScene := preload("res://scenes/ui/map_hover_tooltip.tscn")
 
+@export_file("*.json") var map_layout_path := "res://data/grid_map_layout.json"
+@export_dir var scenario_data_directory := "res://data"
+
 enum WorkspaceMode {
     CLOSED,
     PROVINCE_INFO,
@@ -56,6 +59,7 @@ var _game_status_message_key := ""
 var _viewport_profile := "compact"
 var _pending_confirmation: Dictionary = {}
 var _overlay_geometry_update_queued := false
+var _initialization_error := ""
 var province_info_window: Control
 var province_management_window: Control
 var road_construction_window: Control
@@ -70,15 +74,13 @@ func _ready() -> void:
     _configure_management_tab_titles()
     context_inspector.add_to_group("context_inspector")
 
-    if not province_map.load_grid_layout("res://data/grid_map_layout.json"):
-        _set_event_message("地图加载失败：%s" % province_map.geometry_error())
-        push_error(province_map.geometry_error())
+    if not province_map.load_grid_layout(map_layout_path):
+        _show_initialization_failure("地图加载失败：%s" % province_map.geometry_error())
         return
-    var data_directory := ProjectSettings.globalize_path("res://data")
+    var data_directory := ProjectSettings.globalize_path(scenario_data_directory)
     if not bridge.load_scenario(data_directory, 1000, 1):
         var scenario_error := _scenario_load_failure_text(String(bridge.get_last_error()))
-        _set_event_message(scenario_error)
-        push_error(scenario_error)
+        _show_initialization_failure(scenario_error)
         return
 
     _connect_strategic_ui()
@@ -171,6 +173,28 @@ func _connect_context_intents() -> void:
 
 func active_page_name() -> String:
     return management_page_host.current_page()
+
+
+func initialization_error() -> String:
+    return _initialization_error
+
+
+func _show_initialization_failure(message: String) -> void:
+    _initialization_error = message
+    _set_event_message(message)
+    global_status_bar.set_snapshot({"name": "游戏初始化失败"}, {"year": 0, "month": 1})
+    global_status_bar.set_advance_enabled(false, message)
+    context_inspector.show_empty(message)
+    province_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    _disable_buttons($Shell/Layout)
+    push_warning(message)
+
+
+func _disable_buttons(node: Node) -> void:
+    if node is Button:
+        (node as Button).disabled = true
+    for child: Node in node.get_children():
+        _disable_buttons(child)
 
 
 func active_drawer_name() -> String:
@@ -651,6 +675,25 @@ func _refresh_pending_orders() -> void:
 func _on_cancel_order_pressed(order_id: String) -> void:
     if order_id.is_empty():
         return
+    var order := _pending_order_by_id(order_id)
+    if String(order.get("type", order.get("order_type", ""))) == "research":
+        _request_confirmation(
+            "确认取消研究",
+            "确认取消该研究订单？若研究尚未开始则全额退款；已开始则不退款。",
+            {"action": "cancel_order", "order_id": order_id}
+        )
+        return
+    _commit_cancel_order(order_id)
+
+
+func _pending_order_by_id(order_id: String) -> Dictionary:
+    for order: Dictionary in _player_pending_orders():
+        if String(order.get("order_id", "")) == order_id:
+            return order
+    return {}
+
+
+func _commit_cancel_order(order_id: String) -> void:
     var result: Dictionary = bridge.cancel_order(order_id)
     if not result.get("accepted", false):
         var message := "取消订单失败：%s" % _localized_failure(result)
@@ -1409,6 +1452,8 @@ func _on_confirmation_confirmed() -> void:
             _commit_make_peace(
                 String(intent.get("country_id", "")), bool(intent.get("annex", false))
             )
+        "cancel_order":
+            _commit_cancel_order(String(intent.get("order_id", "")))
 
 
 func _on_confirmation_canceled() -> void:

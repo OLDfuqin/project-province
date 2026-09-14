@@ -80,13 +80,20 @@ func _initialize() -> void:
     )
     var neutral_color: Color = map.call(
         "_province_fill_color",
-        {"owner_id": "", "terrain": "mountains", "fiscal_income": 0},
-        "", Vector2(8, 8), 0, 0
+        {"owner_id": "neutral", "terrain": "mountains", "fiscal_income": 0},
+        "neutral", Vector2(8, 8), 0, 0
     )
     if not is_finite(equal_income_color.r) or not is_finite(equal_income_color.g) or \
             not is_finite(equal_income_color.b) or neutral_color != Color("596579"):
         _fail(map, "Map normalization was unstable for equal or ownerless values")
         return
+    map.set_scenario_data(provinces + [{
+        "id": "cell_2_2", "owner_id": "neutral", "fiscal_income": 0,
+    }], countries)
+    if map.call("_fiscal_income_bounds") != Vector2(8, 16):
+        _fail(map, "Hidden-neutral zero income distorted the owned-province economy scale")
+        return
+    map.set_scenario_data(provinces, countries)
 
     map.set_interaction_highlights(
         ["cell_1_1", "cell_1_1", "missing"],
@@ -152,6 +159,11 @@ func _initialize() -> void:
     if not render_map.has_method("draw_observation"):
         _fail(render_viewport, "ProvinceMap lacks a stable actual-draw observation seam")
         return
+    var default_draw := await _observe_draw(render_map)
+    if not default_draw.is_empty():
+        _fail(render_viewport, "Ordinary rendering retained per-province diagnostic dictionaries")
+        return
+    render_map.set("draw_diagnostics_enabled", true)
     var no_layers := await _observe_draw(render_map)
     render_map.set_roads([{"province_a": "cell_1_1", "province_b": "cell_1_2"}])
     var with_road := await _observe_draw(render_map)
@@ -218,6 +230,10 @@ func _initialize() -> void:
             "cell_1_1", Color.TRANSPARENT
     ) != Color("4fb69f"):
         _fail(render_viewport, "Actual renderer ignored a reachable, attackable, or road outline")
+        return
+    render_map.set("draw_diagnostics_enabled", false)
+    if not (await _observe_draw(render_map)).is_empty():
+        _fail(render_viewport, "Disabling draw diagnostics did not discard the snapshot")
         return
     render_viewport.free()
 

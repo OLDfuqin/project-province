@@ -19,7 +19,28 @@ func _expected_treasury(main_scene: Control, value: int) -> String:
     return "%s%d" % [prefix, value]
 
 
+func _click_at(position: Vector2, viewport: Viewport = root) -> void:
+    for pressed: bool in [true, false]:
+        var event := InputEventMouseButton.new()
+        event.button_index = MOUSE_BUTTON_LEFT
+        event.position = position
+        event.pressed = pressed
+        viewport.push_input(event)
+        await process_frame
+
+
+func _activate(button: Button) -> void:
+    button.grab_focus()
+    for pressed: bool in [true, false]:
+        var event := InputEventKey.new()
+        event.keycode = KEY_ENTER
+        event.pressed = pressed
+        button.get_viewport().push_input(event)
+        await process_frame
+
+
 func _initialize() -> void:
+    root.size = Vector2i(1280, 720)
     var main_scene := (load("res://scenes/main/main.tscn") as PackedScene).instantiate()
     root.add_child(main_scene)
     await process_frame
@@ -43,6 +64,27 @@ func _initialize() -> void:
             management.get_node_or_null("Tabs/TechnologyLegacy") != null:
         _fail(main_scene, "Province management did not use its final inspector-only contract")
         return
+
+    var tab_bar := (management.get_node("Tabs") as TabContainer).get_tab_bar()
+    await _click_at(tab_bar.global_position + tab_bar.get_tab_rect(1).get_center())
+    if management.active_tab() != "military" or not recruit.is_visible_in_tree():
+        _fail(main_scene, "Real TabBar input did not expose the military actions")
+        return
+    await _activate(recruit)
+    var amount := management.get_node("Tabs/Military/Recruitment/Amount") as SpinBox
+    amount.value = amount.max_value + 1
+    await _activate(management.get_node("Tabs/Military/Recruitment/Buttons/Confirm"))
+    var status := management.find_child("Status", true, false) as Label
+    if not bridge.get_pending_orders("auroria").is_empty() or \
+            not status.text.contains("招募失败") or not status.is_visible_in_tree():
+        _fail(main_scene, "Military recruitment refusal was not visible in the active tab")
+        return
+    for index: int in [2, 3, 0, 1]:
+        await _click_at(tab_bar.global_position + tab_bar.get_tab_rect(index).get_center())
+        if (management.get_node("Tabs") as TabContainer).current_tab != index or \
+                not status.is_visible_in_tree() or not status.text.contains("招募失败"):
+            _fail(main_scene, "Shared province feedback disappeared after real TabBar input")
+            return
 
     main_scene.get_node("Shell/Layout/MainRow/PrimaryNavigation/Margin/Row/Technology").pressed.emit()
     await process_frame
@@ -72,6 +114,19 @@ func _initialize() -> void:
         "Shell/BottomDrawer/Panel/Body/Orders/Rows/Order0/Cancel"
     ) as Button
     research_cancel.pressed.emit()
+    await process_frame
+    var confirmation := main_scene.get_node("Shell/ActionConfirmation") as ConfirmationDialog
+    if not confirmation.visible or not confirmation.dialog_text.contains("已开始则不退款"):
+        _fail(main_scene, "Research cancellation did not explain its refund loss before commit")
+        return
+    confirmation.canceled.emit()
+    await process_frame
+    if bridge.get_pending_orders("auroria").size() != 1:
+        _fail(main_scene, "Dismissing research cancellation changed the pending order")
+        return
+    research_cancel.pressed.emit()
+    await process_frame
+    confirmation.confirmed.emit()
     await process_frame
     var cancelled_treasury := 0
     for country: Dictionary in bridge.get_country_summaries():

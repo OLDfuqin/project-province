@@ -248,7 +248,14 @@ C++ 模拟核心
 | 文件 | 用途 |
 | --- | --- |
 | `map_smoke_test.gd` | 验证地图几何加载、地区命中、城市/地形/军队图标布局、稳定ID排序和超量折叠。 |
-| `main_layout_smoke_test.gd` | 验证移除月份选择器、固定1个月按钮、待执行订单区、功能区边界、极值征兵报价、议和退款刷新、读档身份/推进目标和布局不重叠。 |
+| `strategic_theme_smoke_test.gd` | 验证战略界面主题的调色板、字号、间距、按钮焦点和禁用状态。 |
+| `strategic_chrome_component_smoke_test.gd` | 验证顶部全局状态、主导航和地图模式栏的组件契约与中文文本。 |
+| `context_inspector_smoke_test.gd` | 验证唯一上下文检查器的空状态、面板切换和关闭行为。 |
+| `bottom_drawer_smoke_test.gd` | 验证待执行订单、通知和回合报告三类互斥抽屉及订单取消意图。 |
+| `management_pages_smoke_test.gd` | 验证国家、军事、经济、外交、科技和设置管理页的快照呈现、权限状态与操作意图。 |
+| `map_presentation_smoke_test.gd` | 验证五种地图模式、道路/前线/选择高亮、真实无主地区经济着色，以及显式开启的绘制诊断。 |
+| `main_layout_smoke_test.gd` | 验证固定1个月按钮、战略外壳、三档响应式布局、待执行订单区、极值征兵报价、议和退款刷新、读档身份/推进目标和布局不重叠。 |
+| `initialization_failure_smoke_test.gd` | 验证地图或场景加载失败时显示中文错误，并禁用推进回合与地图输入。 |
 | `game_status_bridge_smoke_test.gd` | 验证游戏状态和国家存续信息能通过桥接层正确读取。 |
 | `army_bridge_smoke_test.gd` | 验证征兵与行动订单、取消及议和退款、可达目标、联合战斗、编制名称、更名、合并和推进策略的桥接行为。 |
 | `road_bridge_smoke_test.gd` | 验证修路报价、订单预付创建、取消退款、延迟完成、结算事件和道路连接查询。 |
@@ -256,9 +263,10 @@ C++ 模拟核心
 | `ai_bridge_smoke_test.gd` | 验证可玩剧本启用 AI，连续月度推进能通过桥接返回 AI 行动，并且隐藏中立国不会出现在这些行动或公开国家摘要中。AI 订单的延迟时序由 C++ `ai_smoke_test.cpp` 覆盖。 |
 | `save_game_bridge_smoke_test.gd` | 验证 Godot 侧schema 7快速存取、订单进度与预留的完整状态往返。 |
 | `game_text_formatter_smoke_test.gd` | 验证待执行订单、退款、移动、联合战斗、项目完成、自动整编等中文格式化，以及已知/未知稳定错误的本地化回退。 |
-| `province_info_window_smoke_test.gd` | 验证地区信息窗口的只读内容和清空行为。 |
-| `province_management_window_component_smoke_test.gd` | 验证地区管理窗口的订单节点、信号、负债禁用、研究倒计时和军队订单锁。 |
-| `province_management_window_smoke_test.gd` | 验证管理窗口与主场景之间的可达目标、订单创建、待执行列表和取消操作集成。 |
+| `province_info_window_smoke_test.gd` | 验证地区信息窗口的只读内容、无主地区与未知引用的安全中文回退及清空行为。 |
+| `province_management_window_component_smoke_test.gd` | 验证地区管理窗口的订单节点、信号、负债禁用、征兵报价和军队订单锁。 |
+| `province_management_window_smoke_test.gd` | 验证管理窗口与主场景之间的可达目标、共享可见状态、订单创建、待执行列表和取消操作集成。 |
+| `research_cancel_confirmation_smoke_test.gd` | 验证取消已推进研究必须确认，确认前状态不变且确认后遵循无退款规则。 |
 | `province_management_advance_smoke_test.gd` | 验证长期推进目标、策略和创建下月行动订单的操作。 |
 | `road_construction_window_smoke_test.gd` | 验证修路窗口的端点权限与邻接校验、权威报价、手动重置、订单延迟完成，以及负债、端点易手和外部建成后的重新报价与清理。取消退款由 `road_bridge_smoke_test.gd` 覆盖。 |
 | `generated_scenario_helpers.gd` | 为随机场景测试按稳定ID选择首都、受控地区、相邻端点和无主邻格，避免依赖已删除的固定地区ID。 |

@@ -14,12 +14,12 @@ func display_province(
 ) -> void:
     var country_names: Dictionary = {}
     for country: Dictionary in countries:
-        country_names[country.get("id", "")] = country.get(
-            "name",
-            country.get("id", "")
-        )
+        var country_name := String(country.get("name", ""))
+        if not country_name.is_empty():
+            country_names[String(country.get("id", ""))] = country_name
     _province_id = province.get("id", "")
-    $ProvinceName.text = province.get("name", _province_id)
+    var province_name := String(province.get("name", ""))
+    $ProvinceName.text = province_name if not province_name.is_empty() else "未知地区"
     $Body/Terrain.text = "地形：%s" % _terrain_name(
         province.get("terrain", "plains")
     )
@@ -83,10 +83,9 @@ func _set_roads(roads: Array, province_by_id: Dictionary) -> void:
             other_id = road.get("province_a", "")
         if other_id.is_empty():
             continue
-        var other_name: String = province_by_id.get(
-            other_id,
-            {"name": other_id}
-        ).get("name", other_id)
+        var other_name := String(province_by_id.get(other_id, {}).get("name", ""))
+        if other_name.is_empty():
+            other_name = "未知地区"
         road_connections.append("%s（%s）" % [
             other_name,
             _road_level_name(road.get("level", "paved")),
@@ -113,7 +112,10 @@ func _format_number(value: int) -> String:
 
 
 func _country_name(country_id: String, country_names: Dictionary) -> String:
-    return country_names.get(country_id, country_id)
+    if country_id.is_empty() or country_id == "neutral":
+        return "无主地区"
+    var name := String(country_names.get(country_id, ""))
+    return name if not name.is_empty() else "未知国家"
 
 
 func _terrain_name(terrain: String) -> String:

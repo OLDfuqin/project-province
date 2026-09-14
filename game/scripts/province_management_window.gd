@@ -102,7 +102,7 @@ func display_province(
     _clear_destination()
     set_reachable_targets([])
     set_advance_target("", "")
-    $Tabs/Overview/Status.text = (
+    $Status.text = (
         "国库负债：禁止新建征兵、修路和研究订单"
         if _player_treasury < 0 else "请选择地区操作"
     )
@@ -131,7 +131,7 @@ func set_destination(
         GameText.movement_points(movement_cost),
     ]
     $Tabs/Military/ArmyActions/MoveArmy.disabled = _selected_army_id.is_empty()
-    $Tabs/Overview/Status.text = "目的地已选择，可确认调动"
+    $Status.text = "目的地已选择，可确认调动"
 
 
 func set_pending_orders(orders: Array) -> void:
@@ -218,7 +218,7 @@ func set_action_state(direct_enabled: bool, advance_enabled: bool) -> void:
 
 
 func set_status(message: String) -> void:
-    $Tabs/Overview/Status.text = message
+    $Status.text = message
 
 
 func clear() -> void:

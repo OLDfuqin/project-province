@@ -334,7 +334,7 @@ func _initialize() -> void:
     )
     window.set_pending_orders([])
     if not window.get_node("Tabs/Military/Recruitment/Open").disabled or \
-            not window.get_node("Tabs/Overview/Status").text.contains("负债"):
+            not window.get_node("Status").text.contains("负债"):
         _fail(window, "Debt did not disable new paid planning actions")
         return
 

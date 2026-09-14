@@ -80,6 +80,49 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    if not bridge.load_scenario(ProjectSettings.globalize_path("res://data"), 1000, 1):
+        push_error("Could not load the real hidden-neutral fixture")
+        bridge.free()
+        info_window.free()
+        quit(1)
+        return
+    var countries: Array = bridge.get_country_summaries()
+    var neutral: Dictionary = {}
+    for summary: Dictionary in bridge.get_province_summaries():
+        if summary.get("owner_id", "") == "neutral":
+            neutral = summary
+            break
+    info_window.display_province(neutral, bridge.get_army_summaries(), [], {}, countries)
+    if neutral.is_empty() or ownership.text != "法理归属：无主地区 | 实际控制：无主地区" or \
+            _node_text(info_window).contains("neutral"):
+        push_error("Real hidden-neutral ownership was not rendered as an unowned region")
+        bridge.free()
+        info_window.free()
+        quit(1)
+        return
+    bridge.free()
+
+    info_window.display_province({
+        "id": "private_province_id", "owner_id": "private_owner_id",
+        "legal_owner_id": "private_legal_id",
+    }, [], [{"province_a": "private_province_id", "province_b": "private_road_id"}], {}, [
+        {"id": "private_owner_id"}, {"id": "private_legal_id", "name": ""},
+    ])
+    if _node_text(info_window).contains("private_") or \
+            not ownership.text.contains("未知国家") or not roads.text.contains("未知地区") or \
+            info_window.get_node("ProvinceName").text != "未知地区":
+        push_error("Incomplete province or country lookup leaked an internal identifier")
+        info_window.free()
+        quit(1)
+        return
+    info_window.clear()
+    if info_window.visible:
+        push_error("Cleared province summary remained visible")
+        info_window.free()
+        quit(1)
+        return
+
     print("Province information window smoke test passed")
     info_window.free()
     quit(0)
