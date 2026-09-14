@@ -5,6 +5,12 @@ extends PanelContainer
 signal declare_war_requested(target_country_id: String)
 signal make_peace_requested(target_country_id: String, annex_occupied: bool)
 
+const DECLARE_WAR_TOOLTIP := "向当前选择的国家发出宣战意图"
+const MAKE_PEACE_TOOLTIP := "向当前选择的国家发出议和意图"
+const SELECT_TARGET_TOOLTIP := "当前不可用：请先选择外交目标"
+const ALREADY_AT_WAR_TOOLTIP := "当前不可用：当前目标已与我国交战"
+const NOT_AT_WAR_TOOLTIP := "当前不可用：当前目标未与我国交战"
+
 
 var _player_country_id := ""
 var _countries_by_id: Dictionary = {}
@@ -15,7 +21,7 @@ var _selected_country_id := ""
 func _ready() -> void:
 	$Content/Actions/DeclareWar.pressed.connect(_on_declare_war_pressed)
 	$Content/Actions/MakePeace.pressed.connect(_on_make_peace_pressed)
-	_refresh_actions()
+	_refresh_selection_state()
 
 
 func set_snapshot(player_country_id: String, countries: Array, wars: Array) -> void:
@@ -29,7 +35,7 @@ func set_snapshot(player_country_id: String, countries: Array, wars: Array) -> v
 	if not _countries_by_id.has(_selected_country_id) or _selected_country_id == _player_country_id:
 		_selected_country_id = ""
 	_rebuild_country_rows()
-	_refresh_actions()
+	_refresh_selection_state()
 
 
 func select_country(country_id: String) -> void:
@@ -37,7 +43,7 @@ func select_country(country_id: String) -> void:
 		return
 	_selected_country_id = country_id
 	_rebuild_country_rows()
-	_refresh_actions()
+	_refresh_selection_state()
 
 
 func _rebuild_country_rows() -> void:
@@ -70,12 +76,23 @@ func _rebuild_country_rows() -> void:
 		]
 
 
-func _refresh_actions() -> void:
+func _refresh_selection_state() -> void:
 	var has_target := not _selected_country_id.is_empty()
 	var at_war := has_target and _is_at_war(_selected_country_id)
-	$Content/Actions/DeclareWar.disabled = not has_target or at_war
-	$Content/Actions/MakePeace.disabled = not has_target or not at_war
+	var declare_war := $Content/Actions/DeclareWar as Button
+	var make_peace := $Content/Actions/MakePeace as Button
+	declare_war.disabled = not has_target or at_war
+	make_peace.disabled = not has_target or not at_war
 	$Content/Actions/AnnexOccupied.disabled = not has_target or not at_war
+	if not has_target:
+		declare_war.tooltip_text = SELECT_TARGET_TOOLTIP
+		make_peace.tooltip_text = SELECT_TARGET_TOOLTIP
+	elif at_war:
+		declare_war.tooltip_text = ALREADY_AT_WAR_TOOLTIP
+		make_peace.tooltip_text = MAKE_PEACE_TOOLTIP
+	else:
+		declare_war.tooltip_text = DECLARE_WAR_TOOLTIP
+		make_peace.tooltip_text = NOT_AT_WAR_TOOLTIP
 
 
 func _on_declare_war_pressed() -> void:

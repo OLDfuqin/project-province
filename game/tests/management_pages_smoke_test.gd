@@ -95,11 +95,21 @@ func _initialize() -> void:
 		diplomacy_observed["peace_target"] = country_id
 		diplomacy_observed["peace_annex"] = annex_occupied
 	)
-	if not (diplomacy.get_node("Content/Actions/DeclareWar") as Button).disabled or \
-			not (diplomacy.get_node("Content/Actions/MakePeace") as Button).disabled:
-		_fail(host, "Diplomacy actions were enabled without a selected target")
+	var declare_war := diplomacy.get_node("Content/Actions/DeclareWar") as Button
+	var make_peace := diplomacy.get_node("Content/Actions/MakePeace") as Button
+	if not declare_war.disabled or not make_peace.disabled or \
+			not declare_war.tooltip_text.contains("当前不可用") or \
+			not declare_war.tooltip_text.contains("选择外交目标") or \
+			not make_peace.tooltip_text.contains("当前不可用") or \
+			not make_peace.tooltip_text.contains("选择外交目标"):
+		_fail(host, "Diplomacy actions lacked specific reasons without a selected target")
 		return
 	diplomacy.set_snapshot("auroria", countries, [])
+	if not declare_war.disabled or not make_peace.disabled or \
+			not declare_war.tooltip_text.contains("选择外交目标") or \
+			not make_peace.tooltip_text.contains("选择外交目标"):
+		_fail(host, "Diplomacy snapshot lost the no-target action reasons")
+		return
 	var diplomacy_rows := diplomacy.get_node("Content/Countries/Rows") as VBoxContainer
 	if diplomacy_rows == null or diplomacy_rows.get_child_count() == 0 or \
 		diplomacy_rows.get_child(0).text.contains("solmere"):
@@ -110,9 +120,12 @@ func _initialize() -> void:
 		_fail(host, "Diplomacy page did not create the expected country button")
 		return
 	peaceful_country_button.pressed.emit()
-	if (diplomacy.get_node("Content/Actions/DeclareWar") as Button).disabled or \
-			not (diplomacy.get_node("Content/Actions/MakePeace") as Button).disabled:
-		_fail(host, "Diplomacy actions did not reflect a selected peaceful target")
+	if declare_war.disabled or not make_peace.disabled or \
+			declare_war.tooltip_text != "向当前选择的国家发出宣战意图" or \
+			declare_war.tooltip_text.contains("当前不可用") or \
+			not make_peace.tooltip_text.contains("当前不可用") or \
+			not make_peace.tooltip_text.contains("未与我国交战"):
+		_fail(host, "Diplomacy actions did not explain a selected peaceful target")
 		return
 	diplomacy.get_node("Content/Actions/DeclareWar").pressed.emit()
 	if diplomacy_observed["declared_target"] != "solmere":
@@ -125,6 +138,13 @@ func _initialize() -> void:
 		_fail(host, "Diplomacy page did not recreate the expected country button")
 		return
 	war_country_button.pressed.emit()
+	if not declare_war.disabled or make_peace.disabled or \
+			not declare_war.tooltip_text.contains("当前不可用") or \
+			not declare_war.tooltip_text.contains("已与我国交战") or \
+			make_peace.tooltip_text != "向当前选择的国家发出议和意图" or \
+			make_peace.tooltip_text.contains("当前不可用"):
+		_fail(host, "Diplomacy actions did not explain a selected wartime target")
+		return
 	diplomacy.get_node("Content/Actions/AnnexOccupied").button_pressed = true
 	diplomacy.get_node("Content/Actions/MakePeace").pressed.emit()
 	if diplomacy_observed["peace_target"] != "solmere" or not diplomacy_observed["peace_annex"]:
