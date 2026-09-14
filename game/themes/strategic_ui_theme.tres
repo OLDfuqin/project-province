@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=7 format=3]
+[gd_resource type="Theme" load_steps=8 format=3]
 
 [sub_resource type="StyleBoxFlat" id="StylePanel"]
 bg_color = Color(0.066667, 0.105882, 0.180392, 1)
@@ -56,13 +56,26 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
+[sub_resource type="StyleBoxFlat" id="StyleButtonDisabled"]
+bg_color = Color(0.094118, 0.141176, 0.227451, 0.5)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 10.0
+content_margin_top = 7.0
+content_margin_right = 10.0
+content_margin_bottom = 7.0
+
 [resource]
 Label/colors/font_color = Color(0.909803927, 0.933333337, 0.968627453, 1)
 Label/font_sizes/font_size = 14
 Button/colors/font_color = Color(0.909803927, 0.933333337, 0.968627453, 1)
 Button/colors/font_hover_color = Color(1, 1, 1, 1)
+Button/colors/font_disabled_color = Color(0.584314, 0.647059, 0.729412, 0.65)
 Button/styles/normal = SubResource("StyleButtonNormal")
 Button/styles/hover = SubResource("StyleButtonHover")
 Button/styles/pressed = SubResource("StyleButtonPressed")
 Button/styles/focus = SubResource("StyleButtonFocus")
+Button/styles/disabled = SubResource("StyleButtonDisabled")
 PanelContainer/styles/panel = SubResource("StylePanel")

@@ -162,10 +162,20 @@ C++ 模拟核心
 
 | 文件 | 用途 |
 | --- | --- |
-| `scenes/main/main.tscn` | 主游戏页面；组织固定1个月回合栏、地图区、国家/外交摘要、待执行订单列表和右侧功能窗口预留区。 |
-| `scenes/ui/province_info_window.tscn` | 单击地区后显示的只读地区信息窗口布局。 |
-| `scenes/ui/province_management_window.tscn` | 双击地区后显示的管理窗口布局，容纳征兵预留、可达行动目标、军队订单锁、研究倒计时和推进计划。 |
-| `scenes/ui/road_construction_window.tscn` | 独立修路订单界面布局，显示端点、报价、订单剩余月份、状态和重置操作。 |
+| `scenes/main/main.tscn` | 战略指挥台壳：顶部全局状态栏、图标主导航、地图、单一上下文检查器、底栏、抽屉、完整管理页和高影响操作确认层；不再包含旧 `RightPanel`、`WorkspacePanel` 或旧回合栏。 |
+| `scenes/ui/global_status_bar.tscn` | 固定顶部国家资源、日期和“进入下一回合”主操作。 |
+| `scenes/ui/primary_navigation.tscn` | 图标优先的左侧主导航；每个入口都提供中文 tooltip。 |
+| `scenes/ui/map_mode_bar.tscn` | 底部地图模式与订单、通知、回合报告抽屉入口。 |
+| `scenes/ui/context_inspector.tscn` | 右侧唯一上下文检查器；标题与关闭操作固定，业务内容在单一纵向滚动容器内替换。 |
+| `scenes/ui/province_info_window.tscn` | 单击地区后的只读摘要卡片。 |
+| `scenes/ui/province_management_window.tscn` | 双击地区后的页签式管理内容：概况、军事、建设和订单；其父检查器负责滚动可达性。 |
+| `scenes/ui/road_construction_window.tscn` | 道路端点、权威报价、创建、重置和退出的展示与意图入口。 |
+| `scenes/ui/bottom_drawer.tscn` | 互斥的待执行订单、通知和回合报告抽屉；内容均可纵向滚动。 |
+| `scenes/ui/management_page_host.tscn` | 覆盖地图内容区的完整国家、外交、科技、军事、经济和设置页面宿主，保留返回地图入口。 |
+| `scenes/ui/country_overview_page.tscn`、`military_overview_page.tscn`、`economic_overview_page.tscn` | 全国概览的只读快照页。 |
+| `scenes/ui/diplomacy_page.tscn`、`technology_page.tscn`、`settings_page.tscn` | 外交、科技和设置页面；它们只发送用户意图，不执行规则。 |
+| `scenes/ui/metric_card.tscn` | 可复用的标题、数值、说明指标卡。 |
+| `scenes/ui/map_hover_tooltip.tscn` | 地图悬停时的紧凑中文地区提示。 |
 
 `.tscn` 负责节点结构和基础布局；复杂行为应放在对应 `.gd` 脚本中。
 
@@ -173,20 +183,30 @@ C++ 模拟核心
 
 | 文件 | 用途 |
 | --- | --- |
-| `main.gd` | 主界面协调器；连接节点信号，管理当前玩家国家、本国订单列表与取消按钮并提交订单；消费 bridge 返回的征兵/道路权威报价、国家维护摘要、月度事件和议和退款，并刷新固定回合按钮、地图与分阶段报告。 |
-| `province_map.gd` | `ProvinceMap` 自绘地图控件；从共享布局动态生成65个单格与4个首都多边形，执行缩放拖动、命中测试，并绘制国家颜色、城市/首都、地形、逐编制军队、道路、前线和推进路径。 |
+| `main.gd` | 战略壳层协调器：连接组件信号、维护界面路由/临时选择、请求 bridge 快照、提交用户意图、处理确认层和 Esc 返回栈，并仅根据 viewport 尺寸调整展示 profile；不拥有游戏规则或公式。 |
+| `province_map.gd` | `ProvinceMap` 自绘地图控件；从共享布局动态生成65个单格与4个首都多边形，执行缩放、拖动和命中测试，绘制政治/地形/经济/军事/道路模式、城市/首都、军队、道路、前线、路径及交互高亮。 |
 | `province_info_window.gd` | 把地区、国家、军队和道路查询结果格式化为单击地区的只读信息。 |
-| `province_management_window.gd` | 管理地区窗口状态，显示人口预留、bridge 权威征兵报价、可达目的地和研究订单，禁止合并已下单军队，并发出征兵、行动、取消计划和研究等信号；不在窗口内复制征兵公式。 |
+| `province_management_window.gd` | 管理地区窗口状态，显示人口预留、bridge 权威征兵报价、可达行动目标、军队订单锁和推进计划，禁止合并已下单军队，并发出玩家意图；不在窗口内复制征兵公式。 |
 | `road_construction_window.gd` | 发出修路端点选择、提交和重置信号，并呈现 `main.gd` 传入的端点、预计费用、可提交状态、待执行状态和提示；脚本本身不拥有道路报价或负债规则。 |
 | `main.gd.uid` | Godot 为主脚本生成的资源 UID；当前已受版本控制，避免手工修改。 |
 
-`main.gd` 以界面编排为主要职责。维护费使用 bridge 国家摘要中的最近结算值；征兵上限通过 `get_recruitment_order_quote()` 做权威查询；道路费用与资格使用 `get_road_order_quote()`。界面不再拥有维护费重算、固定征兵单价或道路本地费用 fallback，核心与桥接是扣款、报价、资格和订单执行的唯一权威来源。GDScript 只负责把这些只读结果组织成界面文字与交互状态。
+界面采用三层边界：`main.gd` 只编排路由、可访问性和 bridge 调用；各 UI 组件只把传入快照渲染为文字、卡片、页签、抽屉或地图表现，并以信号表达用户意图；C++ 核心与 `ProvinceBridge` 是费用、资格、订单、结算和状态变更的唯一权威来源。维护费使用 bridge 国家摘要中的最近结算值；征兵和修路分别以 `get_recruitment_order_quote()`、`get_road_order_quote()` 查询。GDScript 不拥有维护费重算、固定征兵单价、道路本地费用或其他规则 fallback。
 
 ### 5.5 UI 辅助脚本：`game/scripts/ui/`
 
 | 文件 | 用途 |
 | --- | --- |
-| `game_text_formatter.gd` | `GameTextFormatter`；集中生成待执行订单、退款、联合战斗、移动、项目完成和自动整编等中文文本，并本地化稳定错误。维护费摘要、负债标签和维护阶段日志由 `main.gd` 基于 bridge 只读结果组织。 |
+| `global_status_bar.gd` | 渲染国家快照、日期和下一回合可用状态。 |
+| `primary_navigation.gd` | 维护导航选中项并发送完整管理页路由意图。 |
+| `map_mode_bar.gd` | 维护地图模式选中项、角标计数并发送模式/抽屉意图。 |
+| `context_inspector.gd` | 管理互斥上下文面板和空状态。 |
+| `bottom_drawer.gd` | 管理三种互斥抽屉、订单中文显示和取消意图。 |
+| `management_page_host.gd` | 管理完整管理页的互斥显示与返回信号。 |
+| `country_overview_page.gd`、`military_overview_page.gd`、`economic_overview_page.gd` | 将全国快照组织为只读概览。 |
+| `diplomacy_page.gd`、`technology_page.gd`、`settings_page.gd` | 呈现各自页面状态并发送外交、研究、存取档意图。 |
+| `metric_card.gd` | 填充可复用指标卡的标题、数值和说明。 |
+| `map_hover_tooltip.gd` | 呈现并限制在可视区域内的地区悬停摘要。 |
+| `game_text_formatter.gd` | `GameTextFormatter`；集中生成待执行订单、退款、联合战斗、移动、项目完成和自动整编等中文文本，并本地化稳定错误。 |
 | `strategy_panel_presenter.gd` | `StrategyPanelPresenter`；把国家战略摘要和军队推进计划转换为主界面可显示的文本。 |
 
 这类脚本可以组装只读视图，但不得成为权威状态来源。维护、道路和征兵的公式、资格、扣款及最终拒绝结果均由 C++ 核心决定，并通过 bridge 返回；UI 不保留公式副本。

@@ -49,6 +49,64 @@ func _army(bridge: Object, army_id: String) -> Dictionary:
     return {}
 
 
+func _escape_key() -> InputEventKey:
+    var escape := InputEventKey.new()
+    escape.pressed = true
+    escape.keycode = KEY_ESCAPE
+    return escape
+
+
+func _assert_responsive_shell(
+    main_scene: Control,
+    top_bar: Control,
+    navigation: Control,
+    map_panel: Control,
+    inspector: Control,
+    drawer: Control,
+    profile: Dictionary
+) -> String:
+    var viewport_size: Vector2 = profile["size"]
+    main_scene.size = viewport_size
+    main_scene.apply_viewport_profile(viewport_size)
+    await process_frame
+
+    var expected_name := String(profile["name"])
+    if main_scene.viewport_profile_name() != expected_name:
+        return "Viewport %s selected %s instead of %s" % [
+            viewport_size, main_scene.viewport_profile_name(), expected_name,
+        ]
+    if not is_equal_approx(navigation.custom_minimum_size.x, float(profile["navigation_width"])) or \
+            not is_equal_approx(inspector.custom_minimum_size.x, float(profile["inspector_width"])):
+        return "Viewport %s did not apply the declared navigation/inspector profile" % viewport_size
+    for metric_name: String in ["Treasury", "Income", "Maintenance", "Recruitable"]:
+        var metric := top_bar.get_node("Margin/Row/%s" % metric_name) as Label
+        if metric == null or not metric.visible or metric.text.is_empty():
+            return "Viewport %s hid a required compact status metric: %s" % [viewport_size, metric_name]
+
+    var viewport_rect := Rect2(Vector2.ZERO, viewport_size)
+    var map_rect := map_panel.get_global_rect()
+    var inspector_rect := inspector.get_global_rect()
+    var advance_turn := top_bar.get_node("Margin/Row/AdvanceTurn") as Button
+    if advance_turn == null:
+        return "Strategic layout has no next-turn action at %s" % viewport_size
+    var advance_rect: Rect2 = advance_turn.get_global_rect()
+    if map_rect.intersects(inspector_rect) or not viewport_rect.encloses(advance_rect):
+        return "Strategic layout overlaps or hides the next-turn action at %s" % viewport_size
+    if not viewport_rect.encloses(map_rect) or not viewport_rect.encloses(inspector_rect):
+        return "Strategic shell escaped the viewport at %s" % viewport_size
+
+    main_scene.call("_on_drawer_requested", "orders")
+    await process_frame
+    var drawer_panel := drawer.get_node("Panel") as Control
+    if drawer_panel == null or not drawer.visible or \
+            drawer_panel.get_global_rect().intersects(inspector_rect) or \
+            not viewport_rect.encloses(drawer_panel.get_global_rect()):
+        return "Bottom drawer overlaps the inspector or escaped the viewport at %s" % viewport_size
+    main_scene.call("_on_drawer_requested", "orders")
+    await process_frame
+    return ""
+
+
 func _initialize() -> void:
     var packed_scene := load("res://scenes/main/main.tscn") as PackedScene
     if packed_scene == null:
@@ -107,6 +165,132 @@ func _initialize() -> void:
         _fail(main_scene, "Main scene did not expose the initial strategic state")
         return
 
+    var bridge := main_scene.get_node("SimulationBridge") as Object
+    if bridge == null:
+        _fail(main_scene, "Main scene lost its simulation bridge before responsive verification")
+        return
+    var province_map := map_panel.get_node_or_null("ProvinceMap")
+    if province_map == null:
+        _fail(main_scene, "Map panel lost the interactive province map")
+        return
+    var date_before_profiles: Dictionary = bridge.get_current_date().duplicate(true)
+    var countries_before_profiles: Array = bridge.get_country_summaries().duplicate(true)
+    var orders_before_profiles: Array = bridge.get_pending_orders("auroria").duplicate(true)
+    for profile: Dictionary in [
+        {
+            "size": Vector2(1280, 720), "name": "compact",
+            "navigation_width": 56.0, "inspector_width": 320.0,
+        },
+        {
+            "size": Vector2(1440, 900), "name": "standard",
+            "navigation_width": 64.0, "inspector_width": 360.0,
+        },
+        {
+            "size": Vector2(1920, 1080), "name": "wide",
+            "navigation_width": 64.0, "inspector_width": 420.0,
+        },
+    ]:
+        var responsive_error := await _assert_responsive_shell(
+            main_scene, top_bar, navigation, map_panel, inspector, drawer, profile
+        )
+        if not responsive_error.is_empty():
+            _fail(main_scene, responsive_error)
+            return
+    if bridge.get_current_date() != date_before_profiles or \
+            bridge.get_country_summaries() != countries_before_profiles or \
+            bridge.get_pending_orders("auroria") != orders_before_profiles:
+        _fail(main_scene, "Viewport profiles changed authoritative simulation data")
+        return
+    for scroll: ScrollContainer in [
+        inspector.get_node("Body/ScrollContainer"),
+        drawer.get_node("Panel/Body/Orders"),
+        drawer.get_node("Panel/Body/Notifications"),
+        drawer.get_node("Panel/Body/TurnReportSection"),
+    ]:
+        if scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+            _fail(main_scene, "Strategic responsive content permits horizontal scrolling")
+            return
+    var theme := load("res://themes/strategic_ui_theme.tres") as Theme
+    var focus_style := theme.get_stylebox("focus", "Button") as StyleBoxFlat
+    var disabled_style := theme.get_stylebox("disabled", "Button") as StyleBoxFlat
+    var gold := Color("d6a64a")
+    if focus_style == null or focus_style.border_width_left != 2 or \
+            focus_style.border_width_top != 2 or \
+            not is_equal_approx(focus_style.border_color.r, gold.r) or \
+            not is_equal_approx(focus_style.border_color.g, gold.g) or \
+            not is_equal_approx(focus_style.border_color.b, gold.b) or \
+            disabled_style == null or disabled_style.bg_color.a >= 1.0:
+        _fail(main_scene, "Strategic theme lacks the required gold focus ring or disabled presentation")
+        return
+    top_bar.set_advance_enabled(false, "演示禁用原因")
+    main_scene.call("_apply_accessibility_presentation")
+    if not advance_turn.disabled or not advance_turn.tooltip_text.contains("演示禁用原因"):
+        _fail(main_scene, "Disabled primary actions did not retain their Chinese reason tooltip")
+        return
+    top_bar.set_advance_enabled(true)
+    main_scene.call("_apply_accessibility_presentation")
+
+    province_map.province_double_clicked.emit("capital_auroria")
+    await process_frame
+    var inspector_scroll := inspector.get_node("Body/ScrollContainer") as ScrollContainer
+    if inspector_scroll == null or inspector_scroll.size.y <= 0.0 or \
+            inspector_scroll.get_v_scroll_bar() == null:
+        _fail(main_scene, "Province management is not vertically reachable through the inspector")
+        return
+    var management_tabs := main_scene.province_management_window.get_node("Tabs") as TabContainer
+    var expected_tab_titles := ["概览", "军事", "建设", "订单"]
+    for index: int in expected_tab_titles.size():
+        if management_tabs.get_tab_title(index) != expected_tab_titles[index]:
+            _fail(main_scene, "Province management leaked an English or internal tab title")
+            return
+    inspector.get_node("Body/Header/Close").pressed.emit()
+
+    navigation.get_node("Margin/Row/Diplomacy").pressed.emit()
+    await process_frame
+    var escape := _escape_key()
+    var diplomacy_for_escape := pages.get_node("Pages/Diplomacy") as Control
+    diplomacy_for_escape.select_country("caelus")
+    diplomacy_for_escape.get_node("Content/Actions/DeclareWar").pressed.emit()
+    await process_frame
+    var confirmation := main_scene.get_node_or_null("Shell/ActionConfirmation") as ConfirmationDialog
+    if confirmation == null or not confirmation.visible:
+        _fail(main_scene, "High-impact diplomacy action did not open a confirmation layer")
+        return
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if confirmation.visible or main_scene.active_page_name() != "diplomacy":
+        _fail(main_scene, "Esc did not dismiss only the confirmation layer first")
+        return
+    main_scene.call("_on_drawer_requested", "orders")
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_drawer_name() != "closed" or main_scene.active_page_name() != "closed":
+        _fail(main_scene, "Esc did not dismiss the drawer before other layers")
+        return
+    main_scene.map_input_mode = main_scene.MapInputMode.ARMY_DESTINATION
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.map_input_mode_name() != "normal" or main_scene.active_page_name() != "closed":
+        _fail(main_scene, "Esc did not leave a pending map target selection")
+        return
+    navigation.get_node("Margin/Row/Technology").pressed.emit()
+    await process_frame
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_page_name() != "closed" or navigation.active_destination() != "map":
+        _fail(main_scene, "Esc did not return from the management page to the map")
+        return
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_page_name() != "settings" or navigation.active_destination() != "settings":
+        _fail(main_scene, "Esc did not open settings as the final return layer")
+        return
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_page_name() != "closed" or navigation.active_destination() != "map":
+        _fail(main_scene, "Esc did not return from settings to the map")
+        return
+
     for case: Dictionary in [
         {"status": {"has_scenario": true, "player_won": true}, "text": "胜利：奥罗里亚已经控制世界"},
         {"status": {"has_scenario": true, "player_eliminated": true}, "text": "失败：奥罗里亚已经灭亡"},
@@ -120,10 +304,6 @@ func _initialize() -> void:
         _fail(main_scene, "Game status did not enter the visible notification workflow")
         return
 
-    var province_map := map_panel.get_node_or_null("ProvinceMap")
-    if province_map == null:
-        _fail(main_scene, "Map panel lost the interactive province map")
-        return
     province_map.province_clicked.emit("capital_auroria")
     await process_frame
     if main_scene.workspace_mode_name() != "province_summary" or \
@@ -192,9 +372,6 @@ func _initialize() -> void:
     inspector.get_node("Body/Header/Close").pressed.emit()
 
     mode_bar.get_node("Margin/Row/PendingOrders").pressed.emit()
-    var escape := InputEventAction.new()
-    escape.action = "ui_cancel"
-    escape.pressed = true
     main_scene._unhandled_key_input(escape)
     await process_frame
     if main_scene.active_drawer_name() != "closed":
@@ -240,7 +417,6 @@ func _initialize() -> void:
         return
 
     drawer.get_node("Panel/Body/Header/Close").pressed.emit()
-    var bridge := main_scene.get_node("SimulationBridge") as Object
     if bridge == null:
         _fail(main_scene, "Main scene lost its simulation bridge during save/load testing")
         return
@@ -366,6 +542,12 @@ func _initialize() -> void:
     var diplomacy := pages.get_node("Pages/Diplomacy") as Control
     diplomacy.select_country("caelus")
     diplomacy.get_node("Content/Actions/MakePeace").pressed.emit()
+    await process_frame
+    var peace_confirmation := main_scene.get_node("Shell/ActionConfirmation") as ConfirmationDialog
+    if peace_confirmation == null or not peace_confirmation.visible:
+        _fail(main_scene, "Peace intent did not require confirmation")
+        return
+    peace_confirmation.get_ok_button().pressed.emit()
     await process_frame
     if not bridge.get_pending_orders("auroria").is_empty() or \
             not main_scene._latest_event_message.contains("取消1个行动订单") or \

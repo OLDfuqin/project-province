@@ -119,3 +119,11 @@ offset_top = 56.0
 offset_bottom = -44.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="ActionConfirmation" type="ConfirmationDialog" parent="Shell"]
+unique_name_in_owner = true
+exclusive = true
+title = "确认操作"
+dialog_text = "请确认此操作"
+ok_button_text = "确认"
+cancel_button_text = "取消"

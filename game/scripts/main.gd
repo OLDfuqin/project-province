@@ -31,6 +31,7 @@ enum MapInputMode {
 @onready var map_mode_bar := %MapModeBar
 @onready var bottom_drawer := %BottomDrawer
 @onready var management_page_host := %ManagementPageHost
+@onready var action_confirmation := %ActionConfirmation
 
 var player_country_id := "auroria"
 var province_by_id: Dictionary = {}
@@ -49,6 +50,8 @@ var _notifications: Array[String] = []
 var _latest_event_message := ""
 var _active_map_mode := "political"
 var _game_status_message_key := ""
+var _viewport_profile := "compact"
+var _pending_confirmation: Dictionary = {}
 var province_info_window: Control
 var province_management_window: Control
 var road_construction_window: Control
@@ -60,6 +63,7 @@ func _ready() -> void:
     province_info_window = ProvinceInfoScene.instantiate()
     province_management_window = ProvinceManagementScene.instantiate()
     road_construction_window = RoadConstructionScene.instantiate()
+    _configure_management_tab_titles()
     context_inspector.add_to_group("context_inspector")
 
     if not province_map.load_grid_layout("res://data/grid_map_layout.json"):
@@ -75,6 +79,8 @@ func _ready() -> void:
 
     _connect_strategic_ui()
     _connect_context_intents()
+    get_viewport().size_changed.connect(_on_viewport_size_changed)
+    apply_viewport_profile(get_viewport().get_visible_rect().size)
     _refresh_map_data()
     _refresh_strategic_ui()
     _record_event("场景已加载：%d 个地区" % province_by_id.size())
@@ -105,6 +111,7 @@ func _connect_strategic_ui() -> void:
     context_inspector.close_requested.connect(_close_workspace)
     bottom_drawer.cancel_order_requested.connect(_on_cancel_order_pressed)
     management_page_host.back_requested.connect(_return_to_map)
+    action_confirmation.confirmed.connect(_on_confirmation_confirmed)
     province_map.province_selected.connect(_on_province_selected)
     province_map.province_clicked.connect(_on_province_clicked)
     province_map.province_double_clicked.connect(_on_province_double_clicked)
@@ -165,6 +172,87 @@ func active_map_mode_name() -> String:
     return _active_map_mode
 
 
+func viewport_profile_name() -> String:
+    return _viewport_profile
+
+
+func apply_viewport_profile(viewport_size: Vector2) -> void:
+    var navigation_width := 64.0
+    var inspector_width := 360.0
+    var compact := false
+    if viewport_size.x < 1400.0 or viewport_size.y < 850.0:
+        _viewport_profile = "compact"
+        navigation_width = 56.0
+        inspector_width = 320.0
+        compact = true
+    elif viewport_size.x >= 1800.0:
+        _viewport_profile = "wide"
+        inspector_width = 420.0
+    else:
+        _viewport_profile = "standard"
+
+    primary_navigation.custom_minimum_size.x = navigation_width
+    context_inspector.custom_minimum_size.x = inspector_width
+    bottom_drawer.offset_left = navigation_width
+    bottom_drawer.offset_right = -inspector_width
+    management_page_host.offset_left = navigation_width
+    _set_global_status_density(compact)
+    _apply_accessibility_presentation()
+
+
+func _on_viewport_size_changed() -> void:
+    apply_viewport_profile(get_viewport().get_visible_rect().size)
+
+
+func _set_global_status_density(compact: bool) -> void:
+    var row := global_status_bar.get_node("Margin/Row")
+    for metric: Dictionary in [
+        {"node": "Treasury", "full": "国库 ", "compact": "国 "},
+        {"node": "Income", "full": "月收入 ", "compact": "收 "},
+        {"node": "Maintenance", "full": "维护费 ", "compact": "维 "},
+        {"node": "Recruitable", "full": "可招募 ", "compact": "招 "},
+    ]:
+        var label := row.get_node(String(metric["node"])) as Label
+        label.visible = true
+        var full_prefix := String(metric["full"])
+        var compact_prefix := String(metric["compact"])
+        label.text = label.text.replace(
+            compact_prefix if not compact else full_prefix,
+            full_prefix if not compact else compact_prefix
+        )
+
+
+func _configure_management_tab_titles() -> void:
+    var tabs := province_management_window.get_node("Tabs") as TabContainer
+    for index: int in ["概览", "军事", "建设", "订单"].size():
+        tabs.set_tab_title(index, ["概览", "军事", "建设", "订单"][index])
+
+
+func _apply_accessibility_presentation() -> void:
+    _apply_accessibility_to_node($Shell)
+
+
+func _apply_accessibility_to_node(node: Node) -> void:
+    var scroll := node as ScrollContainer
+    if scroll != null:
+        scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    var button := node as Button
+    if button != null:
+        if button.tooltip_text.is_empty():
+            button.tooltip_text = "当前不可用：所需条件尚未满足" if button.disabled else "执行%s" % button.text
+        elif button.disabled and not _has_disabled_reason(button.tooltip_text):
+            button.tooltip_text = "当前不可用：所需条件尚未满足"
+    for child: Node in node.get_children():
+        _apply_accessibility_to_node(child)
+
+
+func _has_disabled_reason(tooltip: String) -> bool:
+    for marker: String in ["不可", "无法", "不足", "等待", "最高", "负债", "锁定", "原因"]:
+        if tooltip.contains(marker):
+            return true
+    return false
+
+
 func workspace_mode_name() -> String:
     match workspace_mode:
         WorkspaceMode.PROVINCE_INFO:
@@ -199,6 +287,7 @@ func _refresh_strategic_ui() -> void:
     _refresh_active_context()
     _refresh_active_management_page()
     _refresh_game_status_feedback()
+    _apply_accessibility_presentation()
 
 
 func _game_status_message(status: Dictionary) -> String:
@@ -282,6 +371,7 @@ func _on_navigation_requested(destination: String) -> void:
         return
     management_page_host.open_page(destination)
     _refresh_active_management_page()
+    _apply_accessibility_presentation()
 
 
 func _return_to_map() -> void:
@@ -516,6 +606,7 @@ func _refresh_pending_orders() -> void:
         bottom_drawer.show_orders(_player_pending_orders())
     if active_page_name() != "closed":
         _refresh_active_management_page()
+    _apply_accessibility_presentation()
 
 
 func _on_cancel_order_pressed(order_id: String) -> void:
@@ -933,6 +1024,14 @@ func _refresh_road_workspace_state() -> void:
 func _on_declare_war_pressed(defender_id: String) -> void:
     if defender_id.is_empty():
         return
+    _request_confirmation(
+        "确认宣战",
+        "确认向%s宣战？该操作会改变外交关系。" % _country_name(defender_id),
+        {"action": "declare_war", "defender_id": defender_id}
+    )
+
+
+func _commit_declare_war(defender_id: String) -> void:
     var result: Dictionary = bridge.declare_war(player_country_id, defender_id)
     if not result.get("accepted", false):
         _record_event("宣战失败：%s" % _localized_failure(result))
@@ -948,6 +1047,14 @@ func _on_declare_war_pressed(defender_id: String) -> void:
 func _on_make_peace_pressed(other_country_id: String, annex: bool) -> void:
     if other_country_id.is_empty():
         return
+    _request_confirmation(
+        "确认议和",
+        "确认与%s议和？" % _country_name(other_country_id),
+        {"action": "make_peace", "country_id": other_country_id, "annex": annex}
+    )
+
+
+func _commit_make_peace(other_country_id: String, annex: bool) -> void:
     var result: Dictionary = bridge.make_peace(player_country_id, other_country_id, annex)
     if not result.get("accepted", false):
         _record_event("议和失败：%s" % _localized_failure(result))
@@ -1246,20 +1353,61 @@ func _record_event(message: String) -> void:
         bottom_drawer.show_turn_report("\n".join(event_history_lines))
 
 
+func _request_confirmation(title: String, message: String, intent: Dictionary) -> void:
+    _pending_confirmation = intent.duplicate(true)
+    action_confirmation.title = title
+    action_confirmation.dialog_text = message
+    action_confirmation.popup_centered()
+
+
+func _on_confirmation_confirmed() -> void:
+    var intent := _pending_confirmation.duplicate(true)
+    _pending_confirmation.clear()
+    match String(intent.get("action", "")):
+        "declare_war":
+            _commit_declare_war(String(intent.get("defender_id", "")))
+        "make_peace":
+            _commit_make_peace(
+                String(intent.get("country_id", "")), bool(intent.get("annex", false))
+            )
+
+
+func _close_confirmation_if_open() -> bool:
+    if not action_confirmation.visible:
+        return false
+    action_confirmation.hide()
+    _pending_confirmation.clear()
+    return true
+
+
+func _cancel_map_input_mode() -> void:
+    if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+        _on_road_exit_requested()
+        return
+    map_input_mode = MapInputMode.NORMAL
+    _refresh_interaction_highlights()
+    _refresh_management_action_state()
+    _show_context_status("已退出地图目标选择")
+
+
+func _open_settings_page() -> void:
+    _on_navigation_requested("settings")
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
-    if not event.is_action_pressed("ui_cancel"):
+    if not event is InputEventKey or not event.pressed or event.echo or event.keycode != KEY_ESCAPE:
+        return
+    if _close_confirmation_if_open():
+        get_viewport().set_input_as_handled()
         return
     if bottom_drawer.current_drawer() != "closed":
         bottom_drawer.close()
-    elif workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
-        _on_road_exit_requested()
-    elif map_input_mode != MapInputMode.NORMAL:
-        map_input_mode = MapInputMode.NORMAL
-        _refresh_interaction_highlights()
-        _refresh_management_action_state()
-        _show_context_status("已退出地图目标选择")
+    elif map_input_mode != MapInputMode.NORMAL or workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
+        _cancel_map_input_mode()
+    elif management_page_host.current_page() != "closed":
+        _return_to_map()
     else:
-        _on_navigation_requested("settings")
+        _open_settings_page()
     get_viewport().set_input_as_handled()
 
 
