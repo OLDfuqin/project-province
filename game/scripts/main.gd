@@ -6,6 +6,7 @@ const StrategyPresenter := preload("res://scripts/ui/strategy_panel_presenter.gd
 const ProvinceInfoScene := preload("res://scenes/ui/province_info_window.tscn")
 const ProvinceManagementScene := preload("res://scenes/ui/province_management_window.tscn")
 const RoadConstructionScene := preload("res://scenes/ui/road_construction_window.tscn")
+const MapHoverTooltipScene := preload("res://scenes/ui/map_hover_tooltip.tscn")
 
 enum WorkspaceMode {
     CLOSED,
@@ -26,7 +27,6 @@ enum MapInputMode {
 @onready var global_status_bar := %GlobalStatusBar
 @onready var primary_navigation := %PrimaryNavigation
 @onready var province_map := %ProvinceMap
-@onready var map_hover_tooltip: Label = %MapHoverTooltip
 @onready var context_inspector := %ContextInspector
 @onready var map_mode_bar := %MapModeBar
 @onready var bottom_drawer := %BottomDrawer
@@ -52,9 +52,11 @@ var _game_status_message_key := ""
 var province_info_window: Control
 var province_management_window: Control
 var road_construction_window: Control
+var map_hover_tooltip: Control
 
 
 func _ready() -> void:
+    _mount_map_hover_tooltip()
     province_info_window = ProvinceInfoScene.instantiate()
     province_management_window = ProvinceManagementScene.instantiate()
     road_construction_window = RoadConstructionScene.instantiate()
@@ -78,6 +80,15 @@ func _ready() -> void:
     _record_event("场景已加载：%d 个地区" % province_by_id.size())
 
 
+func _mount_map_hover_tooltip() -> void:
+    var placeholder := %MapHoverTooltip as Control
+    map_hover_tooltip = MapHoverTooltipScene.instantiate() as Control
+    map_hover_tooltip.name = "MapHoverTooltip"
+    map_hover_tooltip.z_index = 100
+    $Shell.add_child(map_hover_tooltip)
+    placeholder.free()
+
+
 func _exit_tree() -> void:
     for panel: Control in [
         province_info_window, province_management_window, road_construction_window,
@@ -98,7 +109,7 @@ func _connect_strategic_ui() -> void:
     province_map.province_clicked.connect(_on_province_clicked)
     province_map.province_double_clicked.connect(_on_province_double_clicked)
     province_map.map_blank_clicked.connect(_on_map_blank_clicked)
-    province_map.province_hovered.connect(_on_province_hovered)
+    province_map.province_hover_changed.connect(_on_province_hover_changed)
 
 
 func _connect_context_intents() -> void:
@@ -279,6 +290,8 @@ func _return_to_map() -> void:
 
 
 func _on_map_mode_requested(mode: String) -> void:
+    if not province_map.set_map_mode(mode):
+        return
     _active_map_mode = mode
     map_mode_bar.set_active_mode(mode)
     if mode == "roads":
@@ -331,6 +344,7 @@ func _close_workspace() -> void:
     road_end_id = ""
     province_map.set_auto_advance_path([])
     province_map.set_road_selection("", "")
+    province_map.set_interaction_highlights([], [], [])
     context_inspector.show_empty(_empty_inspector_message())
 
 
@@ -590,6 +604,7 @@ func _on_management_destination_requested(army_id: String) -> void:
         _show_context_status("无法选择该军队")
         return
     map_input_mode = MapInputMode.ARMY_DESTINATION
+    _refresh_interaction_highlights()
     _show_context_status("请在地图上点击列表中的可达目的地")
 
 
@@ -625,6 +640,7 @@ func _apply_management_order_destination(destination_id: String) -> void:
     auto_advance_target_id = ""
     bridge.clear_army_advance_target(moving_army_id)
     map_input_mode = MapInputMode.NORMAL
+    _refresh_interaction_highlights()
     province_management_window.set_destination(
         destination_id, String(target.get("province_name", "未知地区")),
         target.get("movement_cost", 0), target.get("is_attack", false)
@@ -643,12 +659,14 @@ func _on_management_advance_destination_requested(army_id: String) -> void:
         _show_context_status("无法选择该军队")
         return
     map_input_mode = MapInputMode.AUTO_ADVANCE_DESTINATION
+    _refresh_interaction_highlights()
     _show_context_status("请在地图上点击推进目标")
 
 
 func _select_management_destination(province_id: String) -> void:
     if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or moving_army_id.is_empty():
         map_input_mode = MapInputMode.NORMAL
+        _refresh_interaction_highlights()
         return
     if province_id.is_empty() or province_id == movement_origin_id:
         _show_context_status("目的地必须是其他地区")
@@ -659,6 +677,7 @@ func _select_management_destination(province_id: String) -> void:
 func _select_management_advance_target(province_id: String) -> void:
     if workspace_mode != WorkspaceMode.PROVINCE_MANAGEMENT or moving_army_id.is_empty():
         map_input_mode = MapInputMode.NORMAL
+        _refresh_interaction_highlights()
         return
     if province_id.is_empty() or province_id == movement_origin_id:
         _show_context_status("推进目标必须是其他地区")
@@ -670,6 +689,7 @@ func _select_management_advance_target(province_id: String) -> void:
     auto_advance_target_id = province_id
     movement_destination_id = ""
     map_input_mode = MapInputMode.NORMAL
+    _refresh_interaction_highlights()
     _refresh_advance_plans()
     _refresh_management_action_state()
     _show_context_status("推进目标已设置")
@@ -722,6 +742,7 @@ func _on_management_movement_clear_requested(army_id: String) -> void:
         return
     movement_destination_id = ""
     map_input_mode = MapInputMode.NORMAL
+    _refresh_interaction_highlights()
     province_management_window.set_destination("", "")
     _show_context_status("已清除临时移动选择")
     _refresh_management_action_state()
@@ -744,6 +765,7 @@ func _on_road_start_selection_requested() -> void:
     _clear_road_selection()
     _road_selection_notice = ""
     map_input_mode = MapInputMode.ROAD_START
+    _refresh_interaction_highlights()
     road_construction_window.reset_selection("请在地图上选择由你控制的道路起点")
 
 
@@ -755,6 +777,7 @@ func _on_road_end_selection_requested() -> void:
         return
     road_end_id = ""
     map_input_mode = MapInputMode.ROAD_END
+    _refresh_interaction_highlights()
     road_construction_window.set_start(_province_name(road_start_id))
     road_construction_window.set_status("请在地图上选择相邻的道路终点")
 
@@ -765,11 +788,13 @@ func _on_road_reset_requested() -> void:
     _clear_road_selection()
     _road_selection_notice = ""
     map_input_mode = MapInputMode.NORMAL
+    _refresh_interaction_highlights()
     road_construction_window.reset_selection("道路选择已重置")
 
 
 func _on_road_exit_requested() -> void:
     _active_map_mode = "political"
+    province_map.set_map_mode(_active_map_mode)
     map_mode_bar.set_active_mode(_active_map_mode)
     _close_workspace()
 
@@ -777,6 +802,7 @@ func _on_road_exit_requested() -> void:
 func _select_road_endpoint(province_id: String) -> void:
     if workspace_mode != WorkspaceMode.ROAD_CONSTRUCTION:
         map_input_mode = MapInputMode.NORMAL
+        _refresh_interaction_highlights()
         return
     var province: Dictionary = province_by_id.get(province_id, {})
     if province.is_empty():
@@ -807,6 +833,7 @@ func _select_road_endpoint(province_id: String) -> void:
     road_end_id = province_id
     _road_selection_notice = ""
     map_input_mode = MapInputMode.NORMAL
+    _refresh_interaction_highlights()
     province_map.set_road_selection(road_start_id, road_end_id)
     var quote: Dictionary = bridge.get_road_order_quote(player_country_id, road_start_id, road_end_id)
     var accepted := bool(quote.get("accepted", false))
@@ -858,6 +885,7 @@ func _clear_road_selection() -> void:
     if map_input_mode in [MapInputMode.ROAD_START, MapInputMode.ROAD_END]:
         map_input_mode = MapInputMode.NORMAL
     province_map.set_road_selection("", "")
+    _refresh_interaction_highlights()
 
 
 func _refresh_road_workspace_state() -> void:
@@ -1003,6 +1031,7 @@ func _refresh_map_data() -> void:
     province_map.set_roads(bridge.get_road_summaries())
     province_map.set_frontlines(bridge.get_frontline_edges())
     province_map.set_armies(bridge.get_army_summaries())
+    _refresh_interaction_highlights()
     if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
         _refresh_road_workspace_state()
 
@@ -1094,8 +1123,43 @@ func _on_province_selected(province_id: String) -> void:
         _select_road_endpoint(province_id)
 
 
-func _on_province_hovered(province_id: String) -> void:
-    map_hover_tooltip.text = "" if province_id.is_empty() else _province_name(province_id)
+func _on_province_hover_changed(province_id: String, screen_position: Vector2) -> void:
+    var province: Dictionary = province_by_id.get(province_id, {})
+    if province.is_empty():
+        map_hover_tooltip.hide_tooltip()
+        return
+    var snapshot := province.duplicate(true)
+    var stationed_manpower := 0
+    for army: Dictionary in bridge.get_army_summaries():
+        if String(army.get("province_id", "")) == province_id:
+            stationed_manpower += int(army.get("manpower", 0))
+    snapshot["stationed_manpower"] = stationed_manpower
+    map_hover_tooltip.show_snapshot(
+        snapshot, _country_name(String(province.get("owner_id", ""))), screen_position
+    )
+
+
+func _refresh_interaction_highlights() -> void:
+    var reachable: Array[String] = []
+    var attackable: Array[String] = []
+    var road_targets: Array[String] = []
+    if map_input_mode == MapInputMode.ARMY_DESTINATION and not moving_army_id.is_empty():
+        for target: Dictionary in bridge.get_army_order_targets(moving_army_id):
+            var province_id := String(target.get("province_id", ""))
+            if target.get("is_attack", false):
+                attackable.append(province_id)
+            else:
+                reachable.append(province_id)
+    elif map_input_mode == MapInputMode.ROAD_END and not road_start_id.is_empty():
+        for province_id: String in province_by_id:
+            if province_id == road_start_id:
+                continue
+            var quote: Dictionary = bridge.get_road_order_quote(
+                player_country_id, road_start_id, province_id
+            )
+            if quote.get("accepted", false):
+                road_targets.append(province_id)
+    province_map.set_interaction_highlights(reachable, attackable, road_targets)
 
 
 func _clear_movement_selection() -> void:
@@ -1113,6 +1177,7 @@ func _clear_local_managed_army_state() -> void:
     auto_advance_target_id = ""
     map_input_mode = MapInputMode.NORMAL
     province_map.set_auto_advance_path([])
+    _refresh_interaction_highlights()
 
 
 func _refresh_movement_preview() -> bool:
@@ -1190,6 +1255,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
         _on_road_exit_requested()
     elif map_input_mode != MapInputMode.NORMAL:
         map_input_mode = MapInputMode.NORMAL
+        _refresh_interaction_highlights()
         _refresh_management_action_state()
         _show_context_status("已退出地图目标选择")
     else:
