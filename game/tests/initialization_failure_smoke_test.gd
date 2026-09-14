@@ -21,7 +21,20 @@ func _assert_failed_initialization(scene: Control, expected: String) -> String:
         return "Next turn remained available after initialization failed"
     if map.mouse_filter != Control.MOUSE_FILTER_IGNORE:
         return "Map input remained available after initialization failed"
+    var settings_save := scene.get_node(
+        "Shell/ManagementPageHost/Pages/Settings/Content/Actions/QuickSave"
+    ) as Button
+    if settings_save == null or not settings_save.disabled:
+        return "Management actions remained enabled after initialization failed"
     return ""
+
+
+func _press_escape() -> void:
+    var escape := InputEventKey.new()
+    escape.keycode = KEY_ESCAPE
+    escape.pressed = true
+    root.push_input(escape)
+    await process_frame
 
 
 func _initialize() -> void:
@@ -32,9 +45,15 @@ func _initialize() -> void:
     map_failure.map_layout_path = "res://data/missing_grid_map_layout.json"
     root.add_child(map_failure)
     await process_frame
-    var failure := _assert_failed_initialization(map_failure, "地图加载失败")
+    const MAP_FAILURE := "地图加载失败：地图布局数据不可用，请检查游戏文件。"
+    var failure := _assert_failed_initialization(map_failure, MAP_FAILURE)
     if not failure.is_empty():
         _fail(map_failure, failure)
+        return
+    await _press_escape()
+    failure = _assert_failed_initialization(map_failure, MAP_FAILURE)
+    if not failure.is_empty() or map_failure.active_page_name() != "closed":
+        _fail(map_failure, "Escape changed the initialization failure state")
         return
     map_failure.free()
     await process_frame

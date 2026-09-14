@@ -75,8 +75,15 @@ func _initialize() -> void:
     amount.value = amount.max_value + 1
     await _activate(management.get_node("Tabs/Military/Recruitment/Buttons/Confirm"))
     var status := management.find_child("Status", true, false) as Label
+    var inspector_scroll := main_scene.get_node(
+        "Shell/Layout/MainRow/ContextInspector/Body/ScrollContainer"
+    ) as ScrollContainer
+    var visible_status_rect := status.get_global_rect().intersection(
+        inspector_scroll.get_global_rect()
+    )
     if not bridge.get_pending_orders("auroria").is_empty() or \
-            not status.text.contains("招募失败") or not status.is_visible_in_tree():
+            not status.text.contains("招募失败") or not status.is_visible_in_tree() or \
+            visible_status_rect.size != status.get_global_rect().size:
         _fail(main_scene, "Military recruitment refusal was not visible in the active tab")
         return
     for index: int in [2, 3, 0, 1]:

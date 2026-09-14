@@ -75,7 +75,10 @@ func _ready() -> void:
     context_inspector.add_to_group("context_inspector")
 
     if not province_map.load_grid_layout(map_layout_path):
-        _show_initialization_failure("地图加载失败：%s" % province_map.geometry_error())
+        _show_initialization_failure(
+            "地图加载失败：地图布局数据不可用，请检查游戏文件。",
+            province_map.geometry_error()
+        )
         return
     var data_directory := ProjectSettings.globalize_path(scenario_data_directory)
     if not bridge.load_scenario(data_directory, 1000, 1):
@@ -179,15 +182,15 @@ func initialization_error() -> String:
     return _initialization_error
 
 
-func _show_initialization_failure(message: String) -> void:
+func _show_initialization_failure(message: String, diagnostic := "") -> void:
     _initialization_error = message
     _set_event_message(message)
     global_status_bar.set_snapshot({"name": "游戏初始化失败"}, {"year": 0, "month": 1})
     global_status_bar.set_advance_enabled(false, message)
     context_inspector.show_empty(message)
     province_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    _disable_buttons($Shell/Layout)
-    push_warning(message)
+    _disable_buttons($Shell)
+    push_warning(diagnostic if not diagnostic.is_empty() else message)
 
 
 func _disable_buttons(node: Node) -> void:
@@ -1484,6 +1487,9 @@ func _open_settings_page() -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
     if not event is InputEventKey or not event.pressed or event.echo or event.keycode != KEY_ESCAPE:
+        return
+    if not _initialization_error.is_empty():
+        get_viewport().set_input_as_handled()
         return
     if _close_confirmation_if_open():
         get_viewport().set_input_as_handled()
