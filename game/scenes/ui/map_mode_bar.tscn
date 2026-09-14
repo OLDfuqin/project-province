@@ -1,0 +1,78 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/map_mode_bar.gd" id="1_script"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+
+[node name="MapModeBar" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Political" type="Button" parent="Margin/Row"]
+layout_mode = 2
+toggle_mode = true
+text = "政治"
+tooltip_text = "切换到政治地图"
+metadata/map_mode = "political"
+
+[node name="Terrain" type="Button" parent="Margin/Row"]
+layout_mode = 2
+toggle_mode = true
+text = "地形"
+tooltip_text = "切换到地形地图"
+metadata/map_mode = "terrain"
+
+[node name="Economy" type="Button" parent="Margin/Row"]
+layout_mode = 2
+toggle_mode = true
+text = "经济"
+tooltip_text = "切换到经济地图"
+metadata/map_mode = "economy"
+
+[node name="Military" type="Button" parent="Margin/Row"]
+layout_mode = 2
+toggle_mode = true
+text = "军事"
+tooltip_text = "切换到军事地图"
+metadata/map_mode = "military"
+
+[node name="Roads" type="Button" parent="Margin/Row"]
+layout_mode = 2
+toggle_mode = true
+text = "道路"
+tooltip_text = "切换到道路地图"
+metadata/map_mode = "roads"
+
+[node name="Spacer" type="Control" parent="Margin/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PendingOrders" type="Button" parent="Margin/Row"]
+layout_mode = 2
+text = "待执行订单 0"
+tooltip_text = "打开待执行订单抽屉"
+metadata/drawer = "orders"
+
+[node name="Notifications" type="Button" parent="Margin/Row"]
+layout_mode = 2
+text = "通知 0"
+tooltip_text = "打开通知抽屉"
+metadata/drawer = "notifications"
+
+[node name="TurnReport" type="Button" parent="Margin/Row"]
+layout_mode = 2
+text = "回合报告"
+tooltip_text = "打开回合报告抽屉"
+metadata/drawer = "turn_report"

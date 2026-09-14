@@ -194,6 +194,33 @@ func _initialize() -> void:
 	if known_ui_order_action_reasons.size() != 81:
 		_fail("Known UI order/action reason list changed without review")
 		return
+
+	var road_text := GameText.pending_order_text({
+		"type": "road_construction", "province_a": "capital_auroria",
+		"province_b": "border_auroria", "remaining_months": 1,
+	}, {
+		"capital_auroria": {"name": "奥罗里亚首都"},
+		"border_auroria": {"name": "奥罗里亚边境"},
+	})
+	if road_text.find("奥罗里亚首都") == -1 or road_text.find("奥罗里亚边境") == -1:
+		_fail("Road pending order omitted a distinct endpoint name")
+		return
+
+	var war_text := GameText.pending_order_text({
+		"type": "war_declaration", "defender_id": "country_2",
+		"remaining_months": 1,
+	}, {}, {"country_2": {"name": "北方联盟"}})
+	if war_text.find("北方联盟") == -1 or war_text.find("country_2") != -1:
+		_fail("War pending order leaked a raw defender country ID")
+		return
+	var unknown_war_text := GameText.pending_order_text({
+		"type": "war_declaration", "defender_id": "country_missing",
+		"remaining_months": 1,
+	}, {}, {})
+	if unknown_war_text.find("未知国家") == -1 or \
+			unknown_war_text.find("country_missing") != -1:
+		_fail("Unknown war target leaked a raw defender country ID")
+		return
 	for reason: String in known_ui_order_action_reasons:
 		var translated := GameText.order_failure_reason(reason)
 		if translated.is_empty() or translated == reason or translated == "未知错误":

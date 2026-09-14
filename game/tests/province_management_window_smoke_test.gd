@@ -3,25 +3,9 @@ extends SceneTree
 
 func _army(bridge: Object, army_id: String) -> Dictionary:
     for summary: Dictionary in bridge.get_army_summaries():
-        if summary.get("id", "") == army_id:
+        if String(summary.get("id", "")) == army_id:
             return summary
     return {}
-
-
-func _pending_rows(main_scene: Node) -> Array[Node]:
-    var rows: Array[Node] = []
-    for child: Node in main_scene.get_node(
-        "RightPanel/Center/PendingOrders/Content/OrderList/Orders"
-    ).get_children():
-        rows.append(child)
-    return rows
-
-
-func _pending_row(main_scene: Node, order_type: String) -> Control:
-    for row: Node in _pending_rows(main_scene):
-        if row.get_meta("order_type", "") == order_type:
-            return row as Control
-    return null
 
 
 func _fail(main_scene: Node, message: String) -> void:
@@ -30,180 +14,246 @@ func _fail(main_scene: Node, message: String) -> void:
     quit(1)
 
 
-func _initialize() -> void:
-    var packed_scene := load("res://scenes/main/main.tscn") as PackedScene
-    if packed_scene == null:
-        push_error("Main scene could not be loaded for province management testing")
-        quit(1)
-        return
+func _expected_treasury(main_scene: Control, value: int) -> String:
+    var prefix := "国 " if main_scene.viewport_profile_name() == "compact" else "国库 "
+    return "%s%d" % [prefix, value]
 
-    var main_scene := packed_scene.instantiate() as Control
+
+func _click_at(position: Vector2, viewport: Viewport = root) -> void:
+    for pressed: bool in [true, false]:
+        var event := InputEventMouseButton.new()
+        event.button_index = MOUSE_BUTTON_LEFT
+        event.position = position
+        event.pressed = pressed
+        viewport.push_input(event)
+        await process_frame
+
+
+func _activate(button: Button) -> void:
+    button.grab_focus()
+    for pressed: bool in [true, false]:
+        var event := InputEventKey.new()
+        event.keycode = KEY_ENTER
+        event.pressed = pressed
+        button.get_viewport().push_input(event)
+        await process_frame
+
+
+func _initialize() -> void:
+    root.size = Vector2i(1280, 720)
+    var main_scene := (load("res://scenes/main/main.tscn") as PackedScene).instantiate()
     root.add_child(main_scene)
     await process_frame
-
     var bridge := main_scene.get_node("SimulationBridge")
-    var province_map := main_scene.get_node("MapPanel/ProvinceMap")
-    var management := main_scene.get_node_or_null(
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow"
-    ) as Control
+    var province_map := main_scene.get_node("Shell/Layout/MainRow/MapPanel/ProvinceMap")
+    var management := main_scene.province_management_window as Control
     var advance_turn := main_scene.get_node(
-        "TurnBar/TurnControls/AdvanceTurn"
+        "Shell/Layout/GlobalStatusBar/Margin/Row/AdvanceTurn"
     ) as Button
     if management == null:
-        _fail(main_scene, "Province management window was not embedded in the workspace")
+        _fail(main_scene, "Province management was not created for the context inspector")
         return
 
     province_map.province_double_clicked.emit("capital_auroria")
-    var recruit := management.get_node("Recruitment/Open") as Button
-    var army_selector := management.get_node("ArmySelector") as OptionButton
-    var reachable := management.get_node("ReachableDestination") as OptionButton
-    var move_army := management.get_node("ArmyActions/MoveArmy") as Button
+    await process_frame
+    var recruit := management.get_node("Tabs/Military/Recruitment/Open") as Button
+    var selector := management.get_node("Tabs/Military/ArmySelector") as OptionButton
     if main_scene.workspace_mode_name() != "province_management" or \
-            not management.visible or \
-            management.get_node("ProvinceName").text != "奥罗里亚首都" or \
-            recruit.disabled or army_selector.item_count != 0 or \
-            not management.get_node("Placeholders/EconomyInvestment").disabled or \
-            not management.get_node("Placeholders/CivilInvestment").disabled or \
-            not management.get_node("Placeholders/BuildingManagement").disabled:
-        _fail(main_scene, "Province management window did not show the initial province state")
+            main_scene.get_node("Shell/Layout/MainRow/ContextInspector").current_mode() != "province_management" or \
+            not management.visible or recruit.disabled or selector.item_count != 0 or \
+            management.get_node_or_null("Tabs/TechnologyLegacy") != null:
+        _fail(main_scene, "Province management did not use its final inspector-only contract")
         return
 
-    var technology_status := management.get_node("Technology/Status") as Label
-    var technology_pending := management.get_node("Technology/Pending") as Label
-    var economy_research := management.get_node(
-        "Technology/Buttons/Economy"
-    ) as Button
-    if not technology_status.text.contains("经济 0"):
-        _fail(main_scene, "Management page did not display technology")
+    var tab_bar := (management.get_node("Tabs") as TabContainer).get_tab_bar()
+    await _click_at(tab_bar.global_position + tab_bar.get_tab_rect(1).get_center())
+    if management.active_tab() != "military" or not recruit.is_visible_in_tree():
+        _fail(main_scene, "Real TabBar input did not expose the military actions")
         return
-    economy_research.pressed.emit()
+    await _activate(recruit)
+    var amount := management.get_node("Tabs/Military/Recruitment/Amount") as SpinBox
+    amount.value = amount.max_value + 1
+    await _activate(management.get_node("Tabs/Military/Recruitment/Buttons/Confirm"))
+    var status := management.find_child("Status", true, false) as Label
+    var inspector_scroll := main_scene.get_node(
+        "Shell/Layout/MainRow/ContextInspector/Body/ScrollContainer"
+    ) as ScrollContainer
+    var visible_status_rect := status.get_global_rect().intersection(
+        inspector_scroll.get_global_rect()
+    )
+    if not bridge.get_pending_orders("auroria").is_empty() or \
+            not status.text.contains("招募失败") or not status.is_visible_in_tree() or \
+            visible_status_rect.size != status.get_global_rect().size:
+        _fail(main_scene, "Military recruitment refusal was not visible in the active tab")
+        return
+    for index: int in [2, 3, 0, 1]:
+        await _click_at(tab_bar.global_position + tab_bar.get_tab_rect(index).get_center())
+        if (management.get_node("Tabs") as TabContainer).current_tab != index or \
+                not status.is_visible_in_tree() or not status.text.contains("招募失败"):
+            _fail(main_scene, "Shared province feedback disappeared after real TabBar input")
+            return
+
+    main_scene.get_node("Shell/Layout/MainRow/PrimaryNavigation/Margin/Row/Technology").pressed.emit()
+    await process_frame
+    var technology := main_scene.get_node("Shell/ManagementPageHost/Pages/Technology")
+    var research := technology.get_node("Content/Tracks/Economy/Research") as Button
+    if research.disabled:
+        _fail(main_scene, "Authoritative technology page did not enable affordable research")
+        return
+    research.pressed.emit()
     await process_frame
     var research_orders: Array = bridge.get_pending_orders("auroria")
-    var research_row := _pending_row(main_scene, "research")
-    if research_orders.size() != 1 or research_orders[0].get("type", "") != "research" or \
-            research_orders[0].get("remaining_months", 0) != 2 or \
-            not technology_status.text.contains("经济 0") or \
-            not technology_pending.text.contains("经济 → 1") or \
-            not technology_pending.text.contains("剩余2个月") or \
-            research_row == null or \
-            not (research_row.get_node("Description") as Label).text.contains("预付5000"):
-        _fail(main_scene, "Technology did not create and display a delayed research order")
+    var treasury := main_scene.get_node(
+        "Shell/Layout/GlobalStatusBar/Margin/Row/Treasury"
+    ) as Label
+    var research_treasury := 0
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == "auroria":
+            research_treasury = int(country.get("treasury", 0))
+            break
+    if research_orders.size() != 1 or String(research_orders[0].get("type", "")) != "research" or \
+            treasury.text != _expected_treasury(main_scene, research_treasury):
+        _fail(main_scene, "Technology page did not submit the research intent through main")
         return
-
-    (research_row.get_node("Cancel") as Button).pressed.emit()
+    main_scene.get_node("Shell/Layout/MapModeBar/Margin/Row/PendingOrders").pressed.emit()
     await process_frame
+    var research_cancel := main_scene.get_node(
+        "Shell/BottomDrawer/Panel/Body/Orders/Rows/Order0/Cancel"
+    ) as Button
+    research_cancel.pressed.emit()
+    await process_frame
+    var confirmation := main_scene.get_node("Shell/ActionConfirmation") as ConfirmationDialog
+    if not confirmation.visible or not confirmation.dialog_text.contains("已开始则不退款"):
+        _fail(main_scene, "Research cancellation did not explain its refund loss before commit")
+        return
+    confirmation.canceled.emit()
+    await process_frame
+    if bridge.get_pending_orders("auroria").size() != 1:
+        _fail(main_scene, "Dismissing research cancellation changed the pending order")
+        return
+    research_cancel.pressed.emit()
+    await process_frame
+    confirmation.confirmed.emit()
+    await process_frame
+    var cancelled_treasury := 0
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == "auroria":
+            cancelled_treasury = int(country.get("treasury", 0))
+            break
     if not bridge.get_pending_orders("auroria").is_empty() or \
-            not main_scene.get_node("RightPanel/Center/EventLog").text.contains("退款5000"):
-        _fail(main_scene, "Pending research could not be cancelled with its prepayment refunded")
+            not main_scene._latest_event_message.contains("退款5000") or \
+            not main_scene.get_node("Shell/BottomDrawer/Panel/Body/Orders/Rows/Empty").visible or \
+            treasury.text != _expected_treasury(main_scene, cancelled_treasury):
+        _fail(main_scene, "Research cancellation did not clear the drawer or refresh its treasury")
         return
-
-    recruit.pressed.emit()
-    management.get_node("Recruitment/Amount").value = 500
-    management.get_node("Recruitment/Buttons/Confirm").pressed.emit()
+    main_scene.call("_on_cancel_order_pressed", "missing_order")
     await process_frame
-    var recruitment_orders: Array = bridge.get_pending_orders("auroria")
-    var recruitment_row := _pending_row(main_scene, "recruitment")
-    if army_selector.item_count != 0 or recruitment_orders.size() != 1 or \
-            recruitment_orders[0].get("type", "") != "recruitment" or \
-            recruitment_orders[0].get("remaining_months", 0) != 1 or \
-            recruitment_row == null or \
-            not (recruitment_row.get_node("Description") as Label).text.contains("预付2000") or \
-            not management.get_node("Recruitment/Pending").text.contains("预留500人") or \
-            not management.get_node("Status").text.contains("订单已创建"):
-        _fail(main_scene, "Recruitment did not stay pending for one month")
+    if main_scene.active_drawer_name() != "notifications" or \
+            not main_scene.get_node(
+                "Shell/BottomDrawer/Panel/Body/Notifications/NotificationText"
+            ).text.contains("取消订单失败"):
+        _fail(main_scene, "Rejected order cancellation did not show a visible notification")
         return
-
-    advance_turn.pressed.emit()
-    await process_frame
-    await process_frame
+    main_scene.get_node("Shell/BottomDrawer/Panel/Body/Header/Close").pressed.emit()
+    main_scene.get_node("Shell/Layout/MainRow/PrimaryNavigation/Margin/Row/Map").pressed.emit()
     province_map.province_double_clicked.emit("capital_auroria")
-    if army_selector.item_count != 1 or \
-            not bridge.get_pending_orders("auroria").is_empty() or \
-            not main_scene.get_node("RightPanel/Center/EventHistory").text.contains("征兵订单完成"):
-        _fail(main_scene, "Recruitment order did not complete in the next project phase")
-        return
-
-    advance_turn.pressed.emit()
     await process_frame
-    await process_frame
-    province_map.province_double_clicked.emit("capital_auroria")
-    if army_selector.item_count != 1 or reachable.item_count <= 1:
-        _fail(main_scene, "Completed army did not expose authoritative reachable targets")
-        return
 
-    var army_id := String(army_selector.get_selected_metadata())
-    var origin_id: String = _army(bridge, army_id).get("province_id", "")
-    var movement_before: float = float(_army(bridge, army_id).get("movement_points", 0.0))
-    var target: Dictionary = reachable.get_item_metadata(1)
-    var destination_id: String = target.get("province_id", "")
-    reachable.get_popup().index_pressed.emit(1)
-    if move_army.disabled or \
-            not management.get_node("DirectDestination").text.contains(
-                target.get("province_name", destination_id)
-            ):
-        _fail(main_scene, "Reachable destination selection did not prepare an order")
-        return
-
-    var saved_advance_target: Dictionary = bridge.set_army_advance_target(
-        army_id, destination_id
+    var recruitment_quote: Dictionary = main_scene.call(
+        "_authoritative_recruitment_quote", "capital_auroria"
     )
-    if not saved_advance_target.get("accepted", false):
-        _fail(main_scene, "Could not prepare the saved advance target regression")
+    var maximum_manpower := int(recruitment_quote.get("maximum_manpower", 0))
+    if not recruitment_quote.get("accepted", false) or maximum_manpower <= 0:
+        _fail(main_scene, "Could not obtain the authoritative maximum recruitment quote")
         return
-    main_scene.auto_advance_target_id = destination_id
-    province_map.province_double_clicked.emit(destination_id)
+    recruit.pressed.emit()
+    management.get_node("Tabs/Military/Recruitment/Amount").value = maximum_manpower
+    management.get_node("Tabs/Military/Recruitment/Buttons/Confirm").pressed.emit()
     await process_frame
-    if not main_scene.moving_army_id.is_empty() or \
-            not main_scene.movement_origin_id.is_empty() or \
-            not main_scene.movement_destination_id.is_empty() or \
-            not main_scene.auto_advance_target_id.is_empty() or \
-            main_scene.map_input_mode_name() != "normal" or \
-            String(_army(bridge, army_id).get("advance_target_id", "")) != \
-            destination_id or \
-            reachable.item_count != 1 or not reachable.disabled or \
-            not move_army.disabled or \
-            not management.get_node("AdvanceActions/AdvanceNow").disabled:
-        _fail(main_scene, "Opening a province without a player army retained stale army state")
-        return
-
-    province_map.province_double_clicked.emit(origin_id)
-    await process_frame
-    target = reachable.get_item_metadata(1)
-    destination_id = String(target.get("province_id", ""))
-    reachable.get_popup().index_pressed.emit(1)
-
-    move_army.pressed.emit()
-    await process_frame
-    var movement_row := _pending_row(main_scene, "army_action")
-    if _army(bridge, army_id).get("province_id", "") != origin_id or \
-            movement_row == null or \
-            not (movement_row.get_node("Description") as Label).text.contains("预留移动") or \
-            not management.get_node("Status").text.contains("订单已创建"):
-        _fail(main_scene, "Army movement happened immediately instead of being queued")
+    var recruitment_treasury := 0
+    for country: Dictionary in bridge.get_country_summaries():
+        if country.get("id", "") == "auroria":
+            recruitment_treasury = int(country.get("treasury", 0))
+            break
+    if bridge.get_pending_orders("auroria").size() != 1 or \
+            treasury.text != _expected_treasury(main_scene, recruitment_treasury) or \
+            not management.get_node("Tabs/Military/Recruitment/Pending").text.contains(
+                "预留%d人" % maximum_manpower
+            ):
+        _fail(main_scene, "Recruitment did not refresh the pending order and authoritative treasury")
         return
 
-    (movement_row.get_node("Cancel") as Button).pressed.emit()
+    main_scene.get_node("Shell/Layout/MapModeBar/Margin/Row/PendingOrders").pressed.emit()
     await process_frame
-    if not bridge.get_pending_orders("auroria").is_empty() or \
-            not is_equal_approx(
-                float(_army(bridge, army_id).get("movement_points", 0.0)),
-                movement_before
-            ) or \
-            not main_scene.get_node("RightPanel/Center/EventLog").text.contains("退还移动"):
-        _fail(main_scene, "Cancelling a movement order did not restore reserved movement")
+    var recruitment_cancel := main_scene.get_node(
+        "Shell/BottomDrawer/Panel/Body/Orders/Rows/Order0/Cancel"
+    ) as Button
+    recruitment_cancel.pressed.emit()
+    await process_frame
+    var restored_quote: Dictionary = main_scene.call(
+        "_authoritative_recruitment_quote", "capital_auroria"
+    )
+    if main_scene.workspace_mode_name() != "province_management" or \
+            main_scene.get_node("Shell/Layout/MainRow/ContextInspector").current_mode() != \
+                "province_management" or not management.visible or \
+            not bridge.get_pending_orders("auroria").is_empty() or \
+            not main_scene.get_node("Shell/BottomDrawer/Panel/Body/Orders/Rows/Empty").visible or \
+            recruit.disabled or not management._recruitment_quote.get("accepted", false) or \
+            int(management._recruitment_quote.get("maximum_manpower", 0)) != \
+                int(restored_quote.get("maximum_manpower", 0)):
+        _fail(main_scene, "Cancelled recruitment did not restore the active management quote")
         return
-
-    reachable.get_popup().index_pressed.emit(1)
-    move_army.pressed.emit()
+    recruit.pressed.emit()
+    var restored_amount := management.get_node("Tabs/Military/Recruitment/Amount") as SpinBox
+    if int(restored_amount.max_value) != int(restored_quote.get("maximum_manpower", 0)):
+        _fail(main_scene, "Cancelled recruitment did not restore the recruitment button quote")
+        return
+    var follow_up_manpower := mini(500, int(restored_quote.get("maximum_manpower", 0)))
+    restored_amount.value = follow_up_manpower
+    management.get_node("Tabs/Military/Recruitment/Buttons/Confirm").pressed.emit()
     await process_frame
+    if bridge.get_pending_orders("auroria").size() != 1 or \
+            not management.get_node("Tabs/Military/Recruitment/Pending").text.contains(
+                "预留%d人" % follow_up_manpower
+            ):
+        _fail(main_scene, "Recruitment could not be initiated again after its refund")
+        return
+    main_scene.get_node("Shell/BottomDrawer/Panel/Body/Header/Close").pressed.emit()
     advance_turn.pressed.emit()
     await process_frame
     await process_frame
-    if _army(bridge, army_id).get("province_id", "") != destination_id or \
-            not main_scene.get_node("RightPanel/Center/EventHistory").text.contains("调动订单完成"):
-        _fail(main_scene, "Queued movement did not resolve on the following month")
+    if selector.item_count != 1 or not bridge.get_pending_orders("auroria").is_empty():
+        _fail(main_scene, "Recruitment order did not resolve on the next month")
         return
 
-    print("Province management window monthly order smoke test passed")
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
+    province_map.province_double_clicked.emit("capital_auroria")
+    await process_frame
+    var reachable := management.get_node("Tabs/Military/ReachableDestination") as OptionButton
+    var move_army := management.get_node("Tabs/Military/ArmyActions/MoveArmy") as Button
+    if selector.item_count != 1 or reachable.item_count <= 1:
+        _fail(main_scene, "Completed army did not expose bridge-authorized movement targets")
+        return
+    var army_id := String(selector.get_selected_metadata())
+    var origin_id := String(_army(bridge, army_id).get("province_id", ""))
+    var target: Dictionary = reachable.get_item_metadata(1)
+    var destination_id := String(target.get("province_id", ""))
+    reachable.get_popup().index_pressed.emit(1)
+    move_army.pressed.emit()
+    await process_frame
+    if String(_army(bridge, army_id).get("province_id", "")) != origin_id or \
+            bridge.get_pending_orders("auroria").is_empty():
+        _fail(main_scene, "Movement was not retained as a delayed order")
+        return
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
+    if String(_army(bridge, army_id).get("province_id", "")) != destination_id:
+        _fail(main_scene, "Queued movement did not resolve in the monthly military phase")
+        return
+
+    print("Province management strategic integration smoke test passed")
     main_scene.free()
     quit(0)

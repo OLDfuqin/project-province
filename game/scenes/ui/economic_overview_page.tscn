@@ -1,0 +1,43 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/economic_overview_page.gd" id="1_page"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+
+[node name="EconomicOverviewPage" type="PanelContainer"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_page")
+
+[node name="Content" type="VBoxContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="Heading" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "经济概况"
+
+[node name="NetIncome" type="Label" parent="Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "尚未提供经济快照"
+
+[node name="ProvincesTitle" type="Label" parent="Content"]
+layout_mode = 2
+text = "地区财政贡献"
+
+[node name="Provinces" type="ScrollContainer" parent="Content"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Rows" type="VBoxContainer" parent="Content/Provinces"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Empty" type="Label" parent="Content/Provinces/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "当前没有地区数据"

@@ -1,6 +1,13 @@
 extends SceneTree
 
 
+func _fail(main_scene: Control, message: String) -> void:
+    push_error(message)
+    if is_instance_valid(main_scene):
+        main_scene.free()
+    quit(1)
+
+
 func _read_json(path: String) -> Dictionary:
     var file := FileAccess.open(path, FileAccess.READ)
     if file == null:
@@ -14,15 +21,15 @@ func _normalize_json_numbers(value: Variant) -> Variant:
     if value is float and is_equal_approx(value, round(value)):
         return int(value)
     if value is Array:
-        var normalized_array: Array = []
+        var normalized: Array = []
         for item: Variant in value:
-            normalized_array.append(_normalize_json_numbers(item))
-        return normalized_array
+            normalized.append(_normalize_json_numbers(item))
+        return normalized
     if value is Dictionary:
-        var normalized_dictionary: Dictionary = {}
+        var normalized: Dictionary = {}
         for key: Variant in value:
-            normalized_dictionary[key] = _normalize_json_numbers(value[key])
-        return normalized_dictionary
+            normalized[key] = _normalize_json_numbers(value[key])
+        return normalized
     return value
 
 
@@ -35,281 +42,521 @@ func _write_json(path: String, document: Dictionary) -> bool:
     return true
 
 
+func _army(bridge: Object, army_id: String) -> Dictionary:
+    for army: Dictionary in bridge.get_army_summaries():
+        if String(army.get("id", "")) == army_id:
+            return army
+    return {}
+
+
+func _escape_key() -> InputEventKey:
+    var escape := InputEventKey.new()
+    escape.pressed = true
+    escape.keycode = KEY_ESCAPE
+    return escape
+
+
+func _resize_root_window(viewport_size: Vector2) -> void:
+    root.size = Vector2i(viewport_size)
+    await process_frame
+    await process_frame
+
+
+func _assert_responsive_shell(
+    main_scene: Control,
+    top_bar: Control,
+    navigation: Control,
+    map_panel: Control,
+    inspector: Control,
+    drawer: Control,
+    profile: Dictionary
+) -> String:
+    var viewport_size: Vector2 = profile["size"]
+    await _resize_root_window(viewport_size)
+
+    var expected_name := String(profile["name"])
+    if Vector2(root.size) != viewport_size or main_scene.size != viewport_size or \
+            main_scene.get_viewport().get_visible_rect().size != viewport_size:
+        return "Window resize to %s remained in a fixed %s logical viewport" % [
+            viewport_size, main_scene.get_viewport().get_visible_rect().size,
+        ]
+    if main_scene.viewport_profile_name() != expected_name:
+        return "Viewport %s selected %s instead of %s" % [
+            viewport_size, main_scene.viewport_profile_name(), expected_name,
+        ]
+    if not is_equal_approx(navigation.custom_minimum_size.x, float(profile["navigation_width"])) or \
+            not is_equal_approx(inspector.custom_minimum_size.x, float(profile["inspector_width"])):
+        return "Viewport %s did not apply the declared navigation/inspector profile" % viewport_size
+    for metric_name: String in ["Treasury", "Income", "Maintenance", "Recruitable"]:
+        var metric := top_bar.get_node("Margin/Row/%s" % metric_name) as Label
+        if metric == null or not metric.visible or metric.text.is_empty():
+            return "Viewport %s hid a required compact status metric: %s" % [viewport_size, metric_name]
+
+    var viewport_rect := Rect2(Vector2.ZERO, viewport_size)
+    var map_rect := map_panel.get_global_rect()
+    var inspector_rect := inspector.get_global_rect()
+    var advance_turn := top_bar.get_node("Margin/Row/AdvanceTurn") as Button
+    if advance_turn == null:
+        return "Strategic layout has no next-turn action at %s" % viewport_size
+    var advance_rect: Rect2 = advance_turn.get_global_rect()
+    if map_rect.intersects(inspector_rect) or not viewport_rect.encloses(advance_rect):
+        return "Strategic layout overlaps or hides the next-turn action at %s" % viewport_size
+    if not viewport_rect.encloses(map_rect) or not viewport_rect.encloses(inspector_rect):
+        return "Strategic shell escaped the viewport at %s" % viewport_size
+
+    main_scene.call("_on_drawer_requested", "orders")
+    await process_frame
+    var drawer_panel := drawer.get_node("Panel") as Control
+    if drawer_panel == null or not drawer.visible or \
+            drawer_panel.get_global_rect().intersects(inspector_rect) or \
+            not viewport_rect.encloses(drawer_panel.get_global_rect()):
+        return "Bottom drawer overlaps the inspector or escaped the viewport at %s" % viewport_size
+    main_scene.call("_on_drawer_requested", "orders")
+    await process_frame
+    return ""
+
+
+func _assert_management_order_drawer(
+    main_scene: Control,
+    bridge: Object,
+    province_map: Control,
+    inspector: Control,
+    mode_bar: Control,
+    drawer: Control,
+    profile: Dictionary
+) -> String:
+    var created: Dictionary = bridge.recruit_army("auroria", "capital_auroria", 1)
+    if not created.get("accepted", false):
+        return "Could not create a real pending order for responsive drawer verification"
+    main_scene.call("_refresh_pending_orders")
+    province_map.province_double_clicked.emit("capital_auroria")
+    await process_frame
+    var tabs := main_scene.province_management_window.get_node("Tabs") as TabContainer
+    tabs.current_tab = 1
+
+    await _resize_root_window(profile["size"])
+    main_scene.call("_on_drawer_requested", "orders")
+    await process_frame
+    await process_frame
+
+    var viewport_rect := Rect2(Vector2.ZERO, Vector2(profile["size"]))
+    var drawer_panel := drawer.get_node("Panel") as Control
+    var cancel := drawer.get_node_or_null("Panel/Body/Orders/Rows/Order0/Cancel") as Button
+    if not drawer.visible or drawer_panel.get_global_rect().intersects(inspector.get_global_rect()) or \
+            drawer_panel.get_global_rect().intersects(mode_bar.get_global_rect()):
+        return "Real order drawer overlapped the inspector or bottom bar at %s" % profile["size"]
+    if cancel == null or cancel.disabled or not cancel.is_visible_in_tree() or \
+            cancel.mouse_filter == Control.MOUSE_FILTER_IGNORE or \
+            not viewport_rect.encloses(cancel.get_global_rect()):
+        return "Real order cancellation is not visible and clickable at %s" % profile["size"]
+
+    cancel.pressed.emit()
+    await process_frame
+    await process_frame
+    if not bridge.get_pending_orders("auroria").is_empty():
+        return "Clickable order cancellation did not reach the authoritative bridge"
+    drawer.close()
+    main_scene.call("_close_workspace")
+    return ""
+
+
 func _initialize() -> void:
     var packed_scene := load("res://scenes/main/main.tscn") as PackedScene
     if packed_scene == null:
-        push_error("Main scene could not be loaded")
-        quit(1)
+        _fail(null, "Main scene could not be loaded")
         return
-
     var main_scene := packed_scene.instantiate() as Control
     root.add_child(main_scene)
     await process_frame
 
-    var known_startup_error := String(main_scene.call(
-        "_scenario_load_failure_text", "scenario could not be loaded"
-    ))
-    var unknown_startup_error := String(main_scene.call(
-        "_scenario_load_failure_text", "future startup failure in English"
-    ))
-    if known_startup_error != "场景加载失败：游戏场景数据无法加载" or \
-            unknown_startup_error != "场景加载失败：未知错误":
-        push_error("Initial scenario load errors did not use stable Chinese text")
-        main_scene.free()
-        quit(1)
-        return
-
-    var turn_bar := main_scene.get_node_or_null("TurnBar") as Control
-    if turn_bar == null or turn_bar.get_parent() != main_scene:
-        push_error("Turn controls must be a standalone top bar, not a map child")
-        main_scene.free()
-        quit(1)
-        return
-
-    var removed_turn_length := main_scene.get_node_or_null(
-        "TurnBar/TurnControls/TurnLength"
-    )
-    var fixed_advance_turn := main_scene.get_node_or_null(
-        "TurnBar/TurnControls/AdvanceTurn"
-    ) as Button
-    if removed_turn_length != null or fixed_advance_turn == null or \
-            fixed_advance_turn.text != "进入下一回合（1个月）":
-        push_error("Turn controls must expose one fixed month and no month selector")
-        main_scene.free()
-        quit(1)
-        return
-
-    var map_panel := main_scene.get_node_or_null("MapPanel") as PanelContainer
-    if map_panel == null or map_panel.get_child_count() != 1 or \
-            map_panel.get_child(0).name != "ProvinceMap":
-        push_error("Map panel must contain only the interactive province map")
-        main_scene.free()
-        quit(1)
-        return
-
-    var right_panel := main_scene.get_node_or_null("RightPanel") as ScrollContainer
-    if right_panel == null:
-        push_error("Right-side controls must be contained in a scrollable panel")
-        main_scene.free()
-        quit(1)
-        return
-
-    var workspace_panel := main_scene.get_node_or_null(
-        "WorkspacePanel"
-    ) as PanelContainer
-    var road_entry := main_scene.get_node_or_null(
-        "RightPanel/Center/RoadConstructionEntry"
-    ) as Button
-    var legacy_road_controls := main_scene.get_node_or_null(
-        "RightPanel/Center/RoadControls"
+    var top_bar := main_scene.get_node_or_null(
+        "Shell/Layout/GlobalStatusBar"
     ) as Control
-    if workspace_panel == null or road_entry == null or \
-            legacy_road_controls == null or legacy_road_controls.visible:
-        push_error("Main UI did not reserve a workspace and isolate road controls")
-        main_scene.free()
-        quit(1)
+    var navigation := main_scene.get_node_or_null(
+        "Shell/Layout/MainRow/PrimaryNavigation"
+    ) as Control
+    var map_panel := main_scene.get_node_or_null(
+        "Shell/Layout/MainRow/MapPanel"
+    ) as Control
+    var inspector := main_scene.get_node_or_null(
+        "Shell/Layout/MainRow/ContextInspector"
+    ) as Control
+    var mode_bar := main_scene.get_node_or_null(
+        "Shell/Layout/MapModeBar"
+    ) as Control
+    var drawer := main_scene.get_node_or_null("Shell/BottomDrawer") as Control
+    var pages := main_scene.get_node_or_null("Shell/ManagementPageHost") as Control
+    if top_bar == null or navigation == null or map_panel == null or \
+            inspector == null or mode_bar == null or drawer == null or pages == null:
+        _fail(main_scene, "Strategic shell is incomplete")
+        return
+    if main_scene.get_node_or_null("RightPanel") != null or \
+            main_scene.get_node_or_null("WorkspacePanel") != null or \
+            main_scene.get_node_or_null("TurnBar") != null:
+        _fail(main_scene, "Legacy double-right-column layout still exists")
         return
 
-    var pending_order_panel := main_scene.get_node_or_null(
-        "RightPanel/Center/PendingOrders"
-    ) as PanelContainer
-    var pending_order_scroll := main_scene.get_node_or_null(
-        "RightPanel/Center/PendingOrders/Content/OrderList"
-    ) as ScrollContainer
-    var pending_order_rows := main_scene.get_node_or_null(
-        "RightPanel/Center/PendingOrders/Content/OrderList/Orders"
-    ) as VBoxContainer
-    var pending_order_empty := main_scene.get_node_or_null(
-        "RightPanel/Center/PendingOrders/Content/Empty"
-    ) as Label
-    if pending_order_panel == null or pending_order_scroll == null or \
-            pending_order_rows == null or pending_order_empty == null or \
-            pending_order_scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED or \
-            pending_order_scroll.custom_minimum_size.y < 120.0 or \
-            pending_order_rows.get_child_count() != 0 or not pending_order_empty.visible:
-        push_error("Scrollable player-only pending order panel is incomplete")
-        main_scene.free()
-        quit(1)
+    var advance_turn := top_bar.get_node_or_null("Margin/Row/AdvanceTurn") as Button
+    if advance_turn == null or advance_turn.text != "进入下一回合" or \
+            not advance_turn.visible or drawer.visible:
+        _fail(main_scene, "Fixed next-turn control or closed drawer state is wrong")
+        return
+    if top_bar.get_node_or_null("Margin/Row/CoreVersion") != null or \
+            top_bar.get_node_or_null("Margin/Row/SaveCount") != null:
+        _fail(main_scene, "Build metadata leaked into the map-first status bar")
+        return
+    if inspector.get_parent() != map_panel.get_parent() or \
+            main_scene.get_tree().get_nodes_in_group("context_inspector").size() > 1:
+        _fail(main_scene, "Strategic shell must own exactly one context inspector")
         return
 
-    var workspace_scroll := main_scene.get_node_or_null(
-        "WorkspacePanel/Workspace/WindowViewport"
-    ) as ScrollContainer
-    if workspace_scroll == null:
-        push_error("Scrollable workspace viewport is missing")
-        main_scene.free()
-        quit(1)
+    if main_scene.active_page_name() != "closed" or \
+            main_scene.active_drawer_name() != "closed" or \
+            main_scene.active_map_mode_name() != "political" or \
+            main_scene.workspace_mode_name() != "closed" or \
+            main_scene.map_input_mode_name() != "normal":
+        _fail(main_scene, "Main scene did not expose the initial strategic state")
         return
 
-    var panel_rect := workspace_panel.get_global_rect()
-    var viewport_rect := workspace_scroll.get_global_rect()
-    if not panel_rect.encloses(viewport_rect) or \
-            workspace_scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
-        push_error("Workspace viewport is outside the panel or allows horizontal overflow")
-        main_scene.free()
-        quit(1)
+    var bridge := main_scene.get_node("SimulationBridge") as Object
+    if bridge == null:
+        _fail(main_scene, "Main scene lost its simulation bridge before responsive verification")
         return
-
-    var preserved_controls := [
-        "RightPanel/Center/SaveControls/Save",
-        "RightPanel/Center/DiplomacyControls/DeclareWar",
-        "RightPanel/Center/RoadConstructionEntry",
-        "RightPanel/Center/ProvinceSummary",
-    ]
-    for control_path: String in preserved_controls:
-        if main_scene.get_node_or_null(control_path) == null:
-            push_error("Existing main control was removed: %s" % control_path)
-            main_scene.free()
-            quit(1)
-            return
-
-    var chinese_labels := {
-        "RightPanel/Center/Title": "省域计划",
-        "RightPanel/Center/SaveControls/Save": "快速保存",
-        "RightPanel/Center/SaveControls/Load": "快速读取",
-        "RightPanel/Center/DiplomacyControls/DeclareWar": "宣战",
-        "RightPanel/Center/DiplomacyControls/MakePeace": "议和",
-    }
-    for control_path: String in chinese_labels:
-        var control := main_scene.get_node(control_path) as Control
-        if control.get("text") != chinese_labels[control_path]:
-            push_error("Main control was not translated: %s" % control_path)
-            main_scene.free()
-            quit(1)
-            return
-
-    var peace_policy := main_scene.get_node(
-        "RightPanel/Center/DiplomacyControls/PeacePolicy"
-    ) as OptionButton
-    var country_list := main_scene.get_node("RightPanel/Center/CountryList")
-    var bridge := main_scene.get_node("SimulationBridge")
-    var country_details := main_scene.get_node(
-        "RightPanel/Center/CountryDetails"
-    ) as Label
-    var war_overview := main_scene.get_node(
-        "RightPanel/Center/WarOverview"
-    ) as Label
-    var country_summaries: Array = bridge.get_country_summaries()
-    if country_summaries.size() != 4 or country_list.get_child_count() != 4:
-        push_error("Main UI must expose exactly four playable countries")
-        main_scene.free()
-        quit(1)
+    var province_map := map_panel.get_node_or_null("ProvinceMap")
+    if province_map == null:
+        _fail(main_scene, "Map panel lost the interactive province map")
         return
-    for child: Node in country_list.get_children():
-        var country_label := child as Label
-        if country_label.text.contains("中立守军") or \
-                not country_label.text.contains("经济") or \
-                not country_label.text.contains("财政收入") or \
-                not country_label.text.contains("维护费") or \
-                not country_label.text.contains("负债"):
-            push_error("Country summary leaked neutral data or omitted economy fields")
-            main_scene.free()
-            quit(1)
-            return
-    if peace_policy.get_item_text(0) != "恢复战前边界" or \
-            peace_policy.get_item_text(1) != "吞并占领地区" or \
-            not (country_list.get_child(0) as Label).text.contains("国库") or \
-            not country_details.text.contains("控制地区") or \
-            war_overview.text != "当前无战争":
-        push_error("Runtime main-page summaries were not fully translated")
-        main_scene.free()
-        quit(1)
-        return
-
-    var preserved_army_id := ""
-    var preserved_origin_id := ""
-    var preserved_target_id := ""
-    if bridge.get_army_summaries().filter(
-        func(army: Dictionary) -> bool:
-            return army.get("owner_id", "") == "auroria"
-    ).is_empty():
-        var prepared_recruit: Dictionary = bridge.recruit_army(
-            "auroria", "capital_auroria", 100
+    var date_before_profiles: Dictionary = bridge.get_current_date().duplicate(true)
+    var countries_before_profiles: Array = bridge.get_country_summaries().duplicate(true)
+    var orders_before_profiles: Array = bridge.get_pending_orders("auroria").duplicate(true)
+    for profile: Dictionary in [
+        {
+            "size": Vector2(1280, 720), "name": "compact",
+            "navigation_width": 56.0, "inspector_width": 320.0,
+        },
+        {
+            "size": Vector2(1440, 900), "name": "standard",
+            "navigation_width": 64.0, "inspector_width": 360.0,
+        },
+        {
+            "size": Vector2(1920, 1080), "name": "wide",
+            "navigation_width": 64.0, "inspector_width": 420.0,
+        },
+    ]:
+        var responsive_error := await _assert_responsive_shell(
+            main_scene, top_bar, navigation, map_panel, inspector, drawer, profile
         )
-        var prepared_turn: Dictionary = bridge.advance_turn()
-        if not prepared_recruit.get("accepted", false) or \
-                not prepared_turn.get("accepted", false):
-            push_error("Could not recruit an army for quick-load fixture")
-            main_scene.free()
-            quit(1)
+        if not responsive_error.is_empty():
+            _fail(main_scene, responsive_error)
             return
+    if bridge.get_current_date() != date_before_profiles or \
+            bridge.get_country_summaries() != countries_before_profiles or \
+            bridge.get_pending_orders("auroria") != orders_before_profiles:
+        _fail(main_scene, "Viewport profiles changed authoritative simulation data")
+        return
+    for profile: Dictionary in [
+        {"size": Vector2(1280, 720)},
+        {"size": Vector2(1440, 900)},
+        {"size": Vector2(1920, 1080)},
+    ]:
+        var combination_error := await _assert_management_order_drawer(
+            main_scene, bridge, province_map, inspector, mode_bar, drawer, profile
+        )
+        if not combination_error.is_empty():
+            _fail(main_scene, combination_error)
+            return
+    for scroll: ScrollContainer in [
+        inspector.get_node("Body/ScrollContainer"),
+        drawer.get_node("Panel/Body/Orders"),
+        drawer.get_node("Panel/Body/Notifications"),
+        drawer.get_node("Panel/Body/TurnReportSection"),
+    ]:
+        if scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+            _fail(main_scene, "Strategic responsive content permits horizontal scrolling")
+            return
+    var theme := load("res://themes/strategic_ui_theme.tres") as Theme
+    var focus_style := theme.get_stylebox("focus", "Button") as StyleBoxFlat
+    var disabled_style := theme.get_stylebox("disabled", "Button") as StyleBoxFlat
+    var gold := Color("d6a64a")
+    if focus_style == null or focus_style.border_width_left != 2 or \
+            focus_style.border_width_top != 2 or \
+            not is_equal_approx(focus_style.border_color.r, gold.r) or \
+            not is_equal_approx(focus_style.border_color.g, gold.g) or \
+            not is_equal_approx(focus_style.border_color.b, gold.b) or \
+            disabled_style == null or disabled_style.bg_color.a >= 1.0:
+        _fail(main_scene, "Strategic theme lacks the required gold focus ring or disabled presentation")
+        return
+    top_bar.set_advance_enabled(false, "演示禁用原因")
+    main_scene.call("_apply_accessibility_presentation")
+    if not advance_turn.disabled or not advance_turn.tooltip_text.contains("演示禁用原因"):
+        _fail(main_scene, "Disabled primary actions did not retain their Chinese reason tooltip")
+        return
+    top_bar.set_advance_enabled(true)
+    main_scene.call("_apply_accessibility_presentation")
+    if advance_turn.disabled or advance_turn.tooltip_text != "结算当前月并进入下一回合":
+        _fail(main_scene, "Re-enabled primary action retained a disabled tooltip")
+        return
+
+    province_map.province_double_clicked.emit("capital_auroria")
+    await process_frame
+    var inspector_scroll := inspector.get_node("Body/ScrollContainer") as ScrollContainer
+    if inspector_scroll == null or inspector_scroll.size.y <= 0.0 or \
+            inspector_scroll.get_v_scroll_bar() == null:
+        _fail(main_scene, "Province management is not vertically reachable through the inspector")
+        return
+    var management_tabs := main_scene.province_management_window.get_node("Tabs") as TabContainer
+    var expected_tab_titles := ["概览", "军事", "建设", "订单"]
+    for index: int in expected_tab_titles.size():
+        if management_tabs.get_tab_title(index) != expected_tab_titles[index]:
+            _fail(main_scene, "Province management leaked an English or internal tab title")
+            return
+    inspector.get_node("Body/Header/Close").pressed.emit()
+
+    navigation.get_node("Margin/Row/Diplomacy").pressed.emit()
+    await process_frame
+    var escape := _escape_key()
+    var diplomacy_for_escape := pages.get_node("Pages/Diplomacy") as Control
+    diplomacy_for_escape.select_country("caelus")
+    diplomacy_for_escape.get_node("Content/Actions/DeclareWar").pressed.emit()
+    await process_frame
+    var confirmation := main_scene.get_node_or_null("Shell/ActionConfirmation") as ConfirmationDialog
+    if confirmation == null or not confirmation.visible:
+        _fail(main_scene, "High-impact diplomacy action did not open a confirmation layer")
+        return
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if confirmation.visible or main_scene.active_page_name() != "diplomacy":
+        _fail(main_scene, "Esc did not dismiss only the confirmation layer first")
+        return
+    diplomacy_for_escape.get_node("Content/Actions/DeclareWar").pressed.emit()
+    await process_frame
+    if not confirmation.visible or main_scene._pending_confirmation.is_empty():
+        _fail(main_scene, "Could not reopen a confirmation for native cancellation testing")
+        return
+    confirmation.get_cancel_button().pressed.emit()
+    await process_frame
+    if confirmation.visible or not main_scene._pending_confirmation.is_empty():
+        _fail(main_scene, "ConfirmationDialog cancellation retained a stale intent")
+        return
+    confirmation.confirmed.emit()
+    await process_frame
+    if not bridge.get_pending_orders("auroria").is_empty():
+        _fail(main_scene, "A canceled confirmation submitted its stale diplomacy intent later")
+        return
+    main_scene.call("_on_drawer_requested", "orders")
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_drawer_name() != "closed" or main_scene.active_page_name() != "closed":
+        _fail(main_scene, "Esc did not dismiss the drawer before other layers")
+        return
+    main_scene.map_input_mode = main_scene.MapInputMode.ARMY_DESTINATION
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.map_input_mode_name() != "normal" or main_scene.active_page_name() != "closed":
+        _fail(main_scene, "Esc did not leave a pending map target selection")
+        return
+    navigation.get_node("Margin/Row/Technology").pressed.emit()
+    await process_frame
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_page_name() != "closed" or navigation.active_destination() != "map":
+        _fail(main_scene, "Esc did not return from the management page to the map")
+        return
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_page_name() != "settings" or navigation.active_destination() != "settings":
+        _fail(main_scene, "Esc did not open settings as the final return layer")
+        return
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_page_name() != "closed" or navigation.active_destination() != "map":
+        _fail(main_scene, "Esc did not return from settings to the map")
+        return
+
+    for case: Dictionary in [
+        {"status": {"has_scenario": true, "player_won": true}, "text": "胜利：奥罗里亚已经控制世界"},
+        {"status": {"has_scenario": true, "player_eliminated": true}, "text": "失败：奥罗里亚已经灭亡"},
+        {"status": {"has_scenario": true, "winner_id": "caelus"}, "text": "胜利国家：凯洛斯"},
+        {"status": {"has_scenario": true, "countries": [{"eliminated": false}, {"eliminated": false}, {"eliminated": true}]}, "text": "存续国家：2"},
+    ]:
+        if String(main_scene.call("_game_status_message", case["status"])) != case["text"]:
+            _fail(main_scene, "Game status feedback did not preserve the strategic result message")
+            return
+    if not "\n".join(main_scene._notifications).contains("存续国家：4"):
+        _fail(main_scene, "Game status did not enter the visible notification workflow")
+        return
+
+    province_map.province_clicked.emit("capital_auroria")
+    await process_frame
+    if main_scene.workspace_mode_name() != "province_summary" or \
+            inspector.current_mode() != "province_summary":
+        _fail(main_scene, "Single map click did not open the province summary")
+        return
+    province_map.map_blank_clicked.emit()
+    await process_frame
+    if main_scene.workspace_mode_name() != "closed":
+        _fail(main_scene, "Blank map click did not close the temporary summary")
+        return
+    province_map.province_double_clicked.emit("capital_auroria")
+    await process_frame
+    if main_scene.workspace_mode_name() != "province_management" or \
+            inspector.current_mode() != "province_management":
+        _fail(main_scene, "Double click did not open province management in the inspector")
+        return
+    province_map.map_blank_clicked.emit()
+    if main_scene.workspace_mode_name() != "province_management":
+        _fail(main_scene, "Blank map click discarded a persistent management context")
+        return
+    inspector.get_node("Body/Header/Close").pressed.emit()
+    await process_frame
+    if main_scene.workspace_mode_name() != "closed":
+        _fail(main_scene, "Inspector close did not restore the map context")
+        return
+
+    mode_bar.get_node("Margin/Row/PendingOrders").pressed.emit()
+    await process_frame
+    if main_scene.active_drawer_name() != "orders" or not drawer.visible:
+        _fail(main_scene, "Order drawer did not open from the map mode bar")
+        return
+    drawer.get_node("Panel/Body/Header/Close").pressed.emit()
+    mode_bar.get_node("Margin/Row/Roads").pressed.emit()
+    await process_frame
+    if main_scene.active_map_mode_name() != "roads" or \
+            main_scene.workspace_mode_name() != "road_construction":
+        _fail(main_scene, "Road map mode did not enter road planning")
+        return
+    inspector.get_node("Body/Header/Close").pressed.emit()
+
+    navigation.get_node("Margin/Row/Technology").pressed.emit()
+    await process_frame
+    if main_scene.active_page_name() != "technology" or not pages.visible or \
+            main_scene.workspace_mode_name() != "closed":
+        _fail(main_scene, "Primary navigation did not open the technology page")
+        return
+
+    mode_bar.get_node("Margin/Row/PendingOrders").pressed.emit()
+    await process_frame
+    if main_scene.active_page_name() != "closed" or pages.visible or \
+            main_scene.active_drawer_name() != "orders" or not drawer.visible:
+        _fail(main_scene, "Opening a drawer did not return from the covering management page")
+        return
+    drawer.get_node("Panel/Body/Header/Close").pressed.emit()
+    navigation.get_node("Margin/Row/Technology").pressed.emit()
+    await process_frame
+    mode_bar.get_node("Margin/Row/Roads").pressed.emit()
+    await process_frame
+    if main_scene.active_page_name() != "closed" or pages.visible or \
+            main_scene.workspace_mode_name() != "road_construction" or \
+            inspector.current_mode() != "road_construction" or \
+            not main_scene.road_construction_window.visible:
+        _fail(main_scene, "Road entry from a management page did not expose the inspector")
+        return
+    inspector.get_node("Body/Header/Close").pressed.emit()
+
+    mode_bar.get_node("Margin/Row/PendingOrders").pressed.emit()
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_drawer_name() != "closed":
+        _fail(main_scene, "ui_cancel did not close the open bottom drawer first")
+        return
+
+    main_scene.map_input_mode = main_scene.MapInputMode.ARMY_DESTINATION
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.map_input_mode_name() != "normal" or main_scene.active_page_name() != "closed":
+        _fail(main_scene, "ui_cancel did not leave a pending map target selection")
+        return
+
+    mode_bar.get_node("Margin/Row/Roads").pressed.emit()
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.workspace_mode_name() != "closed" or \
+            main_scene.active_map_mode_name() != "political":
+        _fail(main_scene, "ui_cancel did not leave road selection and restore the map")
+        return
+
+    main_scene._unhandled_key_input(escape)
+    await process_frame
+    if main_scene.active_page_name() != "settings" or not pages.visible or \
+            navigation.active_destination() != "settings":
+        _fail(main_scene, "ui_cancel did not open settings with matching navigation state")
+        return
+    pages.get_node("Pages/Header/Back").pressed.emit()
+    if main_scene.active_page_name() != "closed" or \
+            navigation.active_destination() != "map":
+        _fail(main_scene, "Management page back action did not return to the map")
+        return
+
+    mode_bar.get_node("Margin/Row/TurnReport").pressed.emit()
+    advance_turn.pressed.emit()
+    await process_frame
+    await process_frame
+    var turn_report := drawer.get_node("Panel/Body/TurnReportSection/TurnReportText") as Label
+    if main_scene.active_drawer_name() != "turn_report" or \
+            not main_scene._latest_event_message.contains("财政收入") or \
+            not turn_report.text.contains("财政收入"):
+        _fail(main_scene, "Next turn did not refresh the visible turn report")
+        return
+
+    drawer.get_node("Panel/Body/Header/Close").pressed.emit()
+    if bridge == null:
+        _fail(main_scene, "Main scene lost its simulation bridge during save/load testing")
+        return
+    var prepared_recruit: Dictionary = bridge.recruit_army("auroria", "capital_auroria", 100)
+    if not prepared_recruit.get("accepted", false) or not bridge.advance_turn().get("accepted", false):
+        _fail(main_scene, "Could not prepare an army for the quick-load fixture")
+        return
+    main_scene.call("_refresh_map_data")
+    var preserved_army_id := ""
     for army: Dictionary in bridge.get_army_summaries():
         if army.get("owner_id", "") == "auroria":
             preserved_army_id = String(army.get("id", ""))
-            preserved_origin_id = String(army.get("province_id", ""))
             break
+    var preserved_origin_id := String(_army(bridge, preserved_army_id).get("province_id", ""))
+    var preserved_target_id := ""
     for province: Dictionary in bridge.get_province_summaries():
-        if province.get("id", "") != "" and \
-                province.get("id", "") != preserved_origin_id:
+        if String(province.get("id", "")) != preserved_origin_id:
             preserved_target_id = String(province.get("id", ""))
             break
-    if main_scene.player_country_id != "auroria" or \
-            preserved_army_id.is_empty() or preserved_target_id.is_empty() or \
-            not bridge.set_army_advance_target(
-                preserved_army_id, preserved_target_id
-            ).get("accepted", false):
-        push_error("Could not prepare quick-load advance-target fixture")
-        main_scene.free()
-        quit(1)
+    if preserved_army_id.is_empty() or preserved_target_id.is_empty() or \
+            not bridge.set_army_advance_target(preserved_army_id, preserved_target_id).get("accepted", false):
+        _fail(main_scene, "Could not prepare the saved automatic advance target")
         return
     main_scene.moving_army_id = preserved_army_id
-    main_scene.get_node("RightPanel/Center/SaveControls/Save").pressed.emit()
-    bridge.clear_army_advance_target(preserved_army_id)
-    var cleared_target := "not-found"
-    var owner_before_load := ""
-    for army: Dictionary in bridge.get_army_summaries():
-        if army.get("id", "") == preserved_army_id:
-            cleared_target = String(army.get("advance_target_id", ""))
-            owner_before_load = String(army.get("owner_id", ""))
-            break
-    if main_scene.moving_army_id != preserved_army_id or \
-            owner_before_load != main_scene.player_country_id or \
-            not cleared_target.is_empty():
-        push_error("Quick-load fixture did not retain the same authorized local army ID")
-        main_scene.free()
-        quit(1)
-        return
-    main_scene.get_node("RightPanel/Center/SaveControls/Load").pressed.emit()
+    navigation.get_node("Margin/Row/Settings").pressed.emit()
     await process_frame
-    var restored_target := ""
-    var restored_owner := ""
-    for army: Dictionary in bridge.get_army_summaries():
-        if army.get("id", "") == preserved_army_id:
-            restored_target = String(army.get("advance_target_id", ""))
-            restored_owner = String(army.get("owner_id", ""))
-            break
-    if restored_target != preserved_target_id or \
-            restored_owner != main_scene.player_country_id or \
-            not main_scene.moving_army_id.is_empty():
-        push_error("Quick-load mutated the loaded advance target or kept stale local selection")
-        main_scene.free()
-        quit(1)
+    var settings := pages.get_node("Pages/Settings") as Control
+    settings.get_node("Content/Actions/QuickSave").pressed.emit()
+    bridge.clear_army_advance_target(preserved_army_id)
+    if not String(_army(bridge, preserved_army_id).get("advance_target_id", "")).is_empty():
+        _fail(main_scene, "Quick-load fixture did not clear the saved advance target")
+        return
+    settings.get_node("Content/Actions/QuickLoad").pressed.emit()
+    await process_frame
+    if String(_army(bridge, preserved_army_id).get("advance_target_id", "")) != preserved_target_id or \
+            not main_scene.moving_army_id.is_empty() or \
+            main_scene.map_input_mode_name() != "normal":
+        _fail(main_scene, "Quick load did not restore advance progress and clear local selection")
         return
 
     var quick_path := ProjectSettings.globalize_path("user://quick_save.json")
     var extreme_quote_path := ProjectSettings.globalize_path(
-        "res://../build/round2-extreme-recruitment-quote.json"
+        "res://../build/task9-extreme-recruitment-quote.json"
     )
     if not bridge.save_game(extreme_quote_path).get("accepted", false):
-        push_error("Could not save the extreme recruitment quote fixture")
-        main_scene.free()
-        quit(1)
+        _fail(main_scene, "Could not save the extreme recruitment quote fixture")
         return
     var extreme_document := _read_json(extreme_quote_path)
-    for country_document: Dictionary in extreme_document.get("countries", []):
-        if country_document.get("id", "") == "auroria":
-            country_document["treasury"] = 9223372036854775807
-            break
-    for province_document: Dictionary in extreme_document.get("provinces", []):
-        if province_document.get("id", "") == "capital_auroria":
-            province_document["population"] = 9223372036854775807
-            province_document["recruitable_population"] = 9223372036854775807
-            break
+    for country: Dictionary in extreme_document.get("countries", []):
+        if country.get("id", "") == "auroria":
+            country["treasury"] = 9223372036854775807
+    for province: Dictionary in extreme_document.get("provinces", []):
+        if province.get("id", "") == "capital_auroria":
+            province["population"] = 9223372036854775807
+            province["recruitable_population"] = 9223372036854775807
     if not _write_json(extreme_quote_path, extreme_document) or \
             not bridge.load_game(extreme_quote_path).get("accepted", false):
-        push_error("Could not load the extreme recruitment quote fixture")
-        main_scene.free()
-        quit(1)
+        _fail(main_scene, "Could not load the extreme recruitment quote fixture")
         return
     main_scene.call("_refresh_map_data")
     var extreme_quote: Dictionary = main_scene.call(
@@ -318,170 +565,18 @@ func _initialize() -> void:
     if not extreme_quote.get("accepted", false) or \
             extreme_quote.get("maximum_manpower", 0) != 2305843009213693951 or \
             extreme_quote.get("cost", 0) != 9223372036854775804:
-        push_error("Authoritative recruitment quote overflowed its upper midpoint: %s" % \
-            extreme_quote)
-        main_scene.free()
-        quit(1)
+        _fail(main_scene, "Extreme recruitment quote did not retain bridge authority")
         return
-    DirAccess.remove_absolute(extreme_quote_path)
     if not bridge.load_game(quick_path).get("accepted", false):
-        push_error("Could not restore the quick-load fixture after extreme quote testing")
-        main_scene.free()
-        quit(1)
+        _fail(main_scene, "Could not restore the quick-load fixture after the extreme quote")
         return
     main_scene.call("_refresh_map_data")
-
-    var removed_controls := [
-        "RightPanel/Center/RegionDetails",
-        "RightPanel/Center/TechnologyControls",
-        "RightPanel/Center/SelectionStatus",
-        "RightPanel/Center/ArmyControls",
-    ]
-    for control_path: String in removed_controls:
-        if main_scene.get_node_or_null(control_path) != null:
-            push_error("Duplicate main control still exists: %s" % control_path)
-            main_scene.free()
-            quit(1)
-            return
-
-    var management_controls := [
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Technology/Buttons/Economy",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/Recruitment/Open",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/ArmyActions/MoveArmy",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/AdvanceActions/AdvanceNow",
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceManagementWindow/AdvancePlans",
-    ]
-    for control_path: String in management_controls:
-        if main_scene.get_node_or_null(control_path) == null:
-            push_error("Province management control is missing: %s" % control_path)
-            main_scene.free()
-            quit(1)
-            return
-
-    var province_summary := main_scene.get_node_or_null(
-        "RightPanel/Center/ProvinceSummary"
-    ) as Label
-    var province_summaries: Array = bridge.get_province_summaries()
-    var total_population := 0
-    for province: Dictionary in province_summaries:
-        total_population += int(province.get("population", 0))
-    if province_summaries.size() != 69 or province_summary == null or \
-            not province_summary.text.contains("总人口 %d" % total_population) or \
-            not province_summary.text.contains("可招募士兵"):
-        push_error("Main UI did not label the recruitable population")
-        main_scene.free()
-        quit(1)
-        return
-
-    var province_map := main_scene.get_node("MapPanel/ProvinceMap")
-    province_map.province_clicked.emit("cell_5_5")
-    await process_frame
-    var info_window := main_scene.get_node(
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceInfoWindow"
-    )
-    if info_window.get_node("ProvinceName").text != "无主地块(5,5)" or \
-            not info_window.get_node("Economy").text.contains("财政收入：0"):
-        push_error("Neutral province details did not show its name and zero fiscal income")
-        main_scene.free()
-        quit(1)
-        return
-    main_scene.get_node("WorkspacePanel/Workspace/TitleBar/Close").pressed.emit()
-
-    var initial_right_rect := right_panel.get_global_rect()
-    var advance_turn := main_scene.get_node(
-        "TurnBar/TurnControls/AdvanceTurn"
-    ) as Button
-    advance_turn.pressed.emit()
-    await process_frame
-    await process_frame
-    var event_log := main_scene.get_node("RightPanel/Center/EventLog") as Label
-    if not event_log.text.contains("财政收入"):
-        push_error("Turn report did not display total fiscal income")
-        main_scene.free()
-        quit(1)
-        return
-    var event_history := main_scene.get_node("RightPanel/Center/EventHistory") as RichTextLabel
-    if not event_history.text.contains("维护费"):
-        push_error("Turn report did not include the maintenance settlement phase")
-        main_scene.free()
-        quit(1)
-        return
-    var updated_right_rect := right_panel.get_global_rect()
-    if not initial_right_rect.position.is_equal_approx(updated_right_rect.position) or \
-            not initial_right_rect.size.is_equal_approx(updated_right_rect.size) or \
-            country_details.size.x > right_panel.size.x + 1.0:
-        push_error("Right panel expanded after advancing the turn: before=%s after=%s details_width=%s panel_width=%s" % [
-            initial_right_rect,
-            updated_right_rect,
-            country_details.size.x,
-            right_panel.size.x,
-        ])
-        main_scene.free()
-        quit(1)
-        return
-
-    var map_rect := map_panel.get_global_rect()
-    var turn_rect := turn_bar.get_global_rect()
-    var right_rect := updated_right_rect
-    var workspace_rect := workspace_panel.get_global_rect()
-    if turn_rect.intersects(map_rect) or right_rect.intersects(map_rect) or \
-            workspace_rect.intersects(map_rect) or \
-            workspace_rect.intersects(right_rect) or \
-            workspace_rect.intersects(turn_rect):
-        push_error("Top=%s Right=%s Workspace=%s Map=%s" % [
-            turn_rect, right_rect, workspace_rect, map_rect
-        ])
-        main_scene.free()
-        quit(1)
-        return
-
-    if main_scene.workspace_mode_name() != "closed":
-        push_error("Workspace did not start in the closed state")
-        main_scene.free()
-        quit(1)
-        return
-    road_entry.pressed.emit()
-    var workspace_title := main_scene.get_node(
-        "WorkspacePanel/Workspace/TitleBar/Title"
-    ) as Label
-    if main_scene.workspace_mode_name() != "road_construction" or \
-            workspace_title.text != "道路建设":
-        push_error("Road entry did not open the reserved workspace")
-        main_scene.free()
-        quit(1)
-        return
-    var workspace_close := main_scene.get_node(
-        "WorkspacePanel/Workspace/TitleBar/Close"
-    ) as Button
-    workspace_close.pressed.emit()
-    if main_scene.workspace_mode_name() != "closed":
-        push_error("Workspace close button did not restore the closed state")
-        main_scene.free()
-        quit(1)
-        return
-
-    province_map.province_double_clicked.emit("capital_auroria")
-    await process_frame
-    var vertical_bar := workspace_scroll.get_v_scroll_bar()
-    if vertical_bar.max_value <= vertical_bar.page:
-        push_error("Province management content did not produce vertical scrolling")
-        main_scene.free()
-        quit(1)
-        return
-    workspace_scroll.scroll_vertical = int(vertical_bar.max_value)
-    await process_frame
-    if workspace_scroll.scroll_vertical <= 0:
-        push_error("Workspace could not scroll to its lower content")
-        main_scene.free()
-        quit(1)
-        return
 
     bridge.clear_army_advance_target(preserved_army_id)
     for order: Dictionary in bridge.get_pending_orders("auroria"):
         bridge.cancel_order(String(order.get("order_id", "")))
     var peace_target: Dictionary = {}
     for _month: int in range(4):
-        peace_target = {}
         for target: Dictionary in bridge.get_army_order_targets(preserved_army_id):
             if not target.get("is_attack", true):
                 peace_target = target
@@ -489,126 +584,83 @@ func _initialize() -> void:
         if not peace_target.is_empty():
             break
         bridge.advance_turn()
-    var peace_origin := ""
-    for army: Dictionary in bridge.get_army_summaries():
-        if army.get("id", "") == preserved_army_id:
-            peace_origin = String(army.get("province_id", ""))
-            break
+    var peace_origin := String(_army(bridge, preserved_army_id).get("province_id", ""))
     var peace_order: Dictionary = bridge.move_army(
-        preserved_army_id, peace_target.get("province_id", "")
+        preserved_army_id, String(peace_target.get("province_id", ""))
     )
     if peace_target.is_empty() or peace_origin.is_empty() or \
-            not peace_order.get("accepted", false) or \
-            not bridge.save_game(quick_path).get("accepted", false):
-        push_error("Could not create the main UI peace-refund fixture")
-        main_scene.free()
-        quit(1)
+            not peace_order.get("accepted", false) or not bridge.save_game(quick_path).get("accepted", false):
+        _fail(main_scene, "Could not create the peace cancellation fixture")
         return
     var peace_document := _read_json(quick_path)
-    for province_document: Dictionary in peace_document.get("provinces", []):
-        if province_document.get("id", "") == peace_origin:
-            province_document["owner_id"] = "caelus"
+    for province: Dictionary in peace_document.get("provinces", []):
+        if province.get("id", "") == peace_origin:
+            province["owner_id"] = "caelus"
             break
-    var peace_occupations: Array = []
-    for occupation_document: Dictionary in peace_document.get("occupations", []):
-        if occupation_document.get("province_id", "") != peace_origin:
-            peace_occupations.append(occupation_document)
-    peace_occupations.append({
-        "province_id": peace_origin,
-        "controller_id": "auroria",
-    })
-    peace_document["occupations"] = peace_occupations
+    var occupations: Array = []
+    for occupation: Dictionary in peace_document.get("occupations", []):
+        if occupation.get("province_id", "") != peace_origin:
+            occupations.append(occupation)
+    occupations.append({"province_id": peace_origin, "controller_id": "auroria"})
+    peace_document["occupations"] = occupations
     var found_peace_relation := false
-    for relation_document: Dictionary in peace_document.get("relations", []):
-        var relation_pair := [
-            String(relation_document.get("country_a", "")),
-            String(relation_document.get("country_b", "")),
-        ]
-        if "auroria" in relation_pair and "caelus" in relation_pair:
-            relation_document["status"] = "war"
+    for relation: Dictionary in peace_document.get("relations", []):
+        var pair := [String(relation.get("country_a", "")), String(relation.get("country_b", ""))]
+        if "auroria" in pair and "caelus" in pair:
+            relation["status"] = "war"
             found_peace_relation = true
             break
     if not found_peace_relation:
         peace_document["relations"].append({
-            "country_a": "auroria",
-            "country_b": "caelus",
-            "status": "war",
+            "country_a": "auroria", "country_b": "caelus", "status": "war",
         })
     if not _write_json(quick_path, peace_document):
-        push_error("Could not write the main UI peace-refund fixture")
-        main_scene.free()
-        quit(1)
+        _fail(main_scene, "Could not write the peace cancellation fixture")
         return
-    main_scene.get_node("RightPanel/Center/SaveControls/Load").pressed.emit()
+    main_scene.call("_on_quick_load_pressed")
     await process_frame
-    var peace_war_target := main_scene.get_node(
-        "RightPanel/Center/DiplomacyControls/WarTarget"
-    ) as OptionButton
-    var caelus_target_index := -1
-    for index: int in range(peace_war_target.item_count):
-        if peace_war_target.get_item_metadata(index) == "caelus":
-            caelus_target_index = index
-            break
-    if caelus_target_index < 0 or \
-            bridge.get_pending_orders("auroria").size() != 1 or \
-            pending_order_rows.get_child_count() != 1:
-        push_error("Loaded peace-refund fixture did not expose its pending action order")
-        main_scene.free()
-        quit(1)
+    navigation.get_node("Margin/Row/Diplomacy").pressed.emit()
+    await process_frame
+    var diplomacy := pages.get_node("Pages/Diplomacy") as Control
+    diplomacy.select_country("caelus")
+    diplomacy.get_node("Content/Actions/MakePeace").pressed.emit()
+    await process_frame
+    var peace_confirmation := main_scene.get_node("Shell/ActionConfirmation") as ConfirmationDialog
+    if peace_confirmation == null or not peace_confirmation.visible:
+        _fail(main_scene, "Peace intent did not require confirmation")
         return
-    peace_war_target.select(caelus_target_index)
-    peace_policy.select(0)
-    main_scene.get_node("RightPanel/Center/DiplomacyControls/MakePeace").pressed.emit()
+    peace_confirmation.get_ok_button().pressed.emit()
     await process_frame
-    var peace_event_log := main_scene.get_node("RightPanel/Center/EventLog") as Label
     if not bridge.get_pending_orders("auroria").is_empty() or \
-            pending_order_rows.get_child_count() != 0 or \
-            not peace_event_log.text.contains("取消1个行动订单") or \
-            not peace_event_log.text.contains("退还"):
-        push_error("Main peace UI did not refresh pending orders and show refunds: %s" % \
-            peace_event_log.text)
-        main_scene.free()
-        quit(1)
+            not main_scene._latest_event_message.contains("取消1个行动订单") or \
+            not main_scene._latest_event_message.contains("退款") or \
+            not main_scene._latest_event_message.contains("退还移动"):
+        _fail(main_scene, "Peace cancellation did not refresh orders and both refund dimensions")
         return
 
-    if bridge.set_ai_enabled(false, "caelus") != true:
-        push_error("Could not switch the saved player identity to Caelus")
-        main_scene.free()
-        quit(1)
+    if not bridge.set_ai_enabled(false, "caelus"):
+        _fail(main_scene, "Could not switch the saved player identity to Caelus")
         return
     for order: Dictionary in bridge.get_pending_orders("caelus"):
         bridge.cancel_order(String(order.get("order_id", "")))
-    var caelus_order: Dictionary = bridge.recruit_army(
-        "caelus", "capital_caelus", 1
-    )
-    if not caelus_order.get("accepted", false) or \
-            not bridge.save_game(quick_path).get("accepted", false):
-        push_error("Could not save a Caelus UI authority fixture")
-        main_scene.free()
-        quit(1)
+    var caelus_order: Dictionary = bridge.recruit_army("caelus", "capital_caelus", 1)
+    if not caelus_order.get("accepted", false) or not bridge.save_game(quick_path).get("accepted", false):
+        _fail(main_scene, "Could not save the Caelus player fixture")
         return
-    main_scene.get_node("RightPanel/Center/SaveControls/Load").pressed.emit()
+    main_scene.call("_on_quick_load_pressed")
     await process_frame
-    var ui_player_identity := ""
-    for property: Dictionary in main_scene.get_property_list():
-        if property.get("name", "") == "player_country_id":
-            ui_player_identity = str(main_scene.get("player_country_id"))
-            break
-    var ui_pending_orders: Array = main_scene.call("_player_pending_orders")
-    var player_war_target := main_scene.get_node(
-        "RightPanel/Center/DiplomacyControls/WarTarget"
-    ) as OptionButton
-    var target_ids: Array[String] = []
-    for index: int in range(player_war_target.item_count):
-        target_ids.append(String(player_war_target.get_item_metadata(index)))
-    if ui_player_identity != "caelus" or ui_pending_orders.size() != 1 or \
-            ui_pending_orders[0].get("country_id", "") != "caelus" or \
-            target_ids.has("caelus") or not target_ids.has("auroria"):
-        push_error("Main UI did not consume the loaded Caelus player identity")
-        main_scene.free()
-        quit(1)
+    if main_scene.player_country_id != "caelus" or \
+            main_scene._player_pending_orders().size() != 1 or \
+            (main_scene.get_node("Shell/Layout/GlobalStatusBar/Margin/Row/CountryName") as Label).text != "凯洛斯":
+        _fail(main_scene, "Quick load did not restore the Caelus player identity")
         return
+    diplomacy.select_country("auroria")
+    if not diplomacy.get_node("Content/Selection").text.contains("奥罗里亚"):
+        _fail(main_scene, "Diplomacy targets did not refresh for the restored Caelus player")
+        return
+    DirAccess.remove_absolute(extreme_quote_path)
+    DirAccess.remove_absolute(quick_path)
 
-    print("Main layout smoke test passed")
+    print("Strategic main layout smoke test passed")
     main_scene.free()
     quit(0)

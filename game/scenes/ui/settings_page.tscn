@@ -1,0 +1,39 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/settings_page.gd" id="1_page"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+
+[node name="SettingsPage" type="PanelContainer"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_page")
+
+[node name="Content" type="VBoxContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="Heading" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "设置"
+
+[node name="BuildInfo" type="Label" parent="Content"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 2
+text = "核心版本：未知\n可用存档：0"
+
+[node name="Actions" type="VBoxContainer" parent="Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="QuickSave" type="Button" parent="Content/Actions"]
+layout_mode = 2
+text = "快速保存"
+tooltip_text = "请求保存当前游戏"
+
+[node name="QuickLoad" type="Button" parent="Content/Actions"]
+layout_mode = 2
+text = "快速读取"
+tooltip_text = "请求读取最近的快速存档"

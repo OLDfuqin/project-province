@@ -1,0 +1,21 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/country_overview_page.gd" id="1_page"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+
+[node name="CountryOverviewPage" type="PanelContainer"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_page")
+
+[node name="Content" type="ScrollContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Summary" type="Label" parent="Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 2
+text = "尚未提供国家快照"

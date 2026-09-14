@@ -2,84 +2,136 @@ extends SceneTree
 
 
 func _initialize() -> void:
-    var packed_scene := load("res://scenes/main/main.tscn") as PackedScene
+    var packed_scene := load("res://scenes/ui/province_info_window.tscn") as PackedScene
     if packed_scene == null:
-        push_error("Main scene could not be loaded for province information testing")
+        push_error("Province summary scene could not be loaded")
         quit(1)
         return
 
-    var main_scene := packed_scene.instantiate() as Control
-    root.add_child(main_scene)
+    var info_window := packed_scene.instantiate() as Control
+    root.add_child(info_window)
     await process_frame
 
-    var province_map := main_scene.get_node("MapPanel/ProvinceMap")
-    var info_window := main_scene.get_node_or_null(
-        "WorkspacePanel/Workspace/WindowViewport/WindowContent/ProvinceInfoWindow"
-    ) as Control
-    if info_window == null:
-        push_error("Province information window was not embedded in the workspace")
-        main_scene.free()
+    var province := {
+        "id": "capital_auroria",
+        "name": "奥罗里亚首都",
+        "terrain": "capital",
+        "legal_owner_id": "auroria",
+        "owner_id": "auroria",
+        "population": 340000,
+        "recruitable_population": 12000,
+        "economy": 45000,
+        "fiscal_income": 5100,
+    }
+    info_window.display_province(province, [
+        {"province_id": "capital_auroria", "manpower": 12000},
+        {"province_id": "capital_auroria", "manpower": 8000},
+        {"province_id": "rivergate", "manpower": 9000},
+    ], [
+        {"province_a": "capital_auroria", "province_b": "rivergate", "level": "paved"},
+    ], {
+        "capital_auroria": province,
+        "rivergate": {"name": "河间"},
+    }, [
+        {"id": "auroria", "name": "奥罗里亚"},
+    ])
+
+    var required_paths := [
+        "Body/Metrics/Population/Content/Value",
+        "Body/Metrics/Economy/Content/Value",
+        "Body/Metrics/FiscalIncome/Content/Value",
+        "Body/Metrics/Garrison/Content/Value",
+        "Body/Ownership",
+        "Body/Terrain",
+        "Body/Roads",
+        "Body/Recruitable",
+        "Body/ManageProvince",
+    ]
+    for path: String in required_paths:
+        if info_window.get_node_or_null(path) == null:
+            push_error("Province summary is missing the compact card control: %s" % path)
+            info_window.free()
+            quit(1)
+            return
+
+    var population := info_window.get_node("Body/Metrics/Population/Content/Value") as Label
+    var economy := info_window.get_node("Body/Metrics/Economy/Content/Value") as Label
+    var fiscal_income := info_window.get_node("Body/Metrics/FiscalIncome/Content/Value") as Label
+    var military := info_window.get_node("Body/Metrics/Garrison/Content/Value") as Label
+    var ownership := info_window.get_node("Body/Ownership") as Label
+    var terrain := info_window.get_node("Body/Terrain") as Label
+    var roads := info_window.get_node("Body/Roads") as Label
+    var recruits := info_window.get_node("Body/Recruitable") as Label
+    if not info_window.visible or population.text != "340,000" or \
+            economy.text != "45,000" or fiscal_income.text != "5,100" or \
+            military.text != "2 支" or not ownership.text.contains("奥罗里亚") or \
+            not terrain.text.contains("首都") or not roads.text.contains("河间") or \
+            not recruits.text.contains("12,000") or \
+            not info_window.get_node("Body/ManageProvince").visible:
+        push_error("Province summary did not show the compact authoritative snapshot")
+        info_window.free()
         quit(1)
         return
 
-    var bridge := main_scene.get_node("SimulationBridge")
-    var capital: Dictionary = {}
-    for province: Dictionary in bridge.get_province_summaries():
-        if province.get("id", "") == "capital_auroria":
-            capital = province
+    var rendered_text := _node_text(info_window)
+    if rendered_text.contains("capital_auroria") or rendered_text.contains("owner_id"):
+        push_error("Province summary exposed internal identifiers")
+        info_window.free()
+        quit(1)
+        return
+
+    var bridge: Object = ClassDB.instantiate("ProvinceBridge")
+    if not bridge.load_scenario(ProjectSettings.globalize_path("res://data"), 1000, 1):
+        push_error("Could not load the real hidden-neutral fixture")
+        bridge.free()
+        info_window.free()
+        quit(1)
+        return
+    var countries: Array = bridge.get_country_summaries()
+    var neutral: Dictionary = {}
+    for summary: Dictionary in bridge.get_province_summaries():
+        if summary.get("owner_id", "") == "neutral":
+            neutral = summary
             break
-    province_map.province_clicked.emit("capital_auroria")
-    var province_name := info_window.get_node("ProvinceName") as Label
-    var terrain := info_window.get_node("Terrain") as Label
-    var ownership := info_window.get_node("Ownership") as Label
-    var population := info_window.get_node("Population") as Label
-    var economy := info_window.get_node("Economy") as Label
-    var military := info_window.get_node("Military") as Label
-    var roads := info_window.get_node("Roads") as Label
-    if main_scene.workspace_mode_name() != "province_info" or \
-            not info_window.visible or province_name.text != capital.get("name", "") or \
-            not terrain.text.contains("首都") or \
-            not ownership.text.contains("奥罗里亚") or \
-            not population.text.contains(str(capital.get("population", -1))) or \
-            not population.text.contains(str(capital.get("recruitable_population", -1))) or \
-            not economy.text.contains(str(capital.get("economy", -1))) or \
-            not economy.text.ends_with(str(capital.get("fiscal_income", -1))) or \
-            not military.text.contains("0 支") or \
-            not roads.text.contains("暂无道路"):
-        push_error("Province information window did not show the capital snapshot")
-        main_scene.free()
+    info_window.display_province(neutral, bridge.get_army_summaries(), [], {}, countries)
+    if neutral.is_empty() or ownership.text != "法理归属：无主地区 | 实际控制：无主地区" or \
+            _node_text(info_window).contains("neutral"):
+        push_error("Real hidden-neutral ownership was not rendered as an unowned region")
+        bridge.free()
+        info_window.free()
         quit(1)
         return
+    bridge.free()
 
-    province_map.map_blank_clicked.emit()
-    if main_scene.workspace_mode_name() != "closed" or info_window.visible:
-        push_error("Blank map click did not close the province information window")
-        main_scene.free()
+    info_window.display_province({
+        "id": "private_province_id", "owner_id": "private_owner_id",
+        "legal_owner_id": "private_legal_id",
+    }, [], [{"province_a": "private_province_id", "province_b": "private_road_id"}], {}, [
+        {"id": "private_owner_id"}, {"id": "private_legal_id", "name": ""},
+    ])
+    if _node_text(info_window).contains("private_") or \
+            not ownership.text.contains("未知国家") or not roads.text.contains("未知地区") or \
+            info_window.get_node("ProvinceName").text != "未知地区":
+        push_error("Incomplete province or country lookup leaked an internal identifier")
+        info_window.free()
         quit(1)
         return
-
-    province_map.province_clicked.emit("capital_auroria")
-    var advance_turn := main_scene.get_node(
-        "TurnBar/TurnControls/AdvanceTurn"
-    ) as Button
-    advance_turn.pressed.emit()
-    if main_scene.workspace_mode_name() != "closed" or info_window.visible:
-        push_error("Advancing the turn did not close the province information window")
-        main_scene.free()
-        quit(1)
-        return
-
-    var road_entry := main_scene.get_node(
-        "RightPanel/Center/RoadConstructionEntry"
-    ) as Button
-    road_entry.pressed.emit()
-    province_map.map_blank_clicked.emit()
-    if main_scene.workspace_mode_name() != "road_construction":
-        push_error("Blank map click incorrectly closed a persistent road operation")
-        main_scene.free()
+    info_window.clear()
+    if info_window.visible:
+        push_error("Cleared province summary remained visible")
+        info_window.free()
         quit(1)
         return
 
     print("Province information window smoke test passed")
-    main_scene.free()
+    info_window.free()
     quit(0)
+
+
+func _node_text(node: Node) -> String:
+    var text := ""
+    if node is Label or node is Button:
+        text += node.text
+    for child: Node in node.get_children():
+        text += _node_text(child)
+    return text

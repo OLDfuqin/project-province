@@ -10,6 +10,7 @@ const MOUNTAINS_ICON := preload("res://assets/maps/icons/terrain_mountains.png")
 const ARMY_ICON := preload("res://assets/maps/icons/army.png")
 
 signal province_hovered(province_id: String)
+signal province_hover_changed(province_id: String, screen_position: Vector2)
 signal province_selected(province_id: String)
 signal province_clicked(province_id: String)
 signal province_double_clicked(province_id: String)
@@ -17,6 +18,14 @@ signal map_blank_clicked
 
 const MIN_ZOOM := 0.35
 const MAX_ZOOM := 3.0
+const MAP_MODES := ["political", "terrain", "economy", "military", "roads"]
+const TERRAIN_COLORS := {
+    "plains": Color("789b67"),
+    "forest": Color("3f7650"),
+    "hills": Color("967b55"),
+    "mountains": Color("77808c"),
+    "capital": Color("b28b52"),
+}
 
 var _map_size := Vector2(800.0, 500.0)
 var _cell_size := 80.0
@@ -24,6 +33,12 @@ var _polygons: Dictionary = {}
 var _geometry_error := ""
 var _province_data: Dictionary = {}
 var _country_colors: Dictionary = {}
+var _map_mode := "political"
+var _reachable_highlights: Array[String] = []
+var _attackable_highlights: Array[String] = []
+var _road_target_highlights: Array[String] = []
+var _draw_observation: Dictionary = {}
+var draw_diagnostics_enabled := false
 var _hovered_id := ""
 var _selected_id := ""
 var _road_start_id := ""
@@ -46,7 +61,17 @@ func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     clip_contents = true
     resized.connect(_initialize_view)
+    mouse_exited.connect(_clear_hover)
     _initialize_view()
+
+
+func _clear_hover() -> void:
+    if _hovered_id.is_empty():
+        return
+    _hovered_id = ""
+    province_hovered.emit("")
+    province_hover_changed.emit("", Vector2.ZERO)
+    queue_redraw()
 
 
 func load_grid_layout(path: String) -> bool:
@@ -185,7 +210,65 @@ func set_scenario_data(provinces: Array, countries: Array) -> void:
         _province_data[province["id"]] = province
         if not _polygons.has(province["id"]):
             push_warning("Province has no map geometry: %s" % province["id"])
+    _filter_interaction_highlights()
     queue_redraw()
+
+
+func set_map_mode(mode: String) -> bool:
+    if not MAP_MODES.has(mode):
+        return false
+    _map_mode = mode
+    queue_redraw()
+    return true
+
+
+func map_mode() -> String:
+    return _map_mode
+
+
+func set_interaction_highlights(reachable: Array, attackable: Array, road_targets: Array) -> void:
+    _reachable_highlights = _stable_highlight_ids(reachable)
+    _attackable_highlights = _stable_highlight_ids(attackable)
+    _road_target_highlights = _stable_highlight_ids(road_targets)
+    queue_redraw()
+
+
+func presentation_state() -> Dictionary:
+    return {
+        "map_mode": _map_mode,
+        "reachable": _reachable_highlights.duplicate(),
+        "attackable": _attackable_highlights.duplicate(),
+        "road_targets": _road_target_highlights.duplicate(),
+    }
+
+
+func draw_observation() -> Dictionary:
+    return _draw_observation.duplicate(true) if draw_diagnostics_enabled else {}
+
+
+func _stable_highlight_ids(ids: Array) -> Array[String]:
+    var stable: Array[String] = []
+    for value: Variant in ids:
+        var province_id := String(value)
+        if province_id.is_empty() or stable.has(province_id) or \
+                not _polygons.has(province_id) or not _province_data.has(province_id):
+            continue
+        stable.append(province_id)
+    return stable
+
+
+func _filter_interaction_highlights() -> void:
+    _reachable_highlights = _stable_highlight_ids(_reachable_highlights)
+    _attackable_highlights = _stable_highlight_ids(_attackable_highlights)
+    _road_target_highlights = _stable_highlight_ids(_road_target_highlights)
+
+
+func _interaction_fill_color(province_id: String, base_color: Color) -> Color:
+    if _attackable_highlights.has(province_id):
+        return base_color.lerp(Color("d85b5b"), 0.26)
+    if _reachable_highlights.has(province_id):
+        return base_color.lerp(Color("4c8dff"), 0.22)
+    return base_color
 
 
 func selected_province_id() -> String:
@@ -417,25 +500,100 @@ func _initialize_view() -> void:
     queue_redraw()
 
 
+func _province_fill_color(
+        province: Dictionary,
+        owner_id: String,
+        fiscal_bounds: Vector2,
+        manpower: int,
+        maximum_manpower: int
+) -> Color:
+    var political := _country_colors.get(owner_id, Color("596579")) as Color
+    match _map_mode:
+        "terrain":
+            return TERRAIN_COLORS.get(String(province.get("terrain", "plains")), TERRAIN_COLORS["plains"])
+        "economy":
+            if owner_id.is_empty() or owner_id == "neutral":
+                return Color("596579")
+            var income := float(province.get("fiscal_income", 0))
+            var span := fiscal_bounds.y - fiscal_bounds.x
+            var ratio := 0.5 if is_zero_approx(span) else clampf((income - fiscal_bounds.x) / span, 0.0, 1.0)
+            return Color("35506a").lerp(Color("d6a64a"), ratio)
+        "military":
+            var ratio := 0.0 if maximum_manpower <= 0 else clampf(float(manpower) / maximum_manpower, 0.0, 1.0)
+            return Color("283545").lerp(Color("b85c55"), ratio)
+        "roads":
+            return political.lerp(Color("596579"), 0.65).darkened(0.12)
+        _:
+            match String(province.get("terrain", "plains")):
+                "forest":
+                    return political.darkened(0.16)
+                "hills":
+                    return political.darkened(0.08)
+                "mountains":
+                    return political.darkened(0.28)
+            return political
+
+
+func _fiscal_income_bounds() -> Vector2:
+    var minimum := INF
+    var maximum := -INF
+    for province: Dictionary in _province_data.values():
+        if String(province.get("owner_id", "")) in ["", "neutral"]:
+            continue
+        var income := float(province.get("fiscal_income", 0))
+        minimum = minf(minimum, income)
+        maximum = maxf(maximum, income)
+    return Vector2.ZERO if minimum == INF else Vector2(minimum, maximum)
+
+
+func _stationed_manpower_by_province() -> Dictionary:
+    var totals: Dictionary = {}
+    for army: Dictionary in _armies:
+        var province_id := String(army.get("province_id", ""))
+        if not _province_data.has(province_id):
+            continue
+        totals[province_id] = int(totals.get(province_id, 0)) + int(army.get("manpower", 0))
+    return totals
+
+
 func _draw() -> void:
+    var observed_fills: Dictionary = {}
+    var observed_outline_colors: Dictionary = {}
+    var observation := {
+        "map_mode": _map_mode,
+        "province_fills": observed_fills,
+        "province_outline_colors": observed_outline_colors,
+        "province_outlines": 0,
+        "road_lines": 0,
+        "city_icons": 0,
+        "terrain_icons": 0,
+        "army_icons": 0,
+    }
     draw_rect(Rect2(Vector2.ZERO, size), Color("182235"))
     draw_set_transform(_pan, 0.0, Vector2.ONE * _zoom)
     var icon_layouts := _all_icon_layouts()
+    var fiscal_bounds := _fiscal_income_bounds()
+    var stationed_manpower := _stationed_manpower_by_province()
+    var maximum_manpower := 0
+    for amount: int in stationed_manpower.values():
+        maximum_manpower = maxi(maximum_manpower, amount)
 
     for province_id: String in _polygons:
         var polygon: PackedVector2Array = _polygons[province_id]
         var province: Dictionary = _province_data.get(province_id, {})
         var owner_id: String = province.get("owner_id", "")
-        var color: Color = _country_colors.get(owner_id, Color("596579"))
-        match province.get("terrain", "plains"):
-            "forest": color = color.darkened(0.16)
-            "hills": color = color.darkened(0.08)
-            "mountains": color = color.darkened(0.28)
+        var color := _province_fill_color(
+            province, owner_id, fiscal_bounds, int(stationed_manpower.get(province_id, 0)),
+            maximum_manpower
+        )
+        color = _interaction_fill_color(province_id, color)
         if province_id == _selected_id:
             color = color.lightened(0.28)
         elif province_id == _hovered_id:
             color = color.lightened(0.14)
 
+        if draw_diagnostics_enabled:
+            observed_fills[province_id] = color
         draw_colored_polygon(polygon, color)
         var outline := PackedVector2Array(polygon)
         outline.append(polygon[0])
@@ -447,19 +605,42 @@ func _draw() -> void:
         elif province_id == _road_end_id:
             outline_color = Color("ffb74d")
             outline_width = 5.0
+        elif _road_target_highlights.has(province_id):
+            outline_color = Color("4fb69f")
+            outline_width = 4.0
+        elif _attackable_highlights.has(province_id):
+            outline_color = Color("d85b5b")
+            outline_width = 4.0
+        elif _reachable_highlights.has(province_id):
+            outline_color = Color("4c8dff")
+            outline_width = 4.0
+        elif province_id == _selected_id:
+            outline_color = Color("d6a64a")
+            outline_width = 4.0
+        elif province_id == _hovered_id:
+            outline_color = Color("e8eef7")
+            outline_width = 3.0
+        if draw_diagnostics_enabled:
+            observed_outline_colors[province_id] = outline_color
         draw_polyline(outline, outline_color, outline_width / _zoom, true)
+        if draw_diagnostics_enabled:
+            observation["province_outlines"] = int(observation["province_outlines"]) + 1
 
         if not province.is_empty():
             var icon_layout: Dictionary = icon_layouts[province_id]
             var city_texture: Texture2D = CAPITAL_ICON \
                     if icon_layout["city_kind"] == "capital" else CITY_ICON
             draw_texture_rect(city_texture, icon_layout["city_rect"], false)
+            if draw_diagnostics_enabled:
+                observation["city_icons"] = int(observation["city_icons"]) + 1
             if icon_layout.has("terrain_rect"):
                 draw_texture_rect(
                     _terrain_icon(icon_layout["terrain_kind"]),
                     icon_layout["terrain_rect"],
                     false
                 )
+                if draw_diagnostics_enabled:
+                    observation["terrain_icons"] = int(observation["terrain_icons"]) + 1
 
     for road: Dictionary in _roads:
         var province_a: String = road.get("province_a", "")
@@ -471,6 +652,8 @@ func _draw() -> void:
         draw_line(start, end, Color("f4d35e"), 7.0 / _zoom, true)
         draw_circle(start, 6.0 / _zoom, Color("fff3b0"))
         draw_circle(end, 6.0 / _zoom, Color("fff3b0"))
+        if draw_diagnostics_enabled:
+            observation["road_lines"] = int(observation["road_lines"]) + 1
 
     for frontline: Dictionary in _frontlines:
         var province_a: String = frontline.get("province_a", "")
@@ -522,6 +705,8 @@ func _draw() -> void:
         var icon_layout: Dictionary = icon_layouts[province_id]
         for army_rect: Rect2 in icon_layout.get("army_rects", []):
             draw_texture_rect(ARMY_ICON, army_rect, false)
+            if draw_diagnostics_enabled:
+                observation["army_icons"] = int(observation["army_icons"]) + 1
         var overflow_count := int(icon_layout.get("overflow_count", 0))
         if overflow_count > 0:
             var overflow_rect: Rect2 = icon_layout["overflow_rect"]
@@ -548,6 +733,7 @@ func _draw() -> void:
     )
     if _auto_advance_path.size() >= 2:
         _draw_advance_legend()
+    _draw_observation = observation if draw_diagnostics_enabled else {}
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -588,6 +774,7 @@ func _gui_input(event: InputEvent) -> void:
             if hit != _hovered_id:
                 _hovered_id = hit
                 province_hovered.emit(hit)
+                province_hover_changed.emit(hit, get_global_transform_with_canvas() * motion.position)
                 queue_redraw()
 
 

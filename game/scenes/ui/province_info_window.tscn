@@ -1,11 +1,14 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/province_info_window.gd" id="1_info"]
+[ext_resource type="PackedScene" path="res://scenes/ui/metric_card.tscn" id="2_metric"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="3_theme"]
 
 [node name="ProvinceInfoWindow" type="VBoxContainer"]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
+theme = ExtResource("3_theme")
 theme_override_constants/separation = 10
 script = ExtResource("1_info")
 
@@ -14,29 +17,47 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 24
 horizontal_alignment = 1
 
-[node name="Terrain" type="Label" parent="."]
-layout_mode = 2
-horizontal_alignment = 1
-
-[node name="Ownership" type="Label" parent="."]
-layout_mode = 2
-horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="Population" type="Label" parent="."]
-layout_mode = 2
-horizontal_alignment = 1
-autowrap_mode = 2
-
 [node name="Economy" type="Label" parent="."]
+visible = false
 layout_mode = 2
-horizontal_alignment = 1
 
-[node name="Military" type="Label" parent="."]
+[node name="Body" type="VBoxContainer" parent="."]
 layout_mode = 2
-horizontal_alignment = 1
+theme_override_constants/separation = 8
 
-[node name="Roads" type="Label" parent="."]
+[node name="Metrics" type="GridContainer" parent="Body"]
 layout_mode = 2
-horizontal_alignment = 1
+columns = 2
+
+[node name="Population" parent="Body/Metrics" instance=ExtResource("2_metric")]
+layout_mode = 2
+
+[node name="Economy" parent="Body/Metrics" instance=ExtResource("2_metric")]
+layout_mode = 2
+
+[node name="FiscalIncome" parent="Body/Metrics" instance=ExtResource("2_metric")]
+layout_mode = 2
+
+[node name="Garrison" parent="Body/Metrics" instance=ExtResource("2_metric")]
+layout_mode = 2
+
+[node name="Ownership" type="Label" parent="Body"]
+layout_mode = 2
 autowrap_mode = 2
+
+[node name="Terrain" type="Label" parent="Body"]
+layout_mode = 2
+
+[node name="Roads" type="Label" parent="Body"]
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="Recruitable" type="Label" parent="Body"]
+layout_mode = 2
+
+[node name="ManageProvince" type="Button" parent="Body"]
+layout_mode = 2
+text = "管理地区"
+tooltip_text = "打开该地区的管理面板"
+
+[connection signal="pressed" from="Body/ManageProvince" to="." method="_on_manage_province_pressed"]

@@ -1,0 +1,69 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/management_page_host.gd" id="1_host"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://scenes/ui/country_overview_page.tscn" id="3_country"]
+[ext_resource type="PackedScene" path="res://scenes/ui/military_overview_page.tscn" id="4_military"]
+[ext_resource type="PackedScene" path="res://scenes/ui/economic_overview_page.tscn" id="5_economy"]
+[ext_resource type="PackedScene" path="res://scenes/ui/diplomacy_page.tscn" id="6_diplomacy"]
+[ext_resource type="PackedScene" path="res://scenes/ui/technology_page.tscn" id="7_technology"]
+[ext_resource type="PackedScene" path="res://scenes/ui/settings_page.tscn" id="8_settings"]
+
+[node name="ManagementPageHost" type="PanelContainer"]
+visible = false
+custom_minimum_size = Vector2(480, 0)
+layout_mode = 2
+size_flags_vertical = 3
+theme = ExtResource("2_theme")
+script = ExtResource("1_host")
+
+[node name="Pages" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="Header" type="HBoxContainer" parent="Pages"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Pages/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "国家管理"
+
+[node name="Back" type="Button" parent="Pages/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "返回"
+tooltip_text = "返回战略地图"
+
+[node name="Country" parent="Pages" instance=ExtResource("3_country")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "country"
+
+[node name="Diplomacy" parent="Pages" instance=ExtResource("6_diplomacy")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "diplomacy"
+
+[node name="Technology" parent="Pages" instance=ExtResource("7_technology")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "technology"
+
+[node name="Military" parent="Pages" instance=ExtResource("4_military")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "military"
+
+[node name="Economy" parent="Pages" instance=ExtResource("5_economy")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "economy"
+
+[node name="Settings" parent="Pages" instance=ExtResource("8_settings")]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/page_id = "settings"

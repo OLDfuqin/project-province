@@ -1,0 +1,58 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/diplomacy_page.gd" id="1_page"]
+[ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+
+[node name="DiplomacyPage" type="PanelContainer"]
+layout_mode = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_page")
+
+[node name="Content" type="VBoxContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="Heading" type="Label" parent="Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "外交"
+
+[node name="Selection" type="Label" parent="Content"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 2
+text = "请选择一个国家查看外交操作"
+
+[node name="Countries" type="ScrollContainer" parent="Content"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Rows" type="VBoxContainer" parent="Content/Countries"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Empty" type="Label" parent="Content/Countries"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "当前没有可交互的国家"
+
+[node name="Actions" type="VBoxContainer" parent="Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DeclareWar" type="Button" parent="Content/Actions"]
+layout_mode = 2
+text = "宣战"
+tooltip_text = "向当前选择的国家发出宣战意图"
+
+[node name="AnnexOccupied" type="CheckButton" parent="Content/Actions"]
+layout_mode = 2
+text = "议和时吞并占领地区"
+tooltip_text = "将议和方案设为吞并当前占领地区"
+
+[node name="MakePeace" type="Button" parent="Content/Actions"]
+layout_mode = 2
+text = "议和"
+tooltip_text = "向当前选择的国家发出议和意图"
