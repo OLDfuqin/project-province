@@ -92,6 +92,11 @@ func _fail(main_scene: Node, message: String) -> void:
     quit(1)
 
 
+func _expected_treasury(main_scene: Control, value: int) -> String:
+    var prefix := "国 " if main_scene.viewport_profile_name() == "compact" else "国库 "
+    return "%s%d" % [prefix, value]
+
+
 func _initialize() -> void:
     var main_source := FileAccess.get_file_as_string("res://scripts/main.gd")
     for forbidden: String in [
@@ -238,7 +243,7 @@ func _initialize() -> void:
     if _road_exists(bridge, pair[0], pair[1]) or pending.size() != 1 or \
             pending[0].get("type", "") != "road_construction" or \
             pending[0].get("remaining_months", 0) != 1 or \
-            treasury.text != "国库 %d" % road_treasury or \
+            treasury.text != _expected_treasury(main_scene, road_treasury) or \
             not road_window.get_node("Quote/Status").text.contains("已下单"):
         _fail(main_scene, "Road construction did not refresh its pending order and treasury")
         return

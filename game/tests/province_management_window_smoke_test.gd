@@ -14,6 +14,11 @@ func _fail(main_scene: Node, message: String) -> void:
     quit(1)
 
 
+func _expected_treasury(main_scene: Control, value: int) -> String:
+    var prefix := "国 " if main_scene.viewport_profile_name() == "compact" else "国库 "
+    return "%s%d" % [prefix, value]
+
+
 func _initialize() -> void:
     var main_scene := (load("res://scenes/main/main.tscn") as PackedScene).instantiate()
     root.add_child(main_scene)
@@ -58,7 +63,7 @@ func _initialize() -> void:
             research_treasury = int(country.get("treasury", 0))
             break
     if research_orders.size() != 1 or String(research_orders[0].get("type", "")) != "research" or \
-            treasury.text != "国库 %d" % research_treasury:
+            treasury.text != _expected_treasury(main_scene, research_treasury):
         _fail(main_scene, "Technology page did not submit the research intent through main")
         return
     main_scene.get_node("Shell/Layout/MapModeBar/Margin/Row/PendingOrders").pressed.emit()
@@ -76,7 +81,7 @@ func _initialize() -> void:
     if not bridge.get_pending_orders("auroria").is_empty() or \
             not main_scene._latest_event_message.contains("退款5000") or \
             not main_scene.get_node("Shell/BottomDrawer/Panel/Body/Orders/Rows/Empty").visible or \
-            treasury.text != "国库 %d" % cancelled_treasury:
+            treasury.text != _expected_treasury(main_scene, cancelled_treasury):
         _fail(main_scene, "Research cancellation did not clear the drawer or refresh its treasury")
         return
     main_scene.call("_on_cancel_order_pressed", "missing_order")
@@ -109,7 +114,7 @@ func _initialize() -> void:
             recruitment_treasury = int(country.get("treasury", 0))
             break
     if bridge.get_pending_orders("auroria").size() != 1 or \
-            treasury.text != "国库 %d" % recruitment_treasury or \
+            treasury.text != _expected_treasury(main_scene, recruitment_treasury) or \
             not management.get_node("Tabs/Military/Recruitment/Pending").text.contains(
                 "预留%d人" % maximum_manpower
             ):

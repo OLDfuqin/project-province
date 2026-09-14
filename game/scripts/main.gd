@@ -1,6 +1,8 @@
 extends Control
 
 const QUICK_SAVE_PATH := "user://quick_save.json"
+const NORMAL_TOOLTIP_META := &"strategic_normal_tooltip"
+const DISABLED_TOOLTIP_META := &"strategic_disabled_tooltip"
 const GameText := preload("res://scripts/ui/game_text_formatter.gd")
 const StrategyPresenter := preload("res://scripts/ui/strategy_panel_presenter.gd")
 const ProvinceInfoScene := preload("res://scenes/ui/province_info_window.tscn")
@@ -32,6 +34,7 @@ enum MapInputMode {
 @onready var bottom_drawer := %BottomDrawer
 @onready var management_page_host := %ManagementPageHost
 @onready var action_confirmation := %ActionConfirmation
+@onready var map_panel: Control = %MapPanel
 
 var player_country_id := "auroria"
 var province_by_id: Dictionary = {}
@@ -52,6 +55,7 @@ var _active_map_mode := "political"
 var _game_status_message_key := ""
 var _viewport_profile := "compact"
 var _pending_confirmation: Dictionary = {}
+var _overlay_geometry_update_queued := false
 var province_info_window: Control
 var province_management_window: Control
 var road_construction_window: Control
@@ -80,6 +84,9 @@ func _ready() -> void:
     _connect_strategic_ui()
     _connect_context_intents()
     get_viewport().size_changed.connect(_on_viewport_size_changed)
+    map_panel.resized.connect(_queue_overlay_geometry_update)
+    context_inspector.resized.connect(_queue_overlay_geometry_update)
+    map_mode_bar.resized.connect(_queue_overlay_geometry_update)
     apply_viewport_profile(get_viewport().get_visible_rect().size)
     _refresh_map_data()
     _refresh_strategic_ui()
@@ -112,6 +119,8 @@ func _connect_strategic_ui() -> void:
     bottom_drawer.cancel_order_requested.connect(_on_cancel_order_pressed)
     management_page_host.back_requested.connect(_return_to_map)
     action_confirmation.confirmed.connect(_on_confirmation_confirmed)
+    action_confirmation.canceled.connect(_on_confirmation_canceled)
+    action_confirmation.close_requested.connect(_on_confirmation_canceled)
     province_map.province_selected.connect(_on_province_selected)
     province_map.province_clicked.connect(_on_province_clicked)
     province_map.province_double_clicked.connect(_on_province_double_clicked)
@@ -193,33 +202,41 @@ func apply_viewport_profile(viewport_size: Vector2) -> void:
 
     primary_navigation.custom_minimum_size.x = navigation_width
     context_inspector.custom_minimum_size.x = inspector_width
-    bottom_drawer.offset_left = navigation_width
-    bottom_drawer.offset_right = -inspector_width
-    management_page_host.offset_left = navigation_width
-    _set_global_status_density(compact)
+    global_status_bar.set_compact(compact)
     _apply_accessibility_presentation()
+    _queue_overlay_geometry_update()
 
 
 func _on_viewport_size_changed() -> void:
     apply_viewport_profile(get_viewport().get_visible_rect().size)
 
 
-func _set_global_status_density(compact: bool) -> void:
-    var row := global_status_bar.get_node("Margin/Row")
-    for metric: Dictionary in [
-        {"node": "Treasury", "full": "国库 ", "compact": "国 "},
-        {"node": "Income", "full": "月收入 ", "compact": "收 "},
-        {"node": "Maintenance", "full": "维护费 ", "compact": "维 "},
-        {"node": "Recruitable", "full": "可招募 ", "compact": "招 "},
-    ]:
-        var label := row.get_node(String(metric["node"])) as Label
-        label.visible = true
-        var full_prefix := String(metric["full"])
-        var compact_prefix := String(metric["compact"])
-        label.text = label.text.replace(
-            compact_prefix if not compact else full_prefix,
-            full_prefix if not compact else compact_prefix
-        )
+func _queue_overlay_geometry_update() -> void:
+    if _overlay_geometry_update_queued:
+        return
+    _overlay_geometry_update_queued = true
+    _update_overlay_geometry.call_deferred()
+
+
+func _update_overlay_geometry() -> void:
+    _overlay_geometry_update_queued = false
+    if not is_inside_tree():
+        return
+    var shell_rect: Rect2 = ($Shell as Control).get_global_rect()
+    var map_rect: Rect2 = map_panel.get_global_rect()
+    var inspector_rect: Rect2 = (context_inspector as Control).get_global_rect()
+    var status_rect: Rect2 = (global_status_bar as Control).get_global_rect()
+    var mode_bar_rect: Rect2 = (map_mode_bar as Control).get_global_rect()
+    var drawer_bottom: float = mode_bar_rect.position.y - shell_rect.end.y
+
+    bottom_drawer.offset_left = map_rect.position.x - shell_rect.position.x
+    bottom_drawer.offset_right = inspector_rect.position.x - shell_rect.end.x
+    bottom_drawer.offset_top = drawer_bottom
+    bottom_drawer.offset_bottom = drawer_bottom
+
+    management_page_host.offset_left = map_rect.position.x - shell_rect.position.x
+    management_page_host.offset_top = status_rect.end.y - shell_rect.position.y
+    management_page_host.offset_bottom = mode_bar_rect.position.y - shell_rect.end.y
 
 
 func _configure_management_tab_titles() -> void:
@@ -238,10 +255,7 @@ func _apply_accessibility_to_node(node: Node) -> void:
         scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
     var button := node as Button
     if button != null:
-        if button.tooltip_text.is_empty():
-            button.tooltip_text = "当前不可用：所需条件尚未满足" if button.disabled else "执行%s" % button.text
-        elif button.disabled and not _has_disabled_reason(button.tooltip_text):
-            button.tooltip_text = "当前不可用：所需条件尚未满足"
+        _update_button_tooltip(button)
     for child: Node in node.get_children():
         _apply_accessibility_to_node(child)
 
@@ -251,6 +265,31 @@ func _has_disabled_reason(tooltip: String) -> bool:
         if tooltip.contains(marker):
             return true
     return false
+
+
+func _update_button_tooltip(button: Button) -> void:
+    var current := button.tooltip_text
+    if not button.has_meta(NORMAL_TOOLTIP_META):
+        button.set_meta(
+            NORMAL_TOOLTIP_META,
+            current if not current.is_empty() else "执行%s" % button.text
+        )
+    var previous_disabled := String(button.get_meta(DISABLED_TOOLTIP_META, ""))
+    if button.disabled:
+        if current != previous_disabled and _has_disabled_reason(current):
+            button.set_meta(DISABLED_TOOLTIP_META, current)
+            return
+        if current != previous_disabled and not current.is_empty():
+            button.set_meta(NORMAL_TOOLTIP_META, current)
+        var reason := "当前不可用：请先完成“%s”所需的前置选择" % button.text
+        button.tooltip_text = reason
+        button.set_meta(DISABLED_TOOLTIP_META, reason)
+        return
+    if not previous_disabled.is_empty() and current == previous_disabled:
+        button.tooltip_text = String(button.get_meta(NORMAL_TOOLTIP_META))
+    elif not current.is_empty():
+        button.set_meta(NORMAL_TOOLTIP_META, current)
+    button.remove_meta(DISABLED_TOOLTIP_META)
 
 
 func workspace_mode_name() -> String:
@@ -1370,6 +1409,10 @@ func _on_confirmation_confirmed() -> void:
             _commit_make_peace(
                 String(intent.get("country_id", "")), bool(intent.get("annex", false))
             )
+
+
+func _on_confirmation_canceled() -> void:
+    _pending_confirmation.clear()
 
 
 func _close_confirmation_if_open() -> bool:

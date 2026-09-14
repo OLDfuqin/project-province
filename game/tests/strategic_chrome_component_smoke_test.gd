@@ -13,6 +13,11 @@ func _initialize() -> void:
         "name": "奥罗里亚", "treasury": 10300, "fiscal_income": 3150,
         "last_maintenance_charge": 500, "recruitable_population": 3400,
     }, {"year": 1000, "month": 1})
+    status.set_compact(true)
+    status.set_snapshot({
+        "name": "奥罗里亚", "treasury": 10400, "fiscal_income": 3200,
+        "last_maintenance_charge": 600, "recruitable_population": 3300,
+    }, {"year": 1000, "month": 2})
     mode_bar.set_counts(4, 2)
     navigation.set_active_destination("map")
     if status.get_node("Margin/Row/CountryName").text != "奥罗里亚" or \
@@ -20,6 +25,28 @@ func _initialize() -> void:
             mode_bar.get_node("Margin/Row/PendingOrders").text != "待执行订单 4" or \
             navigation.active_destination() != "map":
         push_error("Strategic chrome components lost their stable presentation")
+        quit(1)
+        return
+    for compact_metric: Dictionary in [
+        {"node": "Treasury", "text": "国 10400"},
+        {"node": "Income", "text": "收 3200"},
+        {"node": "Maintenance", "text": "维 600"},
+        {"node": "Recruitable", "text": "招 3300"},
+    ]:
+        var metric := status.get_node("Margin/Row/%s" % compact_metric["node"]) as Label
+        if not metric.visible or metric.text != compact_metric["text"]:
+            push_error("Compact status density did not survive a snapshot refresh")
+            quit(1)
+            return
+    status.set_advance_enabled(false, "当前不可用：存在未解决的回合阻塞")
+    var advance := status.get_node("Margin/Row/AdvanceTurn") as Button
+    if not advance.disabled or advance.tooltip_text != "当前不可用：存在未解决的回合阻塞":
+        push_error("Disabled next-turn action lost its specific reason")
+        quit(1)
+        return
+    status.set_advance_enabled(true)
+    if advance.disabled or advance.tooltip_text != "结算当前月并进入下一回合":
+        push_error("Re-enabled next-turn action retained a stale disabled tooltip")
         quit(1)
         return
 

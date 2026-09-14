@@ -56,6 +56,12 @@ func _escape_key() -> InputEventKey:
     return escape
 
 
+func _resize_root_window(viewport_size: Vector2) -> void:
+    root.size = Vector2i(viewport_size)
+    await process_frame
+    await process_frame
+
+
 func _assert_responsive_shell(
     main_scene: Control,
     top_bar: Control,
@@ -66,11 +72,14 @@ func _assert_responsive_shell(
     profile: Dictionary
 ) -> String:
     var viewport_size: Vector2 = profile["size"]
-    main_scene.size = viewport_size
-    main_scene.apply_viewport_profile(viewport_size)
-    await process_frame
+    await _resize_root_window(viewport_size)
 
     var expected_name := String(profile["name"])
+    if Vector2(root.size) != viewport_size or main_scene.size != viewport_size or \
+            main_scene.get_viewport().get_visible_rect().size != viewport_size:
+        return "Window resize to %s remained in a fixed %s logical viewport" % [
+            viewport_size, main_scene.get_viewport().get_visible_rect().size,
+        ]
     if main_scene.viewport_profile_name() != expected_name:
         return "Viewport %s selected %s instead of %s" % [
             viewport_size, main_scene.viewport_profile_name(), expected_name,
@@ -104,6 +113,50 @@ func _assert_responsive_shell(
         return "Bottom drawer overlaps the inspector or escaped the viewport at %s" % viewport_size
     main_scene.call("_on_drawer_requested", "orders")
     await process_frame
+    return ""
+
+
+func _assert_management_order_drawer(
+    main_scene: Control,
+    bridge: Object,
+    province_map: Control,
+    inspector: Control,
+    mode_bar: Control,
+    drawer: Control,
+    profile: Dictionary
+) -> String:
+    var created: Dictionary = bridge.recruit_army("auroria", "capital_auroria", 1)
+    if not created.get("accepted", false):
+        return "Could not create a real pending order for responsive drawer verification"
+    main_scene.call("_refresh_pending_orders")
+    province_map.province_double_clicked.emit("capital_auroria")
+    await process_frame
+    var tabs := main_scene.province_management_window.get_node("Tabs") as TabContainer
+    tabs.current_tab = 1
+
+    await _resize_root_window(profile["size"])
+    main_scene.call("_on_drawer_requested", "orders")
+    await process_frame
+    await process_frame
+
+    var viewport_rect := Rect2(Vector2.ZERO, Vector2(profile["size"]))
+    var drawer_panel := drawer.get_node("Panel") as Control
+    var cancel := drawer.get_node_or_null("Panel/Body/Orders/Rows/Order0/Cancel") as Button
+    if not drawer.visible or drawer_panel.get_global_rect().intersects(inspector.get_global_rect()) or \
+            drawer_panel.get_global_rect().intersects(mode_bar.get_global_rect()):
+        return "Real order drawer overlapped the inspector or bottom bar at %s" % profile["size"]
+    if cancel == null or cancel.disabled or not cancel.is_visible_in_tree() or \
+            cancel.mouse_filter == Control.MOUSE_FILTER_IGNORE or \
+            not viewport_rect.encloses(cancel.get_global_rect()):
+        return "Real order cancellation is not visible and clickable at %s" % profile["size"]
+
+    cancel.pressed.emit()
+    await process_frame
+    await process_frame
+    if not bridge.get_pending_orders("auroria").is_empty():
+        return "Clickable order cancellation did not reach the authoritative bridge"
+    drawer.close()
+    main_scene.call("_close_workspace")
     return ""
 
 
@@ -201,6 +254,17 @@ func _initialize() -> void:
             bridge.get_pending_orders("auroria") != orders_before_profiles:
         _fail(main_scene, "Viewport profiles changed authoritative simulation data")
         return
+    for profile: Dictionary in [
+        {"size": Vector2(1280, 720)},
+        {"size": Vector2(1440, 900)},
+        {"size": Vector2(1920, 1080)},
+    ]:
+        var combination_error := await _assert_management_order_drawer(
+            main_scene, bridge, province_map, inspector, mode_bar, drawer, profile
+        )
+        if not combination_error.is_empty():
+            _fail(main_scene, combination_error)
+            return
     for scroll: ScrollContainer in [
         inspector.get_node("Body/ScrollContainer"),
         drawer.get_node("Panel/Body/Orders"),
@@ -229,6 +293,9 @@ func _initialize() -> void:
         return
     top_bar.set_advance_enabled(true)
     main_scene.call("_apply_accessibility_presentation")
+    if advance_turn.disabled or advance_turn.tooltip_text != "结算当前月并进入下一回合":
+        _fail(main_scene, "Re-enabled primary action retained a disabled tooltip")
+        return
 
     province_map.province_double_clicked.emit("capital_auroria")
     await process_frame
@@ -260,6 +327,21 @@ func _initialize() -> void:
     await process_frame
     if confirmation.visible or main_scene.active_page_name() != "diplomacy":
         _fail(main_scene, "Esc did not dismiss only the confirmation layer first")
+        return
+    diplomacy_for_escape.get_node("Content/Actions/DeclareWar").pressed.emit()
+    await process_frame
+    if not confirmation.visible or main_scene._pending_confirmation.is_empty():
+        _fail(main_scene, "Could not reopen a confirmation for native cancellation testing")
+        return
+    confirmation.get_cancel_button().pressed.emit()
+    await process_frame
+    if confirmation.visible or not main_scene._pending_confirmation.is_empty():
+        _fail(main_scene, "ConfirmationDialog cancellation retained a stale intent")
+        return
+    confirmation.confirmed.emit()
+    await process_frame
+    if not bridge.get_pending_orders("auroria").is_empty():
+        _fail(main_scene, "A canceled confirmation submitted its stale diplomacy intent later")
         return
     main_scene.call("_on_drawer_requested", "orders")
     main_scene._unhandled_key_input(escape)
