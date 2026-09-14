@@ -263,6 +263,7 @@ func _refresh_active_management_page() -> void:
 
 
 func _on_navigation_requested(destination: String) -> void:
+    primary_navigation.set_active_destination(destination)
     bottom_drawer.close()
     _close_workspace()
     if destination == "map":
@@ -524,6 +525,7 @@ func _on_cancel_order_pressed(order_id: String) -> void:
         message += "，无退款"
     _record_event(message)
     _refresh_map_data()
+    _refresh_active_context()
     _refresh_pending_orders()
 
 

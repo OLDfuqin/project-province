@@ -92,8 +92,15 @@ func _initialize() -> void:
     province_map.province_double_clicked.emit("capital_auroria")
     await process_frame
 
+    var recruitment_quote: Dictionary = main_scene.call(
+        "_authoritative_recruitment_quote", "capital_auroria"
+    )
+    var maximum_manpower := int(recruitment_quote.get("maximum_manpower", 0))
+    if not recruitment_quote.get("accepted", false) or maximum_manpower <= 0:
+        _fail(main_scene, "Could not obtain the authoritative maximum recruitment quote")
+        return
     recruit.pressed.emit()
-    management.get_node("Tabs/Military/Recruitment/Amount").value = 500
+    management.get_node("Tabs/Military/Recruitment/Amount").value = maximum_manpower
     management.get_node("Tabs/Military/Recruitment/Buttons/Confirm").pressed.emit()
     await process_frame
     var recruitment_treasury := 0
@@ -103,9 +110,48 @@ func _initialize() -> void:
             break
     if bridge.get_pending_orders("auroria").size() != 1 or \
             treasury.text != "国库 %d" % recruitment_treasury or \
-            not management.get_node("Tabs/Military/Recruitment/Pending").text.contains("预留500人"):
+            not management.get_node("Tabs/Military/Recruitment/Pending").text.contains(
+                "预留%d人" % maximum_manpower
+            ):
         _fail(main_scene, "Recruitment did not refresh the pending order and authoritative treasury")
         return
+
+    main_scene.get_node("Shell/Layout/MapModeBar/Margin/Row/PendingOrders").pressed.emit()
+    await process_frame
+    var recruitment_cancel := main_scene.get_node(
+        "Shell/BottomDrawer/Panel/Body/Orders/Rows/Order0/Cancel"
+    ) as Button
+    recruitment_cancel.pressed.emit()
+    await process_frame
+    var restored_quote: Dictionary = main_scene.call(
+        "_authoritative_recruitment_quote", "capital_auroria"
+    )
+    if main_scene.workspace_mode_name() != "province_management" or \
+            main_scene.get_node("Shell/Layout/MainRow/ContextInspector").current_mode() != \
+                "province_management" or not management.visible or \
+            not bridge.get_pending_orders("auroria").is_empty() or \
+            not main_scene.get_node("Shell/BottomDrawer/Panel/Body/Orders/Rows/Empty").visible or \
+            recruit.disabled or not management._recruitment_quote.get("accepted", false) or \
+            int(management._recruitment_quote.get("maximum_manpower", 0)) != \
+                int(restored_quote.get("maximum_manpower", 0)):
+        _fail(main_scene, "Cancelled recruitment did not restore the active management quote")
+        return
+    recruit.pressed.emit()
+    var restored_amount := management.get_node("Tabs/Military/Recruitment/Amount") as SpinBox
+    if int(restored_amount.max_value) != int(restored_quote.get("maximum_manpower", 0)):
+        _fail(main_scene, "Cancelled recruitment did not restore the recruitment button quote")
+        return
+    var follow_up_manpower := mini(500, int(restored_quote.get("maximum_manpower", 0)))
+    restored_amount.value = follow_up_manpower
+    management.get_node("Tabs/Military/Recruitment/Buttons/Confirm").pressed.emit()
+    await process_frame
+    if bridge.get_pending_orders("auroria").size() != 1 or \
+            not management.get_node("Tabs/Military/Recruitment/Pending").text.contains(
+                "预留%d人" % follow_up_manpower
+            ):
+        _fail(main_scene, "Recruitment could not be initiated again after its refund")
+        return
+    main_scene.get_node("Shell/BottomDrawer/Panel/Body/Header/Close").pressed.emit()
     advance_turn.pressed.emit()
     await process_frame
     await process_frame

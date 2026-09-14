@@ -218,8 +218,9 @@ func _initialize() -> void:
 
     main_scene._unhandled_key_input(escape)
     await process_frame
-    if main_scene.active_page_name() != "settings" or not pages.visible:
-        _fail(main_scene, "ui_cancel did not open settings after transient UI was closed")
+    if main_scene.active_page_name() != "settings" or not pages.visible or \
+            navigation.active_destination() != "settings":
+        _fail(main_scene, "ui_cancel did not open settings with matching navigation state")
         return
     pages.get_node("Pages/Header/Back").pressed.emit()
     if main_scene.active_page_name() != "closed" or \
