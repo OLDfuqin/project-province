@@ -11,6 +11,7 @@ script = ExtResource("1_management")
 
 [node name="Status" type="Label" parent="."]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.941176, 0.823529, 0.541176, 1)
 horizontal_alignment = 1
 autowrap_mode = 2
 
@@ -75,6 +76,7 @@ alignment = 1
 
 [node name="Confirm" type="Button" parent="Tabs/Military/Recruitment/Buttons"]
 layout_mode = 2
+theme_type_variation = &"PrimaryButton"
 text = "确认招募"
 
 [node name="Cancel" type="Button" parent="Tabs/Military/Recruitment/Buttons"]

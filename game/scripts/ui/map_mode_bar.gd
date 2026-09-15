@@ -3,6 +3,7 @@ extends PanelContainer
 
 signal map_mode_requested(mode: String)
 signal drawer_requested(drawer: String)
+signal fit_map_requested
 
 const MAP_MODES := ["political", "terrain", "economy", "military", "roads"]
 const DRAWERS := ["orders", "notifications", "turn_report"]
@@ -17,10 +18,13 @@ func _ready() -> void:
             continue
         var mode := String(button.get_meta("map_mode", ""))
         var drawer := String(button.get_meta("drawer", ""))
+        var action := String(button.get_meta("action", ""))
         if MAP_MODES.has(mode):
             button.pressed.connect(_on_map_mode_pressed.bind(mode))
         elif DRAWERS.has(drawer):
             button.pressed.connect(_on_drawer_pressed.bind(drawer))
+        elif action == "fit_map":
+            button.pressed.connect(func() -> void: fit_map_requested.emit())
     set_active_mode(_active_mode)
 
 

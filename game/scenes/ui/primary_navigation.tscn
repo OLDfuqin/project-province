@@ -1,77 +1,105 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/primary_navigation.gd" id="1_script"]
 [ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_map.svg" id="3_map"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_flag.svg" id="4_country"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_diplomacy.svg" id="5_diplomacy"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_technology.svg" id="6_technology"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_military.svg" id="7_military"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_economy.svg" id="8_economy"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_settings.svg" id="9_settings"]
 
 [node name="PrimaryNavigation" type="PanelContainer"]
-custom_minimum_size = Vector2(64, 0)
+custom_minimum_size = Vector2(96, 0)
 layout_mode = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_script")
 
 [node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 2
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 7
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 7
+theme_override_constants/margin_bottom = 10
 
 [node name="Row" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 7
 
 [node name="Map" type="Button" parent="Margin/Row"]
-custom_minimum_size = Vector2(32, 32)
+custom_minimum_size = Vector2(80, 50)
 layout_mode = 2
 toggle_mode = true
-text = "图"
+icon = ExtResource("3_map")
+expand_icon = true
+icon_max_width = 22
+text = "地图"
 tooltip_text = "打开战略地图"
 metadata/destination = "map"
 
 [node name="Country" type="Button" parent="Margin/Row"]
-custom_minimum_size = Vector2(32, 32)
+custom_minimum_size = Vector2(80, 50)
 layout_mode = 2
 toggle_mode = true
-text = "国"
+icon = ExtResource("4_country")
+expand_icon = true
+icon_max_width = 22
+text = "国家"
 tooltip_text = "查看国家概况"
 metadata/destination = "country"
 
 [node name="Diplomacy" type="Button" parent="Margin/Row"]
-custom_minimum_size = Vector2(32, 32)
+custom_minimum_size = Vector2(80, 50)
 layout_mode = 2
 toggle_mode = true
-text = "外"
+icon = ExtResource("5_diplomacy")
+expand_icon = true
+icon_max_width = 22
+text = "外交"
 tooltip_text = "管理外交事务"
 metadata/destination = "diplomacy"
 
 [node name="Technology" type="Button" parent="Margin/Row"]
-custom_minimum_size = Vector2(32, 32)
+custom_minimum_size = Vector2(80, 50)
 layout_mode = 2
 toggle_mode = true
-text = "科"
+icon = ExtResource("6_technology")
+expand_icon = true
+icon_max_width = 22
+text = "科技"
 tooltip_text = "查看科技发展"
 metadata/destination = "technology"
 
 [node name="Military" type="Button" parent="Margin/Row"]
-custom_minimum_size = Vector2(32, 32)
+custom_minimum_size = Vector2(80, 50)
 layout_mode = 2
 toggle_mode = true
-text = "军"
+icon = ExtResource("7_military")
+expand_icon = true
+icon_max_width = 22
+text = "军事"
 tooltip_text = "管理军事力量"
 metadata/destination = "military"
 
 [node name="Economy" type="Button" parent="Margin/Row"]
-custom_minimum_size = Vector2(32, 32)
+custom_minimum_size = Vector2(80, 50)
 layout_mode = 2
 toggle_mode = true
-text = "经"
+icon = ExtResource("8_economy")
+expand_icon = true
+icon_max_width = 22
+text = "经济"
 tooltip_text = "查看经济状况"
 metadata/destination = "economy"
 
 [node name="Settings" type="Button" parent="Margin/Row"]
-custom_minimum_size = Vector2(32, 32)
+custom_minimum_size = Vector2(80, 50)
 layout_mode = 2
 toggle_mode = true
-text = "设"
+icon = ExtResource("9_settings")
+expand_icon = true
+icon_max_width = 22
+text = "设置"
 tooltip_text = "调整游戏设置"
 metadata/destination = "settings"

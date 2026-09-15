@@ -30,17 +30,18 @@ func set_compact(compact: bool) -> void:
 func _render_snapshot() -> void:
     $Margin/Row/CountryName.text = String(_country_snapshot.get("name", "未知国家"))
     $Margin/Row/Treasury.text = "%s%s" % [
-        "国 " if _compact else "国库 ", _number(_country_snapshot.get("treasury", 0)),
+        "国库 " if _compact else "国库 ", _number(_country_snapshot.get("treasury", 0)),
     ]
     $Margin/Row/Income.text = "%s%s" % [
-        "收 " if _compact else "月收入 ", _number(_country_snapshot.get("fiscal_income", 0)),
+        "收入 " if _compact else "月收入 ", _number(_country_snapshot.get("fiscal_income", 0)),
     ]
+    var maintenance_value := _number(_country_snapshot.get("last_maintenance_charge", 0)) \
+        if _country_snapshot.get("has_last_maintenance_charge", false) else "暂无记录"
     $Margin/Row/Maintenance.text = "%s%s" % [
-        "维 " if _compact else "维护费 ",
-        _number(_country_snapshot.get("last_maintenance_charge", 0)),
+        "维护 " if _compact else "上月维护 ", maintenance_value,
     ]
     $Margin/Row/Recruitable.text = "%s%s" % [
-        "招 " if _compact else "可招募 ",
+        "兵员 " if _compact else "可招募 ",
         _number(_country_snapshot.get("recruitable_population", 0)),
     ]
     for metric: Label in [

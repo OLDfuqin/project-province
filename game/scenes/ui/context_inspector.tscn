@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/context_inspector.gd" id="1_inspector"]
 [ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_map.svg" id="3_map"]
 
 [node name="ContextInspector" type="PanelContainer"]
 custom_minimum_size = Vector2(300, 0)
@@ -42,11 +43,32 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="Empty" type="Label" parent="Body/ScrollContainer/Content"]
+[node name="Empty" type="VBoxContainer" parent="Body/ScrollContainer/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
-text = "请选择地区或军队"
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="Stamp" type="TextureRect" parent="Body/ScrollContainer/Content/Empty"]
+custom_minimum_size = Vector2(56, 56)
+layout_mode = 2
+texture = ExtResource("3_map")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="EmptyTitle" type="Label" parent="Body/ScrollContainer/Content/Empty"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.941176, 0.823529, 0.541176, 1)
+theme_override_font_sizes/font_size = 18
+text = "战略地图"
 horizontal_alignment = 1
-vertical_alignment = 1
+
+[node name="Hint" type="Label" parent="Body/ScrollContainer/Content/Empty"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.690196, 0.713725, 0.709804, 1)
+text = "选择地区查看人口、经济与驻军"
+horizontal_alignment = 1
 autowrap_mode = 2

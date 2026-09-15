@@ -6,6 +6,7 @@
 [node name="MilitaryOverviewPage" type="PanelContainer"]
 layout_mode = 2
 theme = ExtResource("2_theme")
+theme_type_variation = &"WorkspacePanel"
 script = ExtResource("1_page")
 
 [node name="Content" type="VBoxContainer" parent="."]
@@ -27,13 +28,15 @@ layout_mode = 2
 size_flags_vertical = 3
 
 [node name="Rows" type="VBoxContainer" parent="Content/Armies"]
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 0
 theme_override_constants/separation = 8
 
 [node name="EmptyArmies" type="Label" parent="Content/Armies/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"SectionLabel"
 text = "当前没有军队"
 
 [node name="OrdersTitle" type="Label" parent="Content"]
@@ -45,11 +48,13 @@ layout_mode = 2
 size_flags_vertical = 3
 
 [node name="Rows" type="VBoxContainer" parent="Content/Orders"]
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 0
 theme_override_constants/separation = 8
 
 [node name="EmptyOrders" type="Label" parent="Content/Orders/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"SectionLabel"
 text = "当前没有订单"

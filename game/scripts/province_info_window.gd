@@ -10,19 +10,28 @@ func display_province(
     armies: Array,
     roads: Array,
     province_by_id: Dictionary,
-    countries: Array = []
+    countries: Array = [],
+    pending_orders: Array = []
 ) -> void:
     var country_names: Dictionary = {}
+    var country_colors: Dictionary = {}
     for country: Dictionary in countries:
         var country_name := String(country.get("name", ""))
         if not country_name.is_empty():
             country_names[String(country.get("id", ""))] = country_name
+        var rgb := int(country.get("color_rgb", 0))
+        country_colors[String(country.get("id", ""))] = Color8(
+            (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255
+        )
     _province_id = province.get("id", "")
     var province_name := String(province.get("name", ""))
     $ProvinceName.text = province_name if not province_name.is_empty() else "未知地区"
-    $Body/Terrain.text = "地形：%s" % _terrain_name(
-        province.get("terrain", "plains")
-    )
+    var terrain := String(province.get("terrain", "plains"))
+    var controller_id := String(province.get("owner_id", ""))
+    $Identity/IdentityStrip.color = country_colors.get(controller_id, Color("596579"))
+    $Identity/IdentityLabel.text = _country_name(controller_id, country_names)
+    $Identity/RegionType.text = "首都" if terrain == "capital" else "普通地区"
+    $Body/Terrain.text = "地形：%s" % _terrain_description(terrain)
     $Body/Ownership.text = "法理归属：%s | 实际控制：%s%s" % [
         _country_name(
             province.get("legal_owner_id", province.get("owner_id", "")),
@@ -32,7 +41,7 @@ func display_province(
         " | 已占领" if province.get("occupied", false) else "",
     ]
     _set_metrics(province, armies)
-    _set_roads(roads, province_by_id)
+    _set_roads(roads, pending_orders, province_by_id)
     $Economy.text = "财政收入：%s" % _format_number(
         int(province.get("fiscal_income", 0))
     )
@@ -73,7 +82,7 @@ func _set_metric(card: Control, title: String, value: String, detail := "") -> v
     detail_label.visible = not detail.is_empty()
 
 
-func _set_roads(roads: Array, province_by_id: Dictionary) -> void:
+func _set_roads(roads: Array, pending_orders: Array, province_by_id: Dictionary) -> void:
     var road_connections: Array[String] = []
     for road: Dictionary in roads:
         var other_id := ""
@@ -90,10 +99,27 @@ func _set_roads(roads: Array, province_by_id: Dictionary) -> void:
             other_name,
             _road_level_name(road.get("level", "paved")),
         ])
-    $Body/Roads.text = (
-        "道路：暂无道路" if road_connections.is_empty()
-        else "道路：%s" % "、".join(road_connections)
-    )
+    var pending_connections: Array[String] = []
+    for order_value: Variant in pending_orders:
+        var order: Dictionary = order_value
+        if String(order.get("type", order.get("order_type", ""))) != "road_construction":
+            continue
+        var other_id := ""
+        if String(order.get("province_a", "")) == _province_id:
+            other_id = String(order.get("province_b", ""))
+        elif String(order.get("province_b", "")) == _province_id:
+            other_id = String(order.get("province_a", ""))
+        if not other_id.is_empty():
+            pending_connections.append("%s（待建，剩余%d个月）" % [
+                String(province_by_id.get(other_id, {}).get("name", "未知地区")),
+                int(order.get("remaining_months", 0)),
+            ])
+    var sections: Array[String] = []
+    if not road_connections.is_empty():
+        sections.append("已建：%s" % "、".join(road_connections))
+    if not pending_connections.is_empty():
+        sections.append("工程：%s" % "、".join(pending_connections))
+    $Body/Roads.text = "道路：暂无连接" if sections.is_empty() else "道路：%s" % "；".join(sections)
 
 
 func _on_manage_province_pressed() -> void:
@@ -130,6 +156,13 @@ func _terrain_name(terrain: String) -> String:
             return "森林"
         _:
             return "平原"
+
+
+func _terrain_description(terrain: String) -> String:
+    # docs/current-game-rules.md defines capital terrain as a fixed +50% defense rule.
+    if terrain == "capital":
+        return "首都 · 防守 +50%"
+    return _terrain_name(terrain)
 
 
 func _road_level_name(level: String) -> String:

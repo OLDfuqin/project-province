@@ -6,6 +6,7 @@
 [node name="DiplomacyPage" type="PanelContainer"]
 layout_mode = 2
 theme = ExtResource("2_theme")
+theme_type_variation = &"WorkspacePanel"
 script = ExtResource("1_page")
 
 [node name="Content" type="VBoxContainer" parent="."]
@@ -20,12 +21,17 @@ text = "外交"
 
 [node name="Selection" type="Label" parent="Content"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
+size_flags_horizontal = 0
+theme_type_variation = &"SectionLabel"
 autowrap_mode = 2
 text = "请选择一个国家查看外交操作"
 
 [node name="Countries" type="ScrollContainer" parent="Content"]
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 size_flags_vertical = 3
 
 [node name="Rows" type="VBoxContainer" parent="Content/Countries"]
@@ -39,7 +45,9 @@ layout_mode = 2
 text = "当前没有可交互的国家"
 
 [node name="Actions" type="VBoxContainer" parent="Content"]
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 theme_override_constants/separation = 8
 
 [node name="DeclareWar" type="Button" parent="Content/Actions"]

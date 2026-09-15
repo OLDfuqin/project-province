@@ -49,6 +49,24 @@ func _initialize() -> void:
         push_error("Resize regenerated the visual boundary geometry")
         quit(1)
         return
+    var fitted_occupancy: float = province_map.view_occupancy()
+    if fitted_occupancy < 0.90 or fitted_occupancy > 0.96:
+        push_error("Initial fit did not occupy 90-96%% of the short edge: %.4f" % fitted_occupancy)
+        quit(1)
+        return
+    province_map._zoom = 1.37
+    province_map._pan = Vector2(271.0, 163.0)
+    var logical_center_before: Vector2 = \
+            (province_map.size * 0.5 - province_map._pan) / province_map._zoom
+    province_map.size = Vector2(1280, 720)
+    province_map.call("_initialize_view")
+    var logical_center_after: Vector2 = \
+            (province_map.size * 0.5 - province_map._pan) / province_map._zoom
+    if not is_equal_approx(province_map._zoom, 1.37) or \
+            not logical_center_before.is_equal_approx(logical_center_after):
+        push_error("Resize reset the user zoom or logical map center")
+        quit(1)
+        return
     province_map._pan = Vector2.ZERO
     province_map._zoom = 1.0
     var bridge: Object = ClassDB.instantiate("ProvinceBridge")

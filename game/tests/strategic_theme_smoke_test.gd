@@ -16,7 +16,9 @@ func _initialize() -> void:
         push_error("Metric card did not render its snapshot")
         quit(1)
         return
-    if theme.get_color("font_color", "Label") != Color("e8eef7"):
+    if not theme.get_color("font_color", "Label").is_equal_approx(Color("eee8d9")) or \
+            theme.get_stylebox("panel", "MetricCard") == null or \
+            theme.get_stylebox("normal", "PrimaryButton") == null:
         push_error("Strategic theme tokens are not authoritative")
         quit(1)
         return

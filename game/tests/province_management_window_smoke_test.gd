@@ -15,8 +15,7 @@ func _fail(main_scene: Node, message: String) -> void:
 
 
 func _expected_treasury(main_scene: Control, value: int) -> String:
-    var prefix := "国 " if main_scene.viewport_profile_name() == "compact" else "国库 "
-    return "%s%d" % [prefix, value]
+    return "国库 %d" % value
 
 
 func _click_at(position: Vector2, viewport: Viewport = root) -> void:

@@ -11,11 +11,13 @@ func _initialize() -> void:
     await process_frame
     status.set_snapshot({
         "name": "奥罗里亚", "treasury": 10300, "fiscal_income": 3150,
+        "has_last_maintenance_charge": false,
         "last_maintenance_charge": 500, "recruitable_population": 3400,
     }, {"year": 1000, "month": 1})
     status.set_compact(true)
     status.set_snapshot({
         "name": "奥罗里亚", "treasury": 10400, "fiscal_income": 3200,
+        "has_last_maintenance_charge": true,
         "last_maintenance_charge": 600, "recruitable_population": 3300,
     }, {"year": 1000, "month": 2})
     mode_bar.set_counts(4, 2)
@@ -28,10 +30,10 @@ func _initialize() -> void:
         quit(1)
         return
     for compact_metric: Dictionary in [
-        {"node": "Treasury", "text": "国 10400"},
-        {"node": "Income", "text": "收 3200"},
-        {"node": "Maintenance", "text": "维 600"},
-        {"node": "Recruitable", "text": "招 3300"},
+        {"node": "Treasury", "text": "国库 10400"},
+        {"node": "Income", "text": "收入 3200"},
+        {"node": "Maintenance", "text": "维护 600"},
+        {"node": "Recruitable", "text": "兵员 3300"},
     ]:
         var metric := status.get_node("Margin/Row/%s" % compact_metric["node"]) as Label
         if not metric.visible or metric.text != compact_metric["text"]:
@@ -51,16 +53,16 @@ func _initialize() -> void:
         return
 
     var navigation_row := navigation.get_node("Margin/Row")
-    if navigation.custom_minimum_size.x != 64.0 or \
+    if navigation.custom_minimum_size.x != 96.0 or \
             not navigation_row is VBoxContainer:
-        push_error("Primary navigation must remain a 64px vertical left sidebar")
+        push_error("Primary navigation must remain a readable vertical left sidebar")
         quit(1)
         return
     for child: Node in navigation_row.get_children():
         var button := child as Button
-        if button == null or button.custom_minimum_size != Vector2(32, 32) or \
-                button.text.length() != 1 or button.tooltip_text.is_empty():
-            push_error("Primary navigation must use compact Chinese glyph controls")
+        if button == null or button.custom_minimum_size != Vector2(80, 50) or \
+                button.text.length() < 2 or button.icon == null or button.tooltip_text.is_empty():
+            push_error("Primary navigation must use icon and understandable short-label controls")
             quit(1)
             return
 

@@ -12,11 +12,11 @@ func _ready() -> void:
     show_empty()
 
 
-func show_empty(message: String = "请选择地区或军队") -> void:
+func show_empty(message: String = "尚未选择地区") -> void:
     _clear_active_panel()
     _mode = "empty"
     %Title.text = "战略信息"
-    %Empty.text = message
+    %EmptyTitle.text = message
     %Empty.visible = true
 
 

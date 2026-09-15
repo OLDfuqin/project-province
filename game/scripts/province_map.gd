@@ -1,13 +1,18 @@
 class_name ProvinceMap
 extends Control
 
-const CITY_ICON := preload("res://assets/maps/icons/city.png")
-const CAPITAL_ICON := preload("res://assets/maps/icons/capital.png")
-const PLAINS_ICON := preload("res://assets/maps/icons/terrain_plains.png")
-const FOREST_ICON := preload("res://assets/maps/icons/terrain_forest.png")
-const HILLS_ICON := preload("res://assets/maps/icons/terrain_hills.png")
-const MOUNTAINS_ICON := preload("res://assets/maps/icons/terrain_mountains.png")
-const ARMY_ICON := preload("res://assets/maps/icons/army.png")
+const CITY_ICON := preload("res://assets/maps/strategic/city_overview.svg")
+const CAPITAL_ICON := preload("res://assets/maps/strategic/capital_overview.svg")
+const PLAINS_ICON := preload("res://assets/maps/strategic/terrain_plain.svg")
+const FOREST_ICON := preload("res://assets/maps/strategic/terrain_forest.svg")
+const HILLS_ICON := preload("res://assets/maps/strategic/terrain_hills.svg")
+const MOUNTAINS_ICON := preload("res://assets/maps/strategic/terrain_mountain.svg")
+const ARMY_ICON := preload("res://assets/maps/strategic/soldier_overview.svg")
+const TERRAIN_BASE_TEXTURE := preload("res://assets/maps/strategic/terrain_base_parchment.png")
+const GRASS_PATTERN := preload("res://assets/maps/strategic/pattern_grass.svg")
+const FOREST_PATTERN := preload("res://assets/maps/strategic/pattern_forest.svg")
+const HILLS_PATTERN := preload("res://assets/maps/strategic/pattern_hills.svg")
+const MOUNTAIN_PATTERN := preload("res://assets/maps/strategic/pattern_mountain.svg")
 const VISUAL_GEOMETRY_SCRIPT := preload("res://scripts/ui/visual_map_geometry.gd")
 
 signal province_hovered(province_id: String)
@@ -29,6 +34,10 @@ const TERRAIN_COLORS := {
 }
 const VISUAL_GEOMETRY_SEED := 0x51A7
 const ICON_SAFE_MARGIN_RATIO := 0.06
+const FIT_OCCUPANCY := 0.94
+const MAP_SURFACE_COLOR := Color("101a20")
+const PROVINCE_BORDER_COLOR := Color("ad9161")
+const CONTROL_BORDER_COLOR := Color("d7ae5b")
 
 var _map_size := Vector2(800.0, 500.0)
 var _cell_size := 80.0
@@ -54,17 +63,21 @@ var _auto_advance_path: Array = []
 var _auto_advance_preview_path: Array = []
 var _auto_advance_stop_reason := ""
 var _roads: Array = []
+var _pending_road_orders: Array = []
 var _frontlines: Array = []
 var _armies: Array = []
 var _pan := Vector2.ZERO
 var _zoom := 1.0
 var _dragging := false
 var _view_initialized := false
+var _last_view_size := Vector2.ZERO
 
 
 func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     clip_contents = true
+    texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+    texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
     resized.connect(_initialize_view)
     mouse_exited.connect(_clear_hover)
     _initialize_view()
@@ -345,6 +358,15 @@ func set_roads(roads: Array) -> void:
     queue_redraw()
 
 
+func set_pending_road_orders(orders: Array) -> void:
+    _pending_road_orders.clear()
+    for order_value: Variant in orders:
+        var order: Dictionary = order_value
+        if String(order.get("type", order.get("order_type", ""))) == "road_construction":
+            _pending_road_orders.append(order.duplicate(true))
+    queue_redraw()
+
+
 func set_frontlines(frontlines: Array) -> void:
     _frontlines = frontlines.duplicate(true)
     queue_redraw()
@@ -518,14 +540,93 @@ func _initialize_view() -> void:
     if size.x <= 0.0 or size.y <= 0.0:
         return
     if not _view_initialized:
-        _zoom = clampf(
-            minf((size.x - 48.0) / _map_size.x, (size.y - 72.0) / _map_size.y),
-            MIN_ZOOM,
-            1.2
-        )
-        _pan = (size - _map_size * _zoom) * 0.5
-        _view_initialized = true
+        fit_to_map()
+    elif _last_view_size.x > 0.0 and _last_view_size.y > 0.0:
+        _pan += (size - _last_view_size) * 0.5
+    _last_view_size = size
     queue_redraw()
+
+
+func fit_to_map() -> void:
+    if size.x <= 0.0 or size.y <= 0.0:
+        return
+    var bounds := _visual_bounds()
+    if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
+        return
+    _zoom = clampf(
+        minf(size.x / bounds.size.x, size.y / bounds.size.y) * FIT_OCCUPANCY,
+        MIN_ZOOM,
+        MAX_ZOOM
+    )
+    _pan = size * 0.5 - bounds.get_center() * _zoom
+    _view_initialized = true
+    _last_view_size = size
+    queue_redraw()
+
+
+func _visual_bounds() -> Rect2:
+    var bounds := Rect2()
+    var initialized := false
+    for polygon_value: Variant in _polygons.values():
+        var polygon_bounds := _polygon_bounds(polygon_value)
+        bounds = polygon_bounds if not initialized else bounds.merge(polygon_bounds)
+        initialized = true
+    return bounds
+
+
+func view_occupancy() -> float:
+    var bounds := _visual_bounds()
+    if size.x <= 0.0 or size.y <= 0.0 or bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
+        return 0.0
+    return minf(bounds.size.x, bounds.size.y) * _zoom / minf(size.x, size.y)
+
+
+func _world_uvs(polygon: PackedVector2Array, scale := Vector2.ONE) -> PackedVector2Array:
+    var result := PackedVector2Array()
+    for point: Vector2 in polygon:
+        result.append(Vector2(point.x / _map_size.x, point.y / _map_size.y) * scale)
+    return result
+
+
+func _terrain_pattern(terrain: String) -> Texture2D:
+    match terrain:
+        "forest":
+            return FOREST_PATTERN
+        "hills":
+            return HILLS_PATTERN
+        "mountains":
+            return MOUNTAIN_PATTERN
+        "capital":
+            return null
+        _:
+            return GRASS_PATTERN
+
+
+func _draw_province_material(
+        polygon: PackedVector2Array, province: Dictionary, overlay_color: Color
+) -> void:
+    draw_colored_polygon(polygon, Color.WHITE, _world_uvs(polygon), TERRAIN_BASE_TEXTURE)
+    var pattern := _terrain_pattern(String(province.get("terrain", "plains")))
+    if pattern != null:
+        var pattern_alpha := 0.62 if _map_mode == "terrain" else 0.34
+        draw_colored_polygon(
+            polygon, Color(1.0, 1.0, 1.0, pattern_alpha),
+            _world_uvs(polygon, Vector2(11.25, 11.25)), pattern
+        )
+    var overlay_alpha := 0.72 if _map_mode in ["economy", "military"] else 0.54
+    if _map_mode == "terrain":
+        overlay_alpha = 0.42
+    draw_colored_polygon(
+        polygon, Color(overlay_color.r, overlay_color.g, overlay_color.b, overlay_alpha)
+    )
+
+
+func _draw_route_dashed(route: PackedVector2Array, color: Color, width: float) -> void:
+    for index: int in range(1, route.size()):
+        draw_dashed_line(
+            route[index - 1], route[index], color, width / _zoom,
+            8.0 / _zoom, true
+        )
 
 
 func _province_fill_color(
@@ -584,6 +685,13 @@ func _stationed_manpower_by_province() -> Dictionary:
     return totals
 
 
+func _army_owner_by_id() -> Dictionary:
+    var result: Dictionary = {}
+    for army: Dictionary in _armies:
+        result[String(army.get("id", ""))] = String(army.get("owner_id", ""))
+    return result
+
+
 func _draw() -> void:
     var observed_fills: Dictionary = {}
     var observed_outline_colors: Dictionary = {}
@@ -598,12 +706,13 @@ func _draw() -> void:
         "army_icons": 0,
         "logical_grid_lines": 0,
     }
-    draw_rect(Rect2(Vector2.ZERO, size), Color("182235"))
+    draw_rect(Rect2(Vector2.ZERO, size), MAP_SURFACE_COLOR)
     draw_set_transform(_pan, 0.0, Vector2.ONE * _zoom)
     var icon_layouts := _all_icon_layouts()
     var fiscal_bounds := _fiscal_income_bounds()
     var stationed_manpower := _stationed_manpower_by_province()
     var maximum_manpower := 0
+    var army_owners := _army_owner_by_id()
     for amount: int in stationed_manpower.values():
         maximum_manpower = maxi(maximum_manpower, amount)
 
@@ -623,11 +732,11 @@ func _draw() -> void:
 
         if draw_diagnostics_enabled:
             observed_fills[province_id] = color
-        draw_colored_polygon(polygon, color)
+        _draw_province_material(polygon, province, color)
         var outline := PackedVector2Array(polygon)
         outline.append(polygon[0])
-        var outline_color := Color("d5deed")
-        var outline_width := 2.0
+        var outline_color := PROVINCE_BORDER_COLOR
+        var outline_width := 1.15
         if province_id == _road_start_id:
             outline_color = Color("ffe082")
             outline_width = 5.0
@@ -644,13 +753,15 @@ func _draw() -> void:
             outline_color = Color("4c8dff")
             outline_width = 4.0
         elif province_id == _selected_id:
-            outline_color = Color("d6a64a")
-            outline_width = 4.0
+            outline_color = Color("f0d28a")
+            outline_width = 3.0
         elif province_id == _hovered_id:
             outline_color = Color("e8eef7")
             outline_width = 3.0
         if draw_diagnostics_enabled:
             observed_outline_colors[province_id] = outline_color
+        if province_id == _selected_id:
+            draw_polyline(outline, Color("4b351d"), 6.0 / _zoom, true)
         draw_polyline(outline, outline_color, outline_width / _zoom, true)
         if draw_diagnostics_enabled:
             observation["province_outlines"] = int(observation["province_outlines"]) + 1
@@ -670,6 +781,22 @@ func _draw() -> void:
                 )
                 if draw_diagnostics_enabled:
                     observation["terrain_icons"] = int(observation["terrain_icons"]) + 1
+
+    if _visual_geometry != null:
+        for pair: String in _visual_geometry.adjacency_pairs():
+            var ids := pair.split("|")
+            if ids.size() != 2:
+                continue
+            var first_id := String(ids[0])
+            var second_id := String(ids[1])
+            var first_owner := String(_province_data.get(first_id, {}).get("owner_id", ""))
+            var second_owner := String(_province_data.get(second_id, {}).get("owner_id", ""))
+            if first_owner == second_owner:
+                continue
+            var boundary: PackedVector2Array = _visual_geometry.shared_boundary(first_id, second_id)
+            if boundary.size() >= 2:
+                draw_polyline(boundary, Color("392d22"), 4.2 / _zoom, true)
+                draw_polyline(boundary, CONTROL_BORDER_COLOR, 2.0 / _zoom, true)
 
     if logical_grid_debug_enabled:
         var logical_grid_color := Color(0.35, 0.9, 0.95, 0.58)
@@ -698,11 +825,19 @@ func _draw() -> void:
         var route := road_route_for(province_a, province_b)
         if route.is_empty():
             continue
-        draw_polyline(route, Color("f4d35e"), 7.0 / _zoom, true)
-        draw_circle(route[0], 6.0 / _zoom, Color("fff3b0"))
-        draw_circle(route[-1], 6.0 / _zoom, Color("fff3b0"))
+        draw_polyline(route, Color("3b2b18"), 6.0 / _zoom, true)
+        draw_polyline(route, Color("d7ae5b"), 3.0 / _zoom, true)
+        draw_circle(route[0], 3.5 / _zoom, Color("f0d28a"))
+        draw_circle(route[-1], 3.5 / _zoom, Color("f0d28a"))
         if draw_diagnostics_enabled:
             observation["road_lines"] = int(observation["road_lines"]) + 1
+
+    for order: Dictionary in _pending_road_orders:
+        var pending_route := road_route_for(
+            String(order.get("province_a", "")), String(order.get("province_b", ""))
+        )
+        if not pending_route.is_empty():
+            _draw_route_dashed(pending_route, Color("f0d28a"), 2.2)
 
     for frontline: Dictionary in _frontlines:
         var province_a: String = frontline.get("province_a", "")
@@ -755,34 +890,41 @@ func _draw() -> void:
 
     for province_id: String in _polygons:
         var icon_layout: Dictionary = icon_layouts[province_id]
-        for army_rect: Rect2 in icon_layout.get("army_rects", []):
+        var army_ids: Array = icon_layout.get("army_ids", [])
+        var army_rects: Array = icon_layout.get("army_rects", [])
+        for army_index: int in army_rects.size():
+            var army_rect: Rect2 = army_rects[army_index]
+            var army_id := String(army_ids[army_index]) if army_index < army_ids.size() else ""
+            var badge_color: Color = _country_colors.get(
+                String(army_owners.get(army_id, "")), Color("4a4d4c")
+            )
+            var badge_inset := 0.7 / _zoom
+            var badge_rect := army_rect.grow(-badge_inset)
+            draw_rect(badge_rect, badge_color.darkened(0.48), true)
+            draw_rect(badge_rect, Color("f0d28a"), false, 0.55 / _zoom)
             draw_texture_rect(ARMY_ICON, army_rect, false)
             if draw_diagnostics_enabled:
                 observation["army_icons"] = int(observation["army_icons"]) + 1
         var overflow_count := int(icon_layout.get("overflow_count", 0))
         if overflow_count > 0:
             var overflow_rect: Rect2 = icon_layout["overflow_rect"]
-            draw_rect(overflow_rect, Color(0.05, 0.08, 0.12, 0.92), true)
+            var overflow_tag := Rect2(
+                Vector2(overflow_rect.end.x - 18.0 / _zoom, overflow_rect.position.y),
+                Vector2(18.0 / _zoom, overflow_rect.size.y)
+            )
+            draw_rect(overflow_tag, Color(0.02, 0.04, 0.055, 0.98), true)
+            draw_rect(overflow_tag, Color("f0d28a"), false, 0.8 / _zoom)
             draw_string(
                 ThemeDB.fallback_font,
-                overflow_rect.position + Vector2(0.0, overflow_rect.size.y * 0.72),
+                overflow_tag.position + Vector2(0.0, overflow_tag.size.y * 0.72),
                 "+%d" % overflow_count,
                 HORIZONTAL_ALIGNMENT_CENTER,
-                overflow_rect.size.x,
-                7,
-                Color.WHITE
+                overflow_tag.size.x,
+                maxi(8, int(round(9.0 / _zoom))),
+                Color("fff0bf")
             )
 
     draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-    draw_string(
-        ThemeDB.fallback_font,
-        Vector2(16, size.y - 14),
-        "左键选择 · 中键拖动 · 滚轮缩放",
-        HORIZONTAL_ALIGNMENT_LEFT,
-        -1,
-        15,
-        Color("aebbd0")
-    )
     if _auto_advance_path.size() >= 2:
         _draw_advance_legend()
     _draw_observation = observation if draw_diagnostics_enabled else {}

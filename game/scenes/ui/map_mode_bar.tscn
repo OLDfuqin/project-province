@@ -1,7 +1,15 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/map_mode_bar.gd" id="1_script"]
 [ext_resource type="Theme" path="res://themes/strategic_ui_theme.tres" id="2_theme"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_orders.svg" id="3_orders"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_notification.svg" id="4_notification"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_report.svg" id="5_report"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_flag.svg" id="6_political"]
+[ext_resource type="Texture2D" path="res://assets/maps/strategic/terrain_mountain.svg" id="7_terrain"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_finance.svg" id="8_economy"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_military.svg" id="9_military"]
+[ext_resource type="Texture2D" path="res://assets/ui/strategic/icon_road.svg" id="10_road"]
 
 [node name="MapModeBar" type="PanelContainer"]
 custom_minimum_size = Vector2(0, 44)
@@ -23,6 +31,9 @@ theme_override_constants/separation = 8
 [node name="Political" type="Button" parent="Margin/Row"]
 layout_mode = 2
 toggle_mode = true
+icon = ExtResource("6_political")
+expand_icon = true
+icon_max_width = 18
 text = "政治"
 tooltip_text = "切换到政治地图"
 metadata/map_mode = "political"
@@ -30,6 +41,9 @@ metadata/map_mode = "political"
 [node name="Terrain" type="Button" parent="Margin/Row"]
 layout_mode = 2
 toggle_mode = true
+icon = ExtResource("7_terrain")
+expand_icon = true
+icon_max_width = 18
 text = "地形"
 tooltip_text = "切换到地形地图"
 metadata/map_mode = "terrain"
@@ -37,6 +51,9 @@ metadata/map_mode = "terrain"
 [node name="Economy" type="Button" parent="Margin/Row"]
 layout_mode = 2
 toggle_mode = true
+icon = ExtResource("8_economy")
+expand_icon = true
+icon_max_width = 18
 text = "经济"
 tooltip_text = "切换到经济地图"
 metadata/map_mode = "economy"
@@ -44,6 +61,9 @@ metadata/map_mode = "economy"
 [node name="Military" type="Button" parent="Margin/Row"]
 layout_mode = 2
 toggle_mode = true
+icon = ExtResource("9_military")
+expand_icon = true
+icon_max_width = 18
 text = "军事"
 tooltip_text = "切换到军事地图"
 metadata/map_mode = "military"
@@ -51,9 +71,18 @@ metadata/map_mode = "military"
 [node name="Roads" type="Button" parent="Margin/Row"]
 layout_mode = 2
 toggle_mode = true
+icon = ExtResource("10_road")
+expand_icon = true
+icon_max_width = 18
 text = "道路"
 tooltip_text = "切换到道路地图"
 metadata/map_mode = "roads"
+
+[node name="FitMap" type="Button" parent="Margin/Row"]
+layout_mode = 2
+text = "适应全图"
+tooltip_text = "将完整地图重新置于可视区域中央"
+metadata/action = "fit_map"
 
 [node name="Spacer" type="Control" parent="Margin/Row"]
 layout_mode = 2
@@ -61,18 +90,27 @@ size_flags_horizontal = 3
 
 [node name="PendingOrders" type="Button" parent="Margin/Row"]
 layout_mode = 2
+icon = ExtResource("3_orders")
+expand_icon = true
+icon_max_width = 20
 text = "待执行订单 0"
 tooltip_text = "打开待执行订单抽屉"
 metadata/drawer = "orders"
 
 [node name="Notifications" type="Button" parent="Margin/Row"]
 layout_mode = 2
+icon = ExtResource("4_notification")
+expand_icon = true
+icon_max_width = 20
 text = "通知 0"
 tooltip_text = "打开通知抽屉"
 metadata/drawer = "notifications"
 
 [node name="TurnReport" type="Button" parent="Margin/Row"]
 layout_mode = 2
+icon = ExtResource("5_report")
+expand_icon = true
+icon_max_width = 20
 text = "回合报告"
 tooltip_text = "打开回合报告抽屉"
 metadata/drawer = "turn_report"

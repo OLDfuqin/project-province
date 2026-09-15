@@ -95,6 +95,7 @@ func _ready() -> void:
     apply_viewport_profile(get_viewport().get_visible_rect().size)
     _refresh_map_data()
     _refresh_strategic_ui()
+    province_map.fit_to_map.call_deferred()
     _record_event("场景已加载：%d 个地区" % province_by_id.size())
 
 
@@ -117,6 +118,7 @@ func _exit_tree() -> void:
 
 func _connect_strategic_ui() -> void:
     global_status_bar.advance_turn_requested.connect(_on_advance_turn_pressed)
+    map_mode_bar.fit_map_requested.connect(province_map.fit_to_map)
     primary_navigation.destination_requested.connect(_on_navigation_requested)
     map_mode_bar.map_mode_requested.connect(_on_map_mode_requested)
     map_mode_bar.drawer_requested.connect(_on_drawer_requested)
@@ -213,13 +215,17 @@ func viewport_profile_name() -> String:
 
 
 func apply_viewport_profile(viewport_size: Vector2) -> void:
-    var navigation_width := 64.0
+    var navigation_width := 96.0
     var inspector_width := 360.0
+    var status_height := 72.0
+    var mode_height := 60.0
     var compact := false
     if viewport_size.x < 1400.0 or viewport_size.y < 850.0:
         _viewport_profile = "compact"
-        navigation_width = 56.0
+        navigation_width = 88.0
         inspector_width = 320.0
+        status_height = 64.0
+        mode_height = 52.0
         compact = true
     elif viewport_size.x >= 1800.0:
         _viewport_profile = "wide"
@@ -229,6 +235,8 @@ func apply_viewport_profile(viewport_size: Vector2) -> void:
 
     primary_navigation.custom_minimum_size.x = navigation_width
     context_inspector.custom_minimum_size.x = inspector_width
+    global_status_bar.custom_minimum_size.y = status_height
+    map_mode_bar.custom_minimum_size.y = mode_height
     global_status_bar.set_compact(compact)
     _apply_accessibility_presentation()
     _queue_overlay_geometry_update()
@@ -510,7 +518,7 @@ func _close_transient_workspace() -> void:
 
 
 func _empty_inspector_message() -> String:
-    return "请选择地区查看摘要，双击地区进行管理"
+    return "尚未选择地区"
 
 
 func _on_province_clicked(province_id: String) -> void:
@@ -530,7 +538,8 @@ func _show_province_summary(province: Dictionary) -> void:
         bridge.get_army_summaries(),
         bridge.get_road_summaries(),
         province_by_id,
-        bridge.get_country_summaries()
+        bridge.get_country_summaries(),
+        _player_pending_orders()
     )
 
 
@@ -1033,6 +1042,7 @@ func _on_build_road_pressed() -> void:
         result.get("cost", 0), result.get("remaining_months", 1),
     ])
     _refresh_pending_orders()
+    _refresh_map_data()
     _clear_road_selection()
     if workspace_mode == WorkspaceMode.ROAD_CONSTRUCTION:
         road_construction_window.reset_selection("已下单，道路将在下月项目阶段完成")
@@ -1221,6 +1231,7 @@ func _refresh_map_data() -> void:
         province_by_id[String(province.get("id", ""))] = province
     province_map.set_scenario_data(provinces, countries)
     province_map.set_roads(bridge.get_road_summaries())
+    province_map.set_pending_road_orders(_player_pending_orders())
     province_map.set_frontlines(bridge.get_frontline_edges())
     province_map.set_armies(bridge.get_army_summaries())
     _refresh_interaction_highlights()

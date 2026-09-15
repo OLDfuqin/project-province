@@ -81,6 +81,9 @@ func display_province(
 ) -> void:
     _province_id = province.get("id", "")
     _destination_id = ""
+    $Status.text = "%s · 地区管理" % String(
+        province.get("name", province.get("display_name", "未知地区"))
+    )
     $Tabs/Overview/ProvinceName.text = province.get("name", _province_id)
     $Tabs/Overview/ProvinceSummary.text = "总人口：%d | 可招募士兵：%d | 经济：%d | 财政收入：%d" % [
         province.get("population", 0),
@@ -102,10 +105,14 @@ func display_province(
     _clear_destination()
     set_reachable_targets([])
     set_advance_target("", "")
-    $Status.text = (
-        "国库负债：禁止新建征兵、修路和研究订单"
-        if _player_treasury < 0 else "请选择地区操作"
+    var province_display_name := String(
+        province.get("name", province.get("display_name", "未知地区"))
     )
+    $Status.text = "%s · %s" % [
+        province_display_name,
+        "国库负债，禁止新建征兵、修路和研究订单"
+        if _player_treasury < 0 else "地区管理",
+    ]
     set_active_tab("overview")
     visible = true
 

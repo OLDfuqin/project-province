@@ -26,6 +26,8 @@ func _clear_rows(rows: VBoxContainer) -> void:
 func _army_row(index: int, army: Dictionary) -> Label:
 	var row := Label.new()
 	row.name = "Army%d" % index
+	row.theme_type_variation = &"DataRow"
+	row.custom_minimum_size = Vector2(720, 52)
 	row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.text = "%s：%s 人\n%s%s" % [
 		_display_name(army, "未命名军队"),
@@ -39,6 +41,8 @@ func _army_row(index: int, army: Dictionary) -> Label:
 func _order_row(index: int, order: Dictionary) -> Label:
 	var row := Label.new()
 	row.name = "Order%d" % index
+	row.theme_type_variation = &"DataRow"
+	row.custom_minimum_size = Vector2(720, 42)
 	row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.text = "%s%s" % [_display_name(order, "待执行订单"), _status_suffix(order)]
 	return row

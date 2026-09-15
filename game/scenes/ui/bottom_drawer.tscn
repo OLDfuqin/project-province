@@ -42,9 +42,10 @@ text = "战略信息"
 
 [node name="Close" type="Button" parent="Panel/Body/Header"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(36, 32)
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
-text = "关闭"
+text = "×"
+tooltip_text = "关闭抽屉"
 
 [node name="Orders" type="ScrollContainer" parent="Panel/Body"]
 unique_name_in_owner = true
