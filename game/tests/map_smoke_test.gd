@@ -1,6 +1,31 @@
 extends SceneTree
 
 
+func _rect_is_inside_region(province_map: Control, province_id: String, rect: Rect2) -> bool:
+    for corner: Vector2 in [
+        rect.position,
+        Vector2(rect.end.x, rect.position.y),
+        rect.end,
+        Vector2(rect.position.x, rect.end.y),
+    ]:
+        if not province_map.visual_region_contains_point(province_id, corner):
+            return false
+    return true
+
+
+func _armies(province_id: String, count: int, prefix: String) -> Array:
+    var result: Array = []
+    for index: int in range(count, 0, -1):
+        result.append({
+            "id": "%s_%02d" % [prefix, index],
+            "owner_id": "auroria",
+            "province_id": province_id,
+            "manpower": 100,
+            "movement_points": 0,
+        })
+    return result
+
+
 func _initialize() -> void:
     var map_script := load("res://scripts/province_map.gd")
     var province_map: Control = map_script.new()
@@ -10,6 +35,40 @@ func _initialize() -> void:
         province_map.free()
         quit(1)
         return
+    if not province_map.has_method("visual_geometry_signature") or \
+            not province_map.has_method("visual_validation_report") or \
+            not province_map.visual_validation_report().get("valid", false):
+        push_error("ProvinceMap did not expose validated deterministic visual geometry")
+        province_map.free()
+        quit(1)
+        return
+    var first_signature: String = province_map.visual_geometry_signature()
+    province_map.size = Vector2(1600, 1000)
+    province_map.call("_initialize_view")
+    if province_map.visual_geometry_signature() != first_signature:
+        push_error("Resize regenerated the visual boundary geometry")
+        quit(1)
+        return
+    var fitted_occupancy: float = province_map.view_occupancy()
+    if fitted_occupancy < 0.90 or fitted_occupancy > 0.96:
+        push_error("Initial fit did not occupy 90-96%% of the short edge: %.4f" % fitted_occupancy)
+        quit(1)
+        return
+    province_map._zoom = 1.37
+    province_map._pan = Vector2(271.0, 163.0)
+    var logical_center_before: Vector2 = \
+            (province_map.size * 0.5 - province_map._pan) / province_map._zoom
+    province_map.size = Vector2(1280, 720)
+    province_map.call("_initialize_view")
+    var logical_center_after: Vector2 = \
+            (province_map.size * 0.5 - province_map._pan) / province_map._zoom
+    if not is_equal_approx(province_map._zoom, 1.37) or \
+            not logical_center_before.is_equal_approx(logical_center_after):
+        push_error("Resize reset the user zoom or logical map center")
+        quit(1)
+        return
+    province_map._pan = Vector2.ZERO
+    province_map._zoom = 1.0
     var bridge: Object = ClassDB.instantiate("ProvinceBridge")
     var data_directory := ProjectSettings.globalize_path("res://data")
     if bridge == null or not bridge.load_scenario(data_directory, 1000, 1):
@@ -74,9 +133,9 @@ func _initialize() -> void:
     ])
     var ordinary_layout: Dictionary = province_map.icon_layout_for_province("cell_1_1")
     if ordinary_layout.get("city_kind", "") != "city" or \
-            ordinary_layout.get("city_rect") != Rect2(32, 672, 16, 16) or \
+            ordinary_layout.get("city_rect").size != Vector2(16, 16) or \
             ordinary_layout.get("terrain_kind", "") != "plains" or \
-            ordinary_layout.get("terrain_rect") != Rect2(0, 640, 16, 16) or \
+            ordinary_layout.get("terrain_rect").size != Vector2(16, 16) or \
             ordinary_layout.get("army_rects", []) != [] or \
             int(ordinary_layout.get("overflow_count", -1)) != 0:
         push_error("Ordinary province icon layout is incorrect: %s" % ordinary_layout)
@@ -85,31 +144,29 @@ func _initialize() -> void:
 
     var capital_layout: Dictionary = province_map.icon_layout_for_province("capital_auroria")
     if capital_layout.get("city_kind", "") != "capital" or \
-            capital_layout.get("city_rect") != Rect2(148, 548, 24, 24) or \
+            capital_layout.get("city_rect").size != Vector2(24, 24) or \
             capital_layout.has("terrain_kind") or capital_layout.has("terrain_rect"):
         push_error("Capital icon layout is incorrect: %s" % capital_layout)
         quit(1)
         return
 
-    var crowded_armies: Array = []
-    for index: int in range(18, 0, -1):
-        crowded_armies.append({
-            "id": "army_%02d" % index,
-            "owner_id": "auroria",
-            "province_id": "cell_1_1",
-            "manpower": 100,
-            "movement_points": 0,
-        })
-    province_map.set_armies(crowded_armies)
+    province_map.set_armies(_armies("cell_1_1", 15, "army"))
     ordinary_layout = province_map.icon_layout_for_province("cell_1_1")
     var army_rects: Array = ordinary_layout.get("army_rects", [])
-    if army_rects.size() != 14 or \
-            army_rects[0] != Rect2(56, 640, 8, 16) or \
-            army_rects[1] != Rect2(64, 640, 8, 16) or \
-            army_rects[2] != Rect2(72, 640, 8, 16) or \
-            army_rects[3] != Rect2(56, 656, 8, 16) or \
-            ordinary_layout.get("overflow_rect") != Rect2(72, 704, 8, 16) or \
-            int(ordinary_layout.get("overflow_count", 0)) != 4 or \
+    if army_rects.size() != 15 or int(ordinary_layout.get("overflow_count", -1)) != 0:
+        push_error("Full 3x5 ordinary army slots were not preserved: %s" % ordinary_layout)
+        quit(1)
+        return
+    for rect_value: Variant in army_rects:
+        if not _rect_is_inside_region(province_map, "cell_1_1", rect_value):
+            push_error("Full ordinary army slot escaped its display polygon: %s" % rect_value)
+            quit(1)
+            return
+
+    province_map.set_armies(_armies("cell_1_1", 18, "army"))
+    ordinary_layout = province_map.icon_layout_for_province("cell_1_1")
+    army_rects = ordinary_layout.get("army_rects", [])
+    if army_rects.size() != 14 or int(ordinary_layout.get("overflow_count", 0)) != 4 or \
             ordinary_layout.get("army_ids", []) != [
                 "army_01", "army_02", "army_03", "army_04", "army_05", "army_06",
                 "army_07", "army_08", "army_09", "army_10", "army_11", "army_12",
@@ -118,22 +175,77 @@ func _initialize() -> void:
         push_error("Army icon layout, sorting or overflow is incorrect: %s" % ordinary_layout)
         quit(1)
         return
+    for rect_value: Variant in army_rects + [ordinary_layout.get("overflow_rect")]:
+        var rect: Rect2 = rect_value
+        if not _rect_is_inside_region(province_map, "cell_1_1", rect):
+            push_error("Overflow ordinary army slot escaped its display polygon: %s" % rect)
+            quit(1)
+            return
 
-    var capital_armies: Array = []
-    for index: int in range(32, 0, -1):
-        capital_armies.append({
-            "id": "capital_army_%02d" % index,
-            "owner_id": "auroria",
-            "province_id": "capital_auroria",
-            "manpower": 100,
-            "movement_points": 0,
-        })
-    province_map.set_armies(capital_armies)
+    province_map.set_armies(_armies("capital_auroria", 30, "capital_army"))
+    capital_layout = province_map.icon_layout_for_province("capital_auroria")
+    if capital_layout.get("army_rects", []).size() != 30 or \
+            int(capital_layout.get("overflow_count", -1)) != 0:
+        push_error("Full 3x10 capital army slots were not preserved: %s" % capital_layout)
+        quit(1)
+        return
+    for rect_value: Variant in capital_layout.get("army_rects", []):
+        if not _rect_is_inside_region(province_map, "capital_auroria", rect_value):
+            push_error("Full capital army slot escaped its display polygon: %s" % rect_value)
+            quit(1)
+            return
+
+    province_map.set_armies(_armies("capital_auroria", 32, "capital_army"))
     capital_layout = province_map.icon_layout_for_province("capital_auroria")
     if capital_layout.get("army_rects", []).size() != 29 or \
-            capital_layout.get("overflow_rect") != Rect2(232, 624, 8, 16) or \
             int(capital_layout.get("overflow_count", 0)) != 3:
         push_error("Capital army icon capacity is incorrect: %s" % capital_layout)
+        quit(1)
+        return
+    for rect_value: Variant in capital_layout.get("army_rects", []) + [
+        capital_layout.get("overflow_rect")
+    ]:
+        if not _rect_is_inside_region(province_map, "capital_auroria", rect_value):
+            push_error("Overflow capital army slot escaped its display polygon: %s" % rect_value)
+            quit(1)
+            return
+
+    var all_provinces: Array = bridge.get_province_summaries()
+    province_map.set_scenario_data(all_provinces, [{
+        "id": "auroria", "color_rgb": 0xCC4444,
+    }])
+    var all_full_slot_armies: Array = []
+    for province: Dictionary in all_provinces:
+        var province_id := String(province.get("id", ""))
+        var capacity := 30 if province_id.begins_with("capital_") else 15
+        all_full_slot_armies.append_array(_armies(province_id, capacity, province_id))
+    province_map.set_armies(all_full_slot_armies)
+    for province: Dictionary in all_provinces:
+        var province_id := String(province.get("id", ""))
+        var capacity := 30 if province_id.begins_with("capital_") else 15
+        var layout: Dictionary = province_map.icon_layout_for_province(province_id)
+        if layout.get("army_rects", []).size() != capacity or \
+                int(layout.get("overflow_count", -1)) != 0:
+            push_error("A full icon grid lost slots in %s: %s" % [province_id, layout])
+            quit(1)
+            return
+        var safety_rects: Array = [layout.get("city_rect")]
+        if layout.has("terrain_rect"):
+            safety_rects.append(layout["terrain_rect"])
+        safety_rects.append_array(layout.get("army_rects", []))
+        for rect_value: Variant in safety_rects:
+            if not _rect_is_inside_region(province_map, province_id, rect_value):
+                push_error("Icon escaped the display polygon in %s: %s" % [
+                    province_id, rect_value,
+                ])
+                quit(1)
+                return
+
+    var road_route: PackedVector2Array = province_map.road_route_for(
+        "capital_auroria", "cell_2_1"
+    )
+    if road_route.size() != 3:
+        push_error("ProvinceMap road display route did not use a real shared boundary")
         quit(1)
         return
 

@@ -12,6 +12,25 @@ theme = ExtResource("3_theme")
 theme_override_constants/separation = 10
 script = ExtResource("1_info")
 
+[node name="Identity" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="IdentityStrip" type="ColorRect" parent="Identity"]
+custom_minimum_size = Vector2(44, 22)
+layout_mode = 2
+color = Color(0.35, 0.4, 0.48, 1)
+
+[node name="IdentityLabel" type="Label" parent="Identity"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "无主地区"
+
+[node name="RegionType" type="Label" parent="Identity"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.847059, 0.682353, 0.356863, 1)
+text = "普通地区"
+
 [node name="ProvinceName" type="Label" parent="."]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
@@ -56,7 +75,9 @@ autowrap_mode = 2
 layout_mode = 2
 
 [node name="ManageProvince" type="Button" parent="Body"]
+custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
+theme_type_variation = &"PrimaryButton"
 text = "管理地区"
 tooltip_text = "打开该地区的管理面板"
 

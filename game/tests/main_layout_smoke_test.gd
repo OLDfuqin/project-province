@@ -232,15 +232,15 @@ func _initialize() -> void:
     for profile: Dictionary in [
         {
             "size": Vector2(1280, 720), "name": "compact",
-            "navigation_width": 56.0, "inspector_width": 320.0,
+            "navigation_width": 88.0, "inspector_width": 320.0,
         },
         {
             "size": Vector2(1440, 900), "name": "standard",
-            "navigation_width": 64.0, "inspector_width": 360.0,
+            "navigation_width": 96.0, "inspector_width": 360.0,
         },
         {
             "size": Vector2(1920, 1080), "name": "wide",
-            "navigation_width": 64.0, "inspector_width": 420.0,
+            "navigation_width": 96.0, "inspector_width": 420.0,
         },
     ]:
         var responsive_error := await _assert_responsive_shell(
@@ -277,7 +277,7 @@ func _initialize() -> void:
     var theme := load("res://themes/strategic_ui_theme.tres") as Theme
     var focus_style := theme.get_stylebox("focus", "Button") as StyleBoxFlat
     var disabled_style := theme.get_stylebox("disabled", "Button") as StyleBoxFlat
-    var gold := Color("d6a64a")
+    var gold := Color("f0d28a")
     if focus_style == null or focus_style.border_width_left != 2 or \
             focus_style.border_width_top != 2 or \
             not is_equal_approx(focus_style.border_color.r, gold.r) or \
@@ -488,6 +488,10 @@ func _initialize() -> void:
         return
 
     mode_bar.get_node("Margin/Row/TurnReport").pressed.emit()
+    province_map._zoom = 1.31
+    province_map._pan = Vector2(244.0, 177.0)
+    var camera_zoom_before: float = province_map._zoom
+    var camera_pan_before: Vector2 = province_map._pan
     advance_turn.pressed.emit()
     await process_frame
     await process_frame
@@ -496,6 +500,10 @@ func _initialize() -> void:
             not main_scene._latest_event_message.contains("财政收入") or \
             not turn_report.text.contains("财政收入"):
         _fail(main_scene, "Next turn did not refresh the visible turn report")
+        return
+    if not is_equal_approx(province_map._zoom, camera_zoom_before) or \
+            not province_map._pan.is_equal_approx(camera_pan_before):
+        _fail(main_scene, "Next turn refresh reset the user's map camera")
         return
 
     drawer.get_node("Panel/Body/Header/Close").pressed.emit()

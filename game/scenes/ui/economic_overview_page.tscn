@@ -6,6 +6,7 @@
 [node name="EconomicOverviewPage" type="PanelContainer"]
 layout_mode = 2
 theme = ExtResource("2_theme")
+theme_type_variation = &"WorkspacePanel"
 script = ExtResource("1_page")
 
 [node name="Content" type="VBoxContainer" parent="."]
@@ -20,7 +21,10 @@ text = "经济概况"
 
 [node name="NetIncome" type="Label" parent="Content"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
+size_flags_horizontal = 0
+theme_type_variation = &"SectionLabel"
 text = "尚未提供经济快照"
 
 [node name="ProvincesTitle" type="Label" parent="Content"]
@@ -33,8 +37,9 @@ size_flags_vertical = 3
 
 [node name="Rows" type="VBoxContainer" parent="Content/Provinces"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 0
 theme_override_constants/separation = 8
 
 [node name="Empty" type="Label" parent="Content/Provinces/Rows"]

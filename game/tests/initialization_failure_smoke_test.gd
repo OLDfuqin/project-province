@@ -11,11 +11,12 @@ func _fail(scene: Control, message: String) -> void:
 func _assert_failed_initialization(scene: Control, expected: String) -> String:
     var advance := scene.get_node("Shell/Layout/GlobalStatusBar/Margin/Row/AdvanceTurn") as Button
     var inspector := scene.get_node("Shell/Layout/MainRow/ContextInspector")
-    var empty := inspector.get_node("Body/ScrollContainer/Content/Empty") as Label
+    var empty := inspector.get_node("Body/ScrollContainer/Content/Empty") as VBoxContainer
+    var empty_title := empty.get_node("EmptyTitle") as Label
     var map := scene.get_node("Shell/Layout/MainRow/MapPanel/ProvinceMap") as Control
     if not scene.initialization_error().contains(expected):
         return "Initialization did not expose the expected Chinese failure"
-    if not empty.is_visible_in_tree() or not empty.text.contains(expected):
+    if not empty.is_visible_in_tree() or not empty_title.text.contains(expected):
         return "Initialization failure was not visible in the inspector"
     if not advance.disabled or not advance.tooltip_text.contains(expected):
         return "Next turn remained available after initialization failed"

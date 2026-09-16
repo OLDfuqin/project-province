@@ -165,6 +165,12 @@ func _initialize() -> void:
         return
     render_map.set("draw_diagnostics_enabled", true)
     var no_layers := await _observe_draw(render_map)
+    render_map.set("logical_grid_debug_enabled", true)
+    var with_logical_grid := await _observe_draw(render_map)
+    if with_logical_grid.get("logical_grid_lines", 0) != 20:
+        _fail(render_viewport, "Logical 9x9 debug overlay was not independently available")
+        return
+    render_map.set("logical_grid_debug_enabled", false)
     render_map.set_roads([{"province_a": "cell_1_1", "province_b": "cell_1_2"}])
     var with_road := await _observe_draw(render_map)
     if no_layers.get("road_lines", -1) != 0 or with_road.get("road_lines", 0) != 1:

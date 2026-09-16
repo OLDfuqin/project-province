@@ -6,6 +6,7 @@
 [node name="TechnologyPage" type="PanelContainer"]
 layout_mode = 2
 theme = ExtResource("2_theme")
+theme_type_variation = &"WorkspacePanel"
 script = ExtResource("1_page")
 
 [node name="Content" type="VBoxContainer" parent="."]
@@ -20,20 +21,28 @@ text = "科技"
 
 [node name="Pending" type="Label" parent="Content"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
+size_flags_horizontal = 0
+theme_type_variation = &"SectionLabel"
 text = "当前没有研究订单"
 
 [node name="Tracks" type="VBoxContainer" parent="Content"]
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 size_flags_vertical = 3
-theme_override_constants/separation = 8
+theme_override_constants/separation = 12
 
 [node name="Economy" type="HBoxContainer" parent="Content/Tracks"]
+custom_minimum_size = Vector2(720, 56)
 layout_mode = 2
+theme_override_constants/separation = 16
 
 [node name="Name" type="Label" parent="Content/Tracks/Economy"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"DataRow"
 text = "经济"
 
 [node name="Level" type="Label" parent="Content/Tracks/Economy"]
@@ -41,16 +50,20 @@ layout_mode = 2
 text = "等级 0"
 
 [node name="Research" type="Button" parent="Content/Tracks/Economy"]
+custom_minimum_size = Vector2(160, 0)
 layout_mode = 2
 disabled = true
 text = "研究（0）"
 
 [node name="Military" type="HBoxContainer" parent="Content/Tracks"]
+custom_minimum_size = Vector2(720, 56)
 layout_mode = 2
+theme_override_constants/separation = 16
 
 [node name="Name" type="Label" parent="Content/Tracks/Military"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"DataRow"
 text = "军事"
 
 [node name="Level" type="Label" parent="Content/Tracks/Military"]
@@ -58,16 +71,20 @@ layout_mode = 2
 text = "等级 0"
 
 [node name="Research" type="Button" parent="Content/Tracks/Military"]
+custom_minimum_size = Vector2(160, 0)
 layout_mode = 2
 disabled = true
 text = "研究（0）"
 
 [node name="Roads" type="HBoxContainer" parent="Content/Tracks"]
+custom_minimum_size = Vector2(720, 56)
 layout_mode = 2
+theme_override_constants/separation = 16
 
 [node name="Name" type="Label" parent="Content/Tracks/Roads"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"DataRow"
 text = "道路"
 
 [node name="Level" type="Label" parent="Content/Tracks/Roads"]
@@ -75,6 +92,7 @@ layout_mode = 2
 text = "等级 0"
 
 [node name="Research" type="Button" parent="Content/Tracks/Roads"]
+custom_minimum_size = Vector2(160, 0)
 layout_mode = 2
 disabled = true
 text = "研究（0）"

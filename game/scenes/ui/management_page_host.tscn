@@ -35,7 +35,7 @@ text = "国家管理"
 [node name="Back" type="Button" parent="Pages/Header"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "返回"
+text = "← 返回地图"
 tooltip_text = "返回战略地图"
 
 [node name="Country" parent="Pages" instance=ExtResource("3_country")]

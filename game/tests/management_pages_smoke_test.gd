@@ -66,7 +66,10 @@ func _initialize() -> void:
 		return
 
 	host.get_node("Pages/Economy").set_snapshot(
-		{"treasury": 10300, "fiscal_income": 3150, "last_maintenance_charge": 500},
+		{
+			"treasury": 10300, "fiscal_income": 3150,
+			"last_maintenance_charge": 500, "has_last_maintenance_charge": true,
+		},
 		[{"name": "北境", "fiscal_income": 1200}, {"name": "西境", "fiscal_income": 900}]
 	)
 	host.open_page("economy")
@@ -74,6 +77,14 @@ func _initialize() -> void:
 	var first_province := host.get_node("Pages/Economy/Content/Provinces/Rows/Province0") as Label
 	if not net_income.text.contains("2650") or not first_province.text.contains("北境"):
 		_fail(host, "Economic page did not derive display totals from the supplied snapshot")
+		return
+	host.get_node("Pages/Economy").set_snapshot(
+		{"fiscal_income": 3150, "last_maintenance_charge": 0,
+		 "has_last_maintenance_charge": false}, []
+	)
+	if not net_income.text.contains("上月维护：暂无记录") or \
+			not net_income.text.contains("净收入：暂无记录"):
+		_fail(host, "Economic page invented a maintenance value when no record exists")
 		return
 	for scroll_path: String in [
 		"Pages/Country/Content", "Pages/Military/Content/Armies",

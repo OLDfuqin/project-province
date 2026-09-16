@@ -5,8 +5,11 @@ extends PanelContainer
 func set_snapshot(country: Dictionary, provinces: Array) -> void:
 	var income := int(country.get("fiscal_income", 0))
 	var maintenance := int(country.get("last_maintenance_charge", 0))
-	%NetIncome.text = "财政收入：%s\n维护费：%s\n净收入：%s" % [
-		str(income), str(maintenance), str(income - maintenance),
+	var has_maintenance := bool(country.get("has_last_maintenance_charge", false))
+	%NetIncome.text = "财政收入：%s\n上月维护：%s\n净收入：%s" % [
+		str(income),
+		str(maintenance) if has_maintenance else "暂无记录",
+		str(income - maintenance) if has_maintenance else "暂无记录",
 	]
 	var rows := $Content/Provinces/Rows as VBoxContainer
 	_clear_rows(rows)
@@ -30,6 +33,8 @@ func _clear_rows(rows: VBoxContainer) -> void:
 func _province_row(index: int, province: Dictionary) -> Label:
 	var row := Label.new()
 	row.name = "Province%d" % index
+	row.theme_type_variation = &"DataRow"
+	row.custom_minimum_size = Vector2(720, 34)
 	row.text = "%s：%s" % [
 		_display_name(province), _number(province.get("fiscal_income", 0)),
 	]

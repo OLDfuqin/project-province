@@ -3,8 +3,9 @@
 [ext_resource type="Script" path="res://scripts/ui/metric_card.gd" id="1_metric"]
 
 [node name="MetricCard" type="PanelContainer"]
-custom_minimum_size = Vector2(180, 104)
+custom_minimum_size = Vector2(150, 104)
 layout_mode = 2
+theme_type_variation = &"MetricCard"
 script = ExtResource("1_metric")
 
 [node name="Content" type="VBoxContainer" parent="."]

@@ -1,0 +1,58 @@
+{
+  "version": 2,
+  "created": "2026-09-15",
+  "scope": "art-only staging; no game state or geometry",
+  "palette": {
+    "ui_gold": "#D7AE5B",
+    "ui_dark": "#071822",
+    "ui_text": "#EEE8D9"
+  },
+  "generated_raster": {
+    "file": "game/assets/maps/strategic/terrain_base_parchment.png",
+    "dimensions": "1254x1254",
+    "tool": "OpenAI built-in image generation",
+    "generation_count": 1,
+    "source_output": "C:/Users/Asus/.codex/generated_images/01a0a3de-c8c3-7ca0-b198-e7871f2e649c/exec-4c16835a-839f-4fe0-83fb-8f9c6038f602.png",
+    "prompt": "Use case: stylized-concept. Asset type: reusable game-map terrain base texture for a Godot strategy game. Create one square, tile-friendly low-contrast hand-painted parchment-and-earth surface texture suitable under political color overlays and clipped irregular provinces. Flat orthographic full-bleed material swatch; restrained paper fibers, faint dry-brush soil grain and gentle mottling; neutral warm umber, charcoal-brown and desaturated parchment. No text, letters, borders, grid, country colors, roads, rivers, buildings, cities, soldiers, weapons, flags, resources, mountains, trees, recognizable terrain symbols, cast shadows or watermark.",
+    "license_note": "Generated specifically for this project through the built-in OpenAI image generation tool; use governed by the user's applicable OpenAI terms."
+  },
+  "svg_editing": {
+    "method": "Edit the project-local SVG XML directly in a text or vector editor; there are no external source files, fonts, linked images, or build-time generators.",
+    "verification": "Preserve the declared viewBox and transparent background, regenerate preview.png from preview.html at 1400x1600, and inspect the exact 32px UI and 12/18/6x12 map rows with normal filtered scaling. Final acceptance still requires a real Godot render."
+  },
+  "ui_icons": {
+    "icon_map.svg": {"use": "primary navigation: strategic map", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 2 including stroke"},
+    "icon_flag.svg": {"use": "primary navigation and country identity", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 1.8 including stroke"},
+    "icon_diplomacy.svg": {"use": "primary navigation: diplomacy", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 2 including stroke"},
+    "icon_technology.svg": {"use": "primary navigation: technology", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 2 including stroke"},
+    "icon_military.svg": {"use": "primary navigation and military state", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 1.8 including stroke"},
+    "icon_economy.svg": {"use": "primary navigation: economy", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 3 including stroke"},
+    "icon_settings.svg": {"use": "primary navigation: settings", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "0 at right/bottom; authored outline reaches the viewBox edge"},
+    "icon_treasury.svg": {"use": "top status: national treasury", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 3 including stroke"},
+    "icon_finance.svg": {"use": "top status and region metric: fiscal income", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 1 including stroke"},
+    "icon_maintenance.svg": {"use": "top status: last-month actual maintenance", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 2 including stroke"},
+    "icon_recruits.svg": {"use": "top status and region state: recruitable population", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 3 including stroke"},
+    "icon_calendar.svg": {"use": "top status: current game date", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 2 including stroke"},
+    "icon_road.svg": {"use": "map mode and region state: roads", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 1 including stroke"},
+    "icon_orders.svg": {"use": "bottom drawer: pending orders", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 2 including stroke"},
+    "icon_notification.svg": {"use": "bottom drawer: notifications", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "0 at bottom around clapper curve; minimum 1 elsewhere"},
+    "icon_report.svg": {"use": "bottom drawer: turn report", "display_px": "32x32", "view_box": "0 0 32 32", "transparent_padding_px": "minimum 1 including stroke"}
+  },
+  "map_icons": {
+    "city_overview.svg": {"use": "one ordinary settlement at region center", "display_px": "12x12", "view_box": "0 0 12 12", "transparent_padding_px": "0.5 left/right/bottom, 2 top around battlements"},
+    "capital_overview.svg": {"use": "one capital at merged-region center", "display_px": "18x18", "view_box": "0 0 18 18", "transparent_padding_px": "0.5 left/right/bottom, 0.2 top around crown"},
+    "terrain_plain.svg": {"use": "ordinary-region top-left plains marker; never on a capital", "display_px": "12x12", "view_box": "0 0 12 12", "transparent_padding_px": "1 left/right/bottom, 2 top"},
+    "terrain_forest.svg": {"use": "ordinary-region top-left forest marker; never on a capital", "display_px": "12x12", "view_box": "0 0 12 12", "transparent_padding_px": "0.5 left/right/top, 0 bottom"},
+    "terrain_hills.svg": {"use": "ordinary-region top-left hills marker; never on a capital", "display_px": "12x12", "view_box": "0 0 12 12", "transparent_padding_px": "0.3 left/right, 1 bottom, 3.5 top"},
+    "terrain_mountain.svg": {"use": "ordinary-region top-left mountains marker; never on a capital", "display_px": "12x12", "view_box": "0 0 12 12", "transparent_padding_px": "0.2 left/right, 0.4 top/bottom"},
+    "soldier_overview.svg": {"use": "exactly one real army in the existing three-column slot layout; broad dark body and diagonal firearm remain legible at native size", "display_px": "6x12", "view_box": "0 0 6 12", "transparent_padding_px": "0 nominal; diagonal firearm reaches both side edges"}
+  },
+  "terrain_patterns": [
+    "pattern_grass.svg", "pattern_forest.svg", "pattern_hills.svg",
+    "pattern_mountain.svg", "pattern_rock.svg"
+  ],
+  "svg_provenance": "Original project-local vector artwork; no external icon library or traced asset.",
+  "integration_risks": [
+    "Mother texture is not certified seamless (measured opposite-edge mean RGB differences approximately 27.6 horizontal and 28.3 vertical); prefer continuous world-space sampling or inspect Godot tiling seams."
+  ]
+}

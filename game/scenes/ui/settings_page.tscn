@@ -6,6 +6,7 @@
 [node name="SettingsPage" type="PanelContainer"]
 layout_mode = 2
 theme = ExtResource("2_theme")
+theme_type_variation = &"WorkspacePanel"
 script = ExtResource("1_page")
 
 [node name="Content" type="VBoxContainer" parent="."]
@@ -20,12 +21,17 @@ text = "设置"
 
 [node name="BuildInfo" type="Label" parent="Content"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(520, 0)
 layout_mode = 2
+size_flags_horizontal = 0
+theme_type_variation = &"SectionLabel"
 autowrap_mode = 2
 text = "核心版本：未知\n可用存档：0"
 
 [node name="Actions" type="VBoxContainer" parent="Content"]
+custom_minimum_size = Vector2(720, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 theme_override_constants/separation = 8
 
 [node name="QuickSave" type="Button" parent="Content/Actions"]
